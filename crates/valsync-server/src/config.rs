@@ -73,6 +73,10 @@ pub fn default_include() -> Vec<String> {
         "BepInEx/plugins/**",
         "BepInEx/patchers/**",
         "BepInEx/config/**",
+        // Shipped by BepInExPack_Valheim for Linux players; harmless on Windows.
+        "doorstop_libs/**",
+        "start_game_bepinex.sh",
+        // Older packs shipped a corlib; 5.4.2350 does not, the glob then matches nothing.
         "unstripped_corlib/**",
     ]
     .iter()
