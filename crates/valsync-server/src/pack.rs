@@ -163,7 +163,7 @@ pub fn print_summary(outcome: &BuildOutcome) {
         m.server_name,
         m.files.len(),
         human_bytes(m.total_bytes()),
-        &m.pack_id[..15]
+        m.pack_id.get(..15).unwrap_or(&m.pack_id)
     );
     if !outcome.scan.skipped.is_empty() {
         println!("Skipped (not packaged):");

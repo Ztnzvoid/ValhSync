@@ -68,6 +68,22 @@ pub const MAX_GAME_ADDRESS: usize = 255;
 /// Most `managed_roots` accepted.
 pub const MAX_MANAGED_ROOTS: usize = 32;
 
+/// `host:port` as handed to Valheim: hostname, IPv4 or bracketed IPv6, digits,
+/// dots, dashes, underscores and colons. Anything else is refused so the value
+/// can never smuggle shell or URL syntax into the launch command.
+pub fn is_valid_game_address(s: &str) -> bool {
+    !s.is_empty()
+        && s.len() <= MAX_GAME_ADDRESS
+        && s.chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '_' | ':' | '[' | ']'))
+}
+
+/// Display strings (server names) must not carry control characters: they end
+/// up in terminals and logs, where escape sequences could forge output.
+pub fn is_clean_text(s: &str, max: usize) -> bool {
+    !s.trim().is_empty() && s.len() <= max && !s.chars().any(char::is_control)
+}
+
 fn sort_key(path: &str) -> (String, String) {
     (path.to_lowercase(), path.to_string())
 }
@@ -146,14 +162,14 @@ impl Manifest {
                 self.format
             ));
         }
-        if self.server_name.trim().is_empty() || self.server_name.len() > MAX_SERVER_NAME {
-            return bad("server_name is empty or too long".into());
+        if !is_clean_text(&self.server_name, MAX_SERVER_NAME) {
+            return bad("server_name is empty, too long or contains control characters".into());
         }
-        if self.game_address.is_empty()
-            || self.game_address.len() > MAX_GAME_ADDRESS
-            || self.game_address.chars().any(char::is_whitespace)
-        {
-            return bad("game_address is empty, too long or contains whitespace".into());
+        if !is_valid_game_address(&self.game_address) {
+            return bad(
+                "game_address must be host:port (letters, digits, '.', '-', '_', ':', '[', ']')"
+                    .into(),
+            );
         }
         if !crate::clock::is_rfc3339(&self.generated_at) {
             return bad(format!(
@@ -386,6 +402,36 @@ pub(crate) mod tests {
         let mut m = sample();
         m.generated_at = "not a date".into();
         assert!(m.validate(&roots(), &lim).is_err());
+    }
+
+    #[test]
+    fn game_address_and_name_are_strict() {
+        for bad in [
+            "host:2456&calc",
+            "host:2456|x",
+            "host:2456;x",
+            "host 2456",
+            "$(x):1",
+            "h\u{1b}[31m:1",
+            "",
+        ] {
+            assert!(!is_valid_game_address(bad), "{bad:?}");
+        }
+        for ok in [
+            "valheim.example.org:2456",
+            "192.168.1.13:2456",
+            "[2001:db8::1]:2456",
+            "my-server_1.net:2456",
+        ] {
+            assert!(is_valid_game_address(ok), "{ok}");
+        }
+        assert!(!is_clean_text("Evil\u{1b}[2J", 100));
+        assert!(!is_clean_text("line\nbreak", 100));
+        assert!(!is_clean_text("   ", 100));
+        assert!(is_clean_text("Serveur de Ztnzvoid", 100));
+        let mut m = sample();
+        m.server_name = "Spoof\u{1b}[1A".into();
+        assert!(m.validate(&roots(), &Limits::default()).is_err());
     }
 
     #[test]

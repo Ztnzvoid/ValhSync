@@ -4,7 +4,11 @@ all-features = true
 [advisories]
 version = 2
 yanked = "deny"
-ignore = []
+ignore = [
+  # ttf-parser is flagged unmaintained (via egui's font stack). It only parses
+  # the fonts bundled in the binary, never a file from the network or the user.
+  { id = "RUSTSEC-2026-0192", reason = "parses only embedded fonts; no untrusted input" },
+]
 
 [licenses]
 version = 2
@@ -20,12 +24,13 @@ allow = [
   "ISC",
   "Zlib",
   "Unicode-3.0",
-  "Unicode-DFS-2016",
   "CC0-1.0",
   "BSL-1.0",
   "OFL-1.1",
   "MPL-2.0",
   "CDLA-Permissive-2.0",
+  # Font licenses: egui embeds Ubuntu and Emoji fonts. Embedding is permitted.
+  "Ubuntu-font-1.0",
 ]
 confidence-threshold = 0.9
 

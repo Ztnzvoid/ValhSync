@@ -333,3 +333,23 @@ fn hosted_server_layout_needs_only_client_extras() {
     engine::apply(&w.ctx, &prepared, &mut Silent).unwrap();
     assert_eq!(read(&w.game_root, "BepInEx/plugins/Only/Only.dll"), b"only");
 }
+
+#[test]
+fn older_manifest_is_refused_as_replay() {
+    let w = world();
+    let ts = TestServer::start(&w.cfg, &w.kp, &w.data_dir);
+    let server = join(&w, &ts.url(), &w.kp);
+    // Pretend a newer manifest was already applied from this server.
+    let mut book = ServerBook::load(&w.ctx.paths).unwrap();
+    book.note_pack(&server.id, "b3:newer", "2999-01-01T00:00:00Z");
+    book.save(&w.ctx.paths).unwrap();
+    let server = book.resolve(None).unwrap().clone();
+
+    let err = engine::prepare(&w.ctx, &server, &mut Silent).unwrap_err();
+    assert!(matches!(err, SyncError::OlderManifest { .. }), "{err}");
+
+    let mut ctx = Context::with(w.ctx.paths.clone(), w.ctx.settings.clone()).unwrap();
+    ctx.skip_process_check = true;
+    ctx.allow_older = true;
+    engine::prepare(&ctx, &server, &mut Silent).unwrap();
+}

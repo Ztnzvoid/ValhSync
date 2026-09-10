@@ -30,6 +30,8 @@ impl Client {
         let inner = reqwest::blocking::Client::builder()
             .user_agent(concat!("valsync/", env!("CARGO_PKG_VERSION")))
             .connect_timeout(Duration::from_secs(10))
+            // A redirect can only lead to another http(s) URL, and not far.
+            .redirect(reqwest::redirect::Policy::limited(3))
             // Whole-request ceiling: generous enough for a 200 MiB file on a
             // slow link, finite so a stalled connection cannot hang the launcher.
             .timeout(Duration::from_secs(900))

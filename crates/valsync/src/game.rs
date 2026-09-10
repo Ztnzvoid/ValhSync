@@ -149,9 +149,11 @@ pub fn launch(install: &GameInstall, address: &str) -> Result<LaunchMethod> {
                 .map_err(|e| spawn_err("Steam", e))?;
             return Ok(LaunchMethod::SteamExe(steam_exe));
         }
+        // `explorer` hands a steam:// URL to the protocol handler and, unlike
+        // `cmd /C start`, never interprets shell metacharacters in it.
         let url = steam_url(address);
-        Command::new("cmd")
-            .args(["/C", "start", "", &url])
+        Command::new("explorer")
+            .arg(&url)
             .spawn()
             .map_err(|e| spawn_err("the steam:// link", e))?;
         return Ok(LaunchMethod::SteamUrl(url));

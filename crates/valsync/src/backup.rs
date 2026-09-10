@@ -270,6 +270,7 @@ mod tests {
             url: "http://x".into(),
             added_at: String::new(),
             last_pack_id: None,
+            last_generated_at: None,
         }
     }
 

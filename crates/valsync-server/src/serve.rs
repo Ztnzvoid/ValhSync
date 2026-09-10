@@ -219,7 +219,10 @@ async fn root(State(st): State<Arc<AppState>>) -> Response {
          Invite code (paste it in the ValSync launcher, \"Add a server\"):\n\n{}\n",
         st.server_name,
         cur.manifest.files.len(),
-        &cur.manifest.pack_id[..15],
+        cur.manifest
+            .pack_id
+            .get(..15)
+            .unwrap_or(&cur.manifest.pack_id),
         st.invite
     );
     ([(header::CONTENT_TYPE, "text/plain; charset=utf-8")], body).into_response()

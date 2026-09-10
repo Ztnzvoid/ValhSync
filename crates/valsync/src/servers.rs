@@ -19,6 +19,9 @@ pub struct KnownServer {
     /// Pack id seen at the last successful sync, for the status line.
     #[serde(default)]
     pub last_pack_id: Option<String>,
+    /// `generated_at` of the last manifest applied. An older one is a replay.
+    #[serde(default)]
+    pub last_generated_at: Option<String>,
 }
 
 impl KnownServer {
@@ -107,6 +110,7 @@ impl ServerBook {
             url: invite.url.clone(),
             added_at: valsync_core::clock::now_rfc3339(),
             last_pack_id: None,
+            last_generated_at: None,
         });
         if self.default.is_none() {
             self.default = Some(id);
@@ -168,9 +172,10 @@ impl ServerBook {
         self.default = Some(id.to_string());
     }
 
-    pub fn note_pack(&mut self, id: &str, pack_id: &str) {
+    pub fn note_pack(&mut self, id: &str, pack_id: &str, generated_at: &str) {
         if let Some(s) = self.servers.iter_mut().find(|s| s.id == id) {
             s.last_pack_id = Some(pack_id.to_string());
+            s.last_generated_at = Some(generated_at.to_string());
         }
     }
 }

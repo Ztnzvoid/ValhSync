@@ -42,13 +42,21 @@ enum Cmd {
     /// Choose the server used when none is named.
     Default { server: String },
     /// Show what a sync would do, without changing anything.
-    Status { server: Option<String> },
+    Status {
+        server: Option<String>,
+        /// Accept a manifest older than the last one applied (admin rolled back).
+        #[arg(long)]
+        allow_older: bool,
+    },
     /// Download and apply the server's pack.
     Sync {
         server: Option<String>,
         /// Skip the confirmation asked on a first sync.
         #[arg(long, short = 'y')]
         yes: bool,
+        /// Accept a manifest older than the last one applied (admin rolled back).
+        #[arg(long)]
+        allow_older: bool,
     },
     /// Sync, then start Valheim through Steam and connect to the server.
     Play {
@@ -58,6 +66,9 @@ enum Cmd {
         /// Start the game without syncing first.
         #[arg(long)]
         no_sync: bool,
+        /// Accept a manifest older than the last one applied (admin rolled back).
+        #[arg(long)]
+        allow_older: bool,
     },
     /// Undo the last sync exactly.
     Rollback {
@@ -94,7 +105,7 @@ pub fn run() -> Result<()> {
             .init();
     }
     let cli = Cli::parse();
-    let ctx = Context::discover()?;
+    let mut ctx = Context::discover()?;
 
     match invite_file::import_if_present(&ctx.paths) {
         Ok(Some((server, _))) => println!(
@@ -127,12 +138,21 @@ pub fn run() -> Result<()> {
             println!("Default server set.");
             Ok(())
         }
-        Cmd::Status { server } => {
+        Cmd::Status {
+            server,
+            allow_older,
+        } => {
+            ctx.allow_older = allow_older;
             let prepared = prepare(&ctx, server.as_deref())?;
             print_plan(&prepared);
             Ok(())
         }
-        Cmd::Sync { server, yes } => {
+        Cmd::Sync {
+            server,
+            yes,
+            allow_older,
+        } => {
+            ctx.allow_older = allow_older;
             let prepared = prepare(&ctx, server.as_deref())?;
             sync(&ctx, &prepared, yes)?;
             Ok(())
@@ -141,7 +161,11 @@ pub fn run() -> Result<()> {
             server,
             yes,
             no_sync,
-        } => cmd_play(&ctx, server.as_deref(), yes, no_sync),
+            allow_older,
+        } => {
+            ctx.allow_older = allow_older;
+            cmd_play(&ctx, server.as_deref(), yes, no_sync)
+        }
         Cmd::Rollback { list } => cmd_rollback(&ctx, list),
         Cmd::Vanilla { mode } => cmd_vanilla(&ctx, mode),
         Cmd::GameRoot { path, clear } => cmd_game_root(ctx, path, clear),
@@ -218,7 +242,7 @@ fn print_plan(prepared: &Prepared) {
     println!(
         "Server \"{}\"  pack {}  game {}",
         prepared.manifest.server_name,
-        &prepared.manifest.pack_id[..15],
+        short_id(&prepared.manifest.pack_id),
         prepared.install.root.display()
     );
     if plan.is_noop() {
@@ -432,7 +456,7 @@ fn cmd_doctor(ctx: &Context) -> Result<()> {
             "Installed:    {} files from \"{}\" (pack {}), applied {}",
             s.files.len(),
             s.server_name,
-            &s.pack_id[..15],
+            short_id(&s.pack_id),
             s.applied_at
         ),
         None => println!("Installed:    nothing yet"),
@@ -445,6 +469,11 @@ fn cmd_doctor(ctx: &Context) -> Result<()> {
     let backups = Backup::list(&ctx.paths)?;
     println!("Backups:      {}", backups.len());
     Ok(())
+}
+
+/// First characters of a pack id, never panicking on a short string.
+fn short_id(id: &str) -> &str {
+    id.get(..15).unwrap_or(id)
 }
 
 /// Prints progress on the console, one line per step and a live download bar.

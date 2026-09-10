@@ -162,10 +162,10 @@ impl Config {
             bail!("[server] name must not be empty");
         }
         self.bind_addr()?;
-        if self.server.game_address.trim().is_empty()
-            || self.server.game_address.chars().any(char::is_whitespace)
-        {
-            bail!("[server] game_address must be host:port without spaces");
+        if !valsync_core::manifest::is_valid_game_address(self.server.game_address.trim()) {
+            bail!(
+                "[server] game_address must be host:port (letters, digits, '.', '-', '_', ':', '[', ']')"
+            );
         }
         if self.pack.server_root.is_none() && self.pack.client_extras.is_none() {
             bail!("[pack] needs at least server_root or client_extras");

@@ -36,6 +36,8 @@ pub struct Context {
     /// Tests run against a fake game folder while a real Valheim may be
     /// open on the developer's machine; they turn the process check off.
     pub skip_process_check: bool,
+    /// Accept a manifest older than the last one applied (admin rolled back).
+    pub allow_older: bool,
 }
 
 impl Context {
@@ -47,6 +49,7 @@ impl Context {
             settings,
             client: Client::new()?,
             skip_process_check: false,
+            allow_older: false,
         })
     }
 
@@ -56,6 +59,7 @@ impl Context {
             settings,
             client: Client::new()?,
             skip_process_check: false,
+            allow_older: false,
         })
     }
 
@@ -164,6 +168,23 @@ pub fn prepare(
             },
             other => other,
         })?;
+    // Replay protection: a valid signature does not prove freshness. Someone
+    // on the network path could serve yesterday's manifest to reinstall a mod
+    // version the admin has since replaced.
+    if !ctx.allow_older
+        && let Some(seen) = server.last_generated_at.as_deref()
+        && let (Some(seen_at), Some(got_at)) = (
+            clock::parse_rfc3339(seen),
+            clock::parse_rfc3339(&manifest.generated_at),
+        )
+        && got_at < seen_at
+    {
+        return Err(SyncError::OlderManifest {
+            name: server.name.clone(),
+            seen: seen.to_string(),
+            received: manifest.generated_at.clone(),
+        });
+    }
     let previous = ctx.installed()?;
     let plan = plan::compute(&manifest, &install.root, previous.as_ref())?;
     progress.on(Event::Planned(&plan));
@@ -372,7 +393,11 @@ fn finish_bookkeeping(ctx: &Context, prepared: &Prepared) -> Result<()> {
     }
 
     let mut book = ServerBook::load(&ctx.paths)?;
-    book.note_pack(&prepared.server.id, &prepared.manifest.pack_id);
+    book.note_pack(
+        &prepared.server.id,
+        &prepared.manifest.pack_id,
+        &prepared.manifest.generated_at,
+    );
     book.save(&ctx.paths)
 }
 

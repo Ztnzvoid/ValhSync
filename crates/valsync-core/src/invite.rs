@@ -69,8 +69,10 @@ impl Invite {
         if host.is_empty() || host.chars().any(|c| c.is_whitespace() || c == '@') {
             return Err(bad("server URL has no valid host"));
         }
-        if self.name.trim().is_empty() || self.name.len() > MAX_SERVER_NAME {
-            return Err(bad("server name is empty or too long"));
+        if !crate::manifest::is_clean_text(&self.name, MAX_SERVER_NAME) {
+            return Err(bad(
+                "server name is empty, too long or contains control characters",
+            ));
         }
         self.public_key()?;
         Ok(())
@@ -129,6 +131,11 @@ mod tests {
             let inv = Invite::new(url, &kp.public(), "n");
             assert!(inv.validate().is_err(), "{url}");
         }
+        assert!(
+            Invite::new("http://h", &kp.public(), "x\u{1b}[0m")
+                .validate()
+                .is_err()
+        );
         let mut inv = Invite::new("http://h", &kp.public(), "n");
         inv.pubkey = "AAAA".into();
         assert!(Invite::parse(&inv.encode().unwrap()).is_err());

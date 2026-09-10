@@ -20,9 +20,14 @@ pub fn dir_stamp() -> String {
         .unwrap_or_else(|_| "19700101-000000".to_string())
 }
 
+/// Parse an RFC 3339 timestamp, for ordering manifests.
+pub fn parse_rfc3339(text: &str) -> Option<OffsetDateTime> {
+    OffsetDateTime::parse(text, &Rfc3339).ok()
+}
+
 /// Is this a well-formed RFC 3339 timestamp?
 pub fn is_rfc3339(text: &str) -> bool {
-    OffsetDateTime::parse(text, &Rfc3339).is_ok()
+    parse_rfc3339(text).is_some()
 }
 
 #[cfg(test)]

@@ -69,6 +69,15 @@ pub enum SyncError {
         rollback_error: String,
     },
 
+    #[error(
+        "\"{name}\" sent a manifest generated at {received}, older than the one already applied ({seen}). This can be a replay of an old pack by someone on the network path. Nothing was changed. If the admin really rolled the pack back, run again with --allow-older"
+    )]
+    OlderManifest {
+        name: String,
+        seen: String,
+        received: String,
+    },
+
     #[error("no backup to restore")]
     NoBackup,
 
