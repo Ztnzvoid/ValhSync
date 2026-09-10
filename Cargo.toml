@@ -37,11 +37,16 @@ directories = "6"
 tempfile = "3"
 
 # network
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "fs", "io-util", "signal", "sync", "time"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "fs", "io-util", "net", "signal", "sync", "time"] }
 tokio-util = { version = "0.7", features = ["io"] }
 axum = { version = "0.8", default-features = false, features = ["http1", "tokio", "json"] }
-reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "stream"] }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "blocking"] }
 futures-util = { version = "0.3", default-features = false }
+bytes = "1"
+
+# system
+sysinfo = { version = "0.35", default-features = false, features = ["system"] }
+winreg = "0.55"
 
 # misc
 clap = { version = "4", features = ["derive"] }

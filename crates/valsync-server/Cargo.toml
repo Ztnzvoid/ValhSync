@@ -26,8 +26,12 @@ tokio.workspace = true
 tokio-util.workspace = true
 axum.workspace = true
 notify.workspace = true
-directories.workspace = true
+bytes.workspace = true
 time.workspace = true
+
+
+[dev-dependencies]
+tempfile.workspace = true
 
 [lints]
 workspace = true

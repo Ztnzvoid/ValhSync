@@ -25,6 +25,7 @@ pub mod plan;
 pub mod scan;
 pub mod sign;
 pub mod state;
+pub mod steam;
 
 pub use error::{CoreError, Result};
 pub use invite::Invite;
