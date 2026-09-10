@@ -65,10 +65,18 @@ Known unknowns, to confirm on Ztnzvoid' server before calling v1 final:
 
 - The exact launch arguments Valheim 1.0 accepts through Steam
   (`-applaunch 892970 +connect host:port`; `+password` is not passed).
-- What BepInExPack_Valheim 5.4.2350 drops at the game root besides
-  `winhttp.dll`, `doorstop_config.ini`, `BepInEx/` and `unstripped_corlib/`.
 - Server-side TLS is not built in; put the server behind a reverse proxy if
   you want HTTPS. Integrity does not depend on it: the manifest is signed.
+
+Verified on a real dedicated server (Valheim 1.0.7, BepInExPack_Valheim
+5.4.2350): the pack drops `.doorstop_version`, `doorstop_config.ini`,
+`winhttp.dll`, `doorstop_libs/`, `start_game_bepinex.sh`,
+`start_server_bepinex.sh`, `changelog.txt` and `BepInEx/` at the root, no
+`unstripped_corlib/`; the default include list covers what players need.
+Scanning works while `valheim_server.exe` is running. The game logs its
+version as `Valheim version: 1.0.7 (network version 39)` and the handshake as
+`Network version check, their:39, mine:39`, which a later version can use to
+warn about a game-version mismatch.
 
 ## Quick start: admin
 
