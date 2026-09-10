@@ -6,9 +6,11 @@
 
 pub mod backup;
 pub mod cli;
+pub mod console;
 pub mod engine;
 pub mod error;
 pub mod game;
+pub mod gui;
 pub mod http;
 pub mod invite_file;
 pub mod paths;
