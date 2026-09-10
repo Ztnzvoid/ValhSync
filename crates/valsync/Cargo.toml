@@ -1,0 +1,32 @@
+[package]
+name = "valsync"
+description = "Player launcher: syncs a Valheim install with a server's signed mod pack, then starts the game."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "valsync"
+path = "src/main.rs"
+
+[dependencies]
+valsync-core.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+clap.workspace = true
+anyhow.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+tokio.workspace = true
+reqwest.workspace = true
+futures-util.workspace = true
+directories.workspace = true
+tempfile.workspace = true
+time.workspace = true
+
+[lints]
+workspace = true

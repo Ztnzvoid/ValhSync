@@ -1,0 +1,578 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ValSync : cahier des charges du launcher</title>
+<style>
+  /* ── Palette ValSync, d'après l'interface de Valheim ───────────────
+     Nuit et bois brûlé pour le fond, os et parchemin pour le texte,
+     laiton usé pour les titres, brume nordique pour la numérotation. */
+  :root {
+    --night:      #0F0D0B;   /* fond de page, bois presque noir       */
+    --wood:       #17140F;   /* blocs de code, log                    */
+    --panel:      #1E1912;   /* panneau de contenu                    */
+    --leather:    #262017;   /* encarts, règles                       */
+    --edge:       #4A3C27;   /* filets forts                          */
+    --edge-soft:  #332A1D;   /* filets discrets                       */
+    --bone:       #E0D5BC;   /* texte courant, os poli                */
+    --bone-dim:   #ADA089;   /* texte secondaire                      */
+    --gold:       #C7A455;   /* laiton usé : titres, liens            */
+    --gold-lit:   #E8CD8B;   /* laiton éclairé : survol, accents      */
+    --rune:       #7E9AA7;   /* brume : numéros de section            */
+    --blood:      #9A3421;   /* interdits, avertissements             */
+    --moss:       #7E9155;   /* réservé aux états « OK »              */
+
+    --serif:   "Iowan Old Style", "Charter", Constantia, "Palatino Linotype", Georgia, serif;
+    --display: Cinzel, "Trajan Pro", Constantia, "Palatino Linotype", "Book Antiqua", Georgia, serif;
+    --mono:    "Cascadia Code", "JetBrains Mono", Consolas, "DejaVu Sans Mono", monospace;
+  }
+  * { box-sizing: border-box; }
+  html {
+    background: var(--night);
+    color: var(--bone);
+    /* halo de torche : le centre du parchemin est éclairé, les bords non */
+    background-image:
+      radial-gradient(120% 80% at 50% 0%, #241D14 0%, rgba(36,29,20,0) 60%),
+      radial-gradient(90% 60% at 50% 100%, #1A1610 0%, rgba(26,22,16,0) 70%);
+    background-attachment: fixed;
+  }
+  body { margin: 0; font: 17px/1.65 var(--serif); }
+  ::selection { background: rgba(199,164,85,0.3); }
+
+  a { color: var(--gold); text-underline-offset: 2px; text-decoration-color: var(--edge); }
+  a:hover { color: var(--gold-lit); }
+  a:focus-visible { outline: 2px solid var(--gold-lit); outline-offset: 2px; }
+
+  .layout {
+    display: grid;
+    grid-template-columns: 15rem minmax(0, 46rem);
+    gap: 3rem;
+    max-width: 68rem;
+    margin: 0 auto;
+    padding: 0 1.5rem 6rem;
+  }
+
+  /* ── Sommaire : gravé dans la marge ─────────────────────────────── */
+  nav.toc {
+    position: sticky;
+    top: 1.5rem;
+    align-self: start;
+    margin-top: 3rem;
+    font: 0.86rem/1.6 var(--display);
+    letter-spacing: 0.01em;
+  }
+  nav.toc ol { list-style: none; margin: 0; padding: 0; border-left: 1px solid var(--edge-soft); }
+  nav.toc li { margin: 0; }
+  nav.toc a {
+    display: block;
+    text-decoration: none;
+    color: var(--bone-dim);
+    padding: 0.22rem 0 0.22rem 0.9rem;
+    margin-left: -1px;
+    border-left: 2px solid transparent;
+  }
+  nav.toc a:hover { color: var(--gold-lit); border-left-color: var(--gold); background: rgba(199,164,85,0.05); }
+  nav.toc .n { display: inline-block; width: 2.4rem; color: var(--rune); }
+
+  main { min-width: 0; }
+
+  /* ── Le moment fort : le log qui a tout déclenché ────────────────── */
+  header.hero { padding: 3.5rem 0 2.2rem; border-bottom: 1px solid var(--edge); }
+  header.hero h1 {
+    font: 600 3rem/1.05 var(--display);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--gold);
+    margin: 0 0 0.5rem;
+    text-shadow: 0 1px 0 #000, 0 0 28px rgba(199,164,85,0.16);
+  }
+  header.hero .sub {
+    font: 1.05rem/1.5 var(--serif);
+    color: var(--bone-dim);
+    margin: 0 0 2rem;
+    max-width: 40rem;
+  }
+  .log {
+    background: var(--wood);
+    color: #BFB5A0;
+    font: 0.84rem/1.7 var(--mono);
+    padding: 1.1rem 1.25rem;
+    border: 1px solid var(--edge-soft);
+    border-left: 6px solid var(--blood);
+    overflow-x: auto;
+    white-space: pre;
+    box-shadow: inset 0 0 40px rgba(0,0,0,0.5);
+  }
+  .log .w { color: #E3B45A; }
+  header.hero .verdict {
+    font: 600 1.3rem/1.4 var(--display);
+    color: var(--bone);
+    margin: 1.5rem 0 0;
+    max-width: 38rem;
+  }
+
+  /* ── Sections ───────────────────────────────────────────────────── */
+  section { padding-top: 2.6rem; }
+  h2 {
+    font: 600 1.5rem/1.25 var(--display);
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--gold);
+    margin: 0 0 1rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid var(--edge-soft);
+    display: flex;
+    gap: 0.7rem;
+    align-items: baseline;
+  }
+  h2 .n { color: var(--rune); font-weight: 400; letter-spacing: 0; text-transform: none; }
+  h3 {
+    font: 600 1.08rem/1.35 var(--display);
+    letter-spacing: 0.02em;
+    color: var(--gold-lit);
+    margin: 1.8rem 0 0.5rem;
+  }
+  p, li { max-width: 42rem; }
+  strong { color: var(--gold-lit); font-weight: 600; }
+  em { color: var(--bone); }
+  ul, ol { padding-left: 1.3rem; }
+  li { margin: 0.32rem 0; }
+  li::marker { color: var(--rune); }
+
+  /* ── Code ───────────────────────────────────────────────────────── */
+  code {
+    font: 0.86em var(--mono);
+    background: var(--wood);
+    border: 1px solid var(--edge-soft);
+    color: var(--gold-lit);
+    padding: 0.08em 0.34em;
+    border-radius: 2px;
+  }
+  pre {
+    font: 0.82rem/1.6 var(--mono);
+    background: var(--wood);
+    color: #C6BCA6;
+    border: 1px solid var(--edge-soft);
+    border-left: 3px solid var(--edge);
+    padding: 1rem 1.15rem;
+    overflow-x: auto;
+    border-radius: 2px;
+  }
+  pre code { background: none; border: 0; padding: 0; font-size: inherit; color: inherit; }
+
+  /* ── Tables ─────────────────────────────────────────────────────── */
+  table { border-collapse: collapse; width: 100%; margin: 0.9rem 0 1.3rem; font-size: 0.93rem; }
+  th, td { text-align: left; vertical-align: top; padding: 0.6rem 0.75rem; border-bottom: 1px solid var(--edge-soft); }
+  th {
+    font: 600 0.82rem var(--display);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--gold);
+    border-bottom: 2px solid var(--edge);
+  }
+  tbody tr:hover { background: rgba(199,164,85,0.04); }
+
+  /* ── Encarts : plaques de bois cerclées de laiton ────────────────── */
+  .rule {
+    border: 1px solid var(--edge-soft);
+    border-left: 4px solid var(--rune);
+    background: var(--leather);
+    padding: 0.85rem 1.05rem;
+    margin: 1.1rem 0;
+  }
+  .rule.decide { border-left-color: var(--gold); }
+  .rule.never  { border-left-color: var(--blood); }
+  .rule strong:first-child {
+    font-family: var(--display);
+    letter-spacing: 0.03em;
+    color: var(--gold-lit);
+  }
+  .rule.never strong:first-child { color: #D2724F; }
+  .verify { color: var(--gold-lit); font-weight: 600; white-space: nowrap; }
+
+  footer {
+    margin-top: 4.5rem;
+    padding-top: 1.1rem;
+    border-top: 1px solid var(--edge-soft);
+    font: 0.86rem var(--display);
+    letter-spacing: 0.02em;
+    color: var(--bone-dim);
+  }
+
+  @media (max-width: 900px) {
+    .layout { grid-template-columns: 1fr; gap: 0; }
+    nav.toc { position: static; margin-top: 1.5rem; }
+    header.hero h1 { font-size: 2.1rem; }
+  }
+  @media print {
+    nav.toc { display: none; }
+    .layout { display: block; }
+    html { background: #fff; color: #000; background-image: none; }
+    a, h1, h2, h3, th, strong { color: #000; }
+  }
+</style>
+</head>
+<body>
+<div class="layout">
+
+<nav class="toc" aria-label="Sommaire">
+  <ol>
+    <li><a href="#s0"><span class="n">§0</span>Pour Claude Code</a></li>
+    <li><a href="#s1"><span class="n">§1</span>Le problème</a></li>
+    <li><a href="#s2"><span class="n">§2</span>Périmètre v1</a></li>
+    <li><a href="#s3"><span class="n">§3</span>Principes</a></li>
+    <li><a href="#s4"><span class="n">§4</span>Architecture</a></li>
+    <li><a href="#s5"><span class="n">§5</span>Le manifeste</a></li>
+    <li><a href="#s6"><span class="n">§6</span>Côté serveur</a></li>
+    <li><a href="#s7"><span class="n">§7</span>Côté joueur</a></li>
+    <li><a href="#s8"><span class="n">§8</span>Sécurité</a></li>
+    <li><a href="#s9"><span class="n">§9</span>Valheim et BepInEx</a></li>
+    <li><a href="#s10"><span class="n">§10</span>Stack Rust</a></li>
+    <li><a href="#s11"><span class="n">§11</span>Jalons</a></li>
+    <li><a href="#s12"><span class="n">§12</span>Critères d'acceptation</a></li>
+    <li><a href="#s13"><span class="n">§13</span>Questions ouvertes</a></li>
+    <li><a href="#s14"><span class="n">§14</span>Hors périmètre</a></li>
+  </ol>
+</nav>
+
+<main>
+
+<header class="hero">
+  <h1>ValSync</h1>
+  <p class="sub">Cahier des charges du launcher qui synchronise les mods d'un serveur Valheim avec ses joueurs. Nom provisoire.</p>
+<div class="log" role="img" aria-label="Extrait du log du serveur montrant deux joueurs déconnectés">[Info   :   BepInEx] Loading [AzuCraftyBoxes 1.8.17]
+[Info   :   BepInEx] Loading [AzuExtendedPlayerInventory 2.4.13]
+<span class="w">[Warning:AzuCraftyBoxes] Peer (Steam_7656119xxxxxxxxxx) never sent version or couldn't due to previous disconnect, disconnecting</span>
+<span class="w">[Warning:AzuExtendedPlayerInventory] Peer (Steam_7656119xxxxxxxxxx) never sent version or couldn't due to previous disconnect, disconnecting</span></div>
+  <p class="verdict">Le joueur n'avait pas les bons mods, il a été éjecté, et il n'a vu qu'un message « Incompatible version ». ValSync existe pour que ça n'arrive plus.</p>
+</header>
+
+<section id="s0">
+  <h2><span class="n">§0</span>Pour Claude Code</h2>
+  <p>Ce document est la référence du projet. Avant d'écrire du code :</p>
+  <ol>
+    <li>Lis le document en entier.</li>
+    <li>Pose à Ztnzvoid les questions de la <a href="#s13">§13</a> et attends ses réponses.</li>
+    <li>Propose un plan détaillé pour le jalon M0 (<a href="#s11">§11</a>), puis avance jalon par jalon, en faisant valider chaque jalon avant de passer au suivant.</li>
+  </ol>
+  <div class="rule">
+    <strong>Langues.</strong> Échanges avec Ztnzvoid en français. Code, identifiants, commentaires, messages de commit et README en anglais, parce que le projet est public. Une section française dans le README est bienvenue.
+  </div>
+  <div class="rule decide">
+    <strong>Décisions.</strong> Les choix marqués « par défaut » peuvent être discutés, mais pas changés sans l'accord de Ztnzvoid. Les points marqués <span class="verify">à vérifier</span> sont des hypothèses à confirmer par un test réel avant de s'appuyer dessus.
+  </div>
+  <p>Profil de Ztnzvoid : administrateur systèmes et réseaux, 17 ans d'expérience, spécialisé infra de studios de jeu. Pas besoin de vulgariser les notions d'infra ; en revanche, explique les choix Rust qui ne sont pas évidents.</p>
+</section>
+
+<section id="s1">
+  <h2><span class="n">§1</span>Le problème</h2>
+  <p>Valheim n'a aucun système natif pour distribuer des mods. Iron Gate ne supporte pas officiellement le modding, et il n'y a pas de Steam Workshop, même en 1.0 (sortie le 9 septembre 2026). Tout passe par BepInEx et par des gestionnaires tiers.</p>
+  <p>Sur un serveur moddé, ça casse de plusieurs façons, toutes vécues en installant le serveur de Ztnzvoid :</p>
+  <ul>
+    <li><strong>Handshake de version.</strong> Beaucoup de mods (ceux basés sur ServerSync ou Jotunn) vérifient à la connexion que le client a le même mod, dans la même version. Si le client ne l'a pas, il est déconnecté, et le jeu n'affiche qu'un « Incompatible version » générique.</li>
+    <li><strong>Mods incompatibles entre eux.</strong> Un reste d'EquipmentAndQuickSlots chez un joueur empêche AzuExtendedPlayerInventory de se charger (BepInEx refuse avec <code>incompatible with: randyknapp.mods.equipmentandquickslots</code>), et le joueur est rejeté par le serveur.</li>
+    <li><strong>Sources éclatées.</strong> Depuis la 1.0, certains auteurs publient sur Hexium au lieu de Thunderstore. r2modman ne lit pas Hexium : un joueur qui passe par lui récupère parfois une version antérieure à la 1.0.</li>
+    <li><strong>Distribution manuelle.</strong> Aujourd'hui, l'admin zippe <code>BepInEx</code> + <code>winhttp.dll</code> + <code>doorstop_config.ini</code> et l'envoie aux joueurs, à refaire à chaque mise à jour de mod.</li>
+  </ul>
+  <p>ValSync fait du <strong>serveur la source de vérité</strong> : le launcher du joueur compare son installation au manifeste signé du serveur, corrige les écarts, puis lance le jeu.</p>
+</section>
+
+<section id="s2">
+  <h2><span class="n">§2</span>Périmètre v1</h2>
+  <h3>Dans la v1</h3>
+  <ul>
+    <li><code>valsync-server</code> : scanne le pack de mods de l'admin, produit un manifeste signé et sert les fichiers en HTTP.</li>
+    <li><code>valsync</code> : launcher joueur (interface graphique + mode CLI) qui rejoint un serveur via un code d'invitation, synchronise, puis lance Valheim.</li>
+    <li>Serveur : Windows (cas réel de Ztnzvoid : application Steam « Valheim Dedicated Server » lancée par <code>.bat</code>) et Linux.</li>
+    <li>Joueur : Windows en priorité. Linux et Steam Deck : détection et instructions affichées (voir <a href="#s9">§9</a>).</li>
+    <li>Sauvegarde avant chaque synchro, retour arrière, mise en quarantaine des mods non gérés.</li>
+  </ul>
+  <h3>Pas dans la v1</h3>
+  <p>Voir <a href="#s14">§14</a>.</p>
+</section>
+
+<section id="s3">
+  <h2><span class="n">§3</span>Principes non négociables</h2>
+  <div class="rule never">
+    <strong>Aucune dépendance à un logiciel tiers.</strong> ValSync ne dépend ni de Gale, ni de r2modman, ni de Jotunn, ni des API Thunderstore ou Hexium. Des crates Rust matures, oui ; un autre programme à installer, non.
+  </div>
+  <div class="rule never">
+    <strong>Écrit de zéro.</strong> Pas de fork d'un outil existant. Ne jamais copier de code de Gale : il est sous GPL-3.0, et le copier imposerait cette licence à ValSync. S'inspirer de son fonctionnement est permis.
+  </div>
+  <div class="rule never">
+    <strong>Le launcher n'écrit qu'à l'intérieur du dossier du jeu</strong>, et uniquement dans les chemins autorisés (<a href="#s8">§8</a>). Il n'exécute jamais un fichier téléchargé : il lance Valheim via Steam, point.
+  </div>
+  <div class="rule">
+    <strong>Solidité avant fonctionnalités.</strong> Chaque écriture disque est atomique et réversible. Un échec au milieu d'une synchro laisse l'installation dans son état précédent.
+  </div>
+  <div class="rule">
+    <strong>Messages d'erreur utiles.</strong> Chaque erreur dit ce qui s'est passé et quoi faire. Jamais de « Une erreur est survenue ».
+  </div>
+</section>
+
+<section id="s4">
+  <h2><span class="n">§4</span>Architecture</h2>
+<pre><code>  Machine serveur                                    PC du joueur
+ ┌──────────────────────────────┐                  ┌───────────────────────────────┐
+ │ Valheim Dedicated Server     │                  │ valsync (launcher)            │
+ │  └ BepInEx/ (mods serveur)   │                  │  1. GET /manifest.json + .sig │
+ │                              │   HTTP(S) TCP    │  2. vérifie la signature      │
+ │ valsync-server               │ ◀──────────────▶ │  3. compare aux hashs locaux  │
+ │  ├ scanne pack + extras      │                  │  4. télécharge /files/&lt;hash&gt;  │
+ │  ├ manifeste signé Ed25519   │                  │  5. applique (atomique)       │
+ │  └ store adressé par hash    │                  │  6. lance Valheim via Steam   │
+ └──────────────────────────────┘                  └───────────────────────────────┘
+          ▲                                                   │
+          └──────────── connexion jeu (UDP 2456-2457) ◀───────┘</code></pre>
+  <p>Workspace Cargo proposé par défaut :</p>
+  <ul>
+    <li><code>crates/valsync-core</code> : modèle du manifeste, scan, hash, signature, validation des chemins. Aucune I/O réseau. C'est ici que se concentrent les tests.</li>
+    <li><code>crates/valsync-server</code> : binaire serveur.</li>
+    <li><code>crates/valsync</code> : binaire joueur, CLI et interface graphique dans le même exécutable.</li>
+  </ul>
+</section>
+
+<section id="s5">
+  <h2><span class="n">§5</span>Le manifeste</h2>
+  <p>Le serveur sert <code>manifest.json</code> et <code>manifest.sig</code>, une signature Ed25519 détachée calculée sur les octets exacts du JSON. Le client vérifie la signature <em>avant</em> de parser.</p>
+<pre><code>{
+  "format": 1,
+  "server_name": "Serveur de Ztnzvoid",
+  "game_address": "valheim.example.org:2456",
+  "generated_at": "2026-09-10T18:00:00Z",
+  "pack_id": "b3:9f2c…",
+  "managed_roots": ["BepInEx/core", "BepInEx/plugins", "BepInEx/patchers", "BepInEx/config"],
+  "files": [
+    { "path": "winhttp.dll", "size": 25088, "blake3": "…", "policy": "enforce" },
+    { "path": "doorstop_config.ini", "size": 812, "blake3": "…", "policy": "enforce" },
+    { "path": "BepInEx/plugins/AzuCraftyBoxes/AzuCraftyBoxes.dll", "size": 131072, "blake3": "…", "policy": "enforce" },
+    { "path": "BepInEx/config/Azumatt.AzuCraftyBoxes.cfg", "size": 2048, "blake3": "…", "policy": "seed" }
+  ]
+}</code></pre>
+  <table>
+    <thead><tr><th>Champ</th><th>Rôle</th></tr></thead>
+    <tbody>
+      <tr><td><code>path</code></td><td>Chemin relatif à la racine du jeu, séparateur <code>/</code>. Validé strictement des deux côtés (<a href="#s8">§8</a>).</td></tr>
+      <tr><td><code>blake3</code></td><td>Hash du contenu. Sert aussi de clé de téléchargement : <code>GET /files/&lt;blake3&gt;</code>.</td></tr>
+      <tr><td><code>policy</code></td><td><code>enforce</code> : toujours remplacé s'il diffère. <code>seed</code> : installé seulement s'il est absent, jamais écrasé ensuite (préférences du joueur : raccourcis, interface).</td></tr>
+      <tr><td><code>managed_roots</code></td><td>Dossiers dont ValSync a la responsabilité. Ce qui s'y trouve sans figurer au manifeste est un fichier « non géré » (<a href="#s7">§7</a>).</td></tr>
+      <tr><td><code>pack_id</code></td><td>Hash de la liste triée des entrées. S'il n'a pas changé, le client n'a rien à faire.</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section id="s6">
+  <h2><span class="n">§6</span>Côté serveur : <code>valsync-server</code></h2>
+  <h3>Le point clé : le pack client n'est pas le dossier du serveur</h3>
+  <p>C'est la leçon principale de l'installation du serveur de Ztnzvoid. Certains mods ne doivent tourner que sur le serveur (DiscordConnector), d'autres que chez les joueurs (EquipmentAndQuickSlots, BetterArchery, ConfigManager, Unshamed), et la plupart des deux côtés. Le pack distribué se construit donc ainsi : <strong>dossier BepInEx du serveur, moins les exclusions, plus un dossier d'extras réservés aux clients.</strong></p>
+<pre><code># valsync-server.toml
+[server]
+name = "Serveur de Ztnzvoid"
+bind = "0.0.0.0:2470"                          # port TCP par défaut, à ouvrir dans le pare-feu
+game_address = "valheim.example.org:2456"      # adresse que le launcher donnera au jeu
+
+[pack]
+server_root = 'C:\Program Files (x86)\Steam\steamapps\common\Valheim dedicated server'
+include = [
+  "winhttp.dll", "doorstop_config.ini",
+  "BepInEx/core/**", "BepInEx/plugins/**", "BepInEx/patchers/**", "BepInEx/config/**",
+]
+exclude = [
+  "BepInEx/LogOutput.log", "BepInEx/cache/**",
+  "BepInEx/plugins/DiscordConnector/**",       # serveur uniquement
+]
+client_extras = 'C:\valsync\client-extras'     # même arborescence que la racine du jeu
+
+[policy]
+default = "enforce"
+seed = ["BepInEx/config/**"]                   # les configs sont proposées, pas imposées
+enforce = ["BepInEx/config/BepInEx.cfg"]       # sauf celles-ci
+
+[limits]
+max_file_mb = 200
+max_pack_mb = 2048
+max_files = 5000</code></pre>
+  <p>Si le pack BepInEx contient d'autres éléments à la racine (par exemple un dossier <code>unstripped_corlib</code>), l'admin les ajoute à <code>include</code>. <span class="verify">À vérifier</span> sur le pack 5.4.2350 : lister précisément ce qu'il dépose à la racine, et adapter les valeurs par défaut de <code>init</code>.</p>
+
+  <h3>Commandes</h3>
+  <table>
+    <thead><tr><th>Commande</th><th>Effet</th></tr></thead>
+    <tbody>
+      <tr><td><code>init</code></td><td>Crée la config avec détection du dossier serveur, génère la paire de clés Ed25519 et affiche le code d'invitation.</td></tr>
+      <tr><td><code>scan</code></td><td>Construit le manifeste et affiche le résumé : nombre de fichiers, taille, différences avec le précédent.</td></tr>
+      <tr><td><code>serve</code></td><td>Sert le manifeste et les fichiers. Surveille les dossiers (crate <code>notify</code>) et reconstruit le manifeste après chaque modification, avec un délai de stabilisation.</td></tr>
+      <tr><td><code>invite</code></td><td>Réaffiche le code d'invitation.</td></tr>
+      <tr><td><code>rotate-key</code></td><td>Nouvelle paire de clés et nouveau code d'invitation. Les joueurs devront réimporter le code.</td></tr>
+    </tbody>
+  </table>
+
+  <h3>API HTTP</h3>
+  <ul>
+    <li><code>GET /manifest.json</code> et <code>GET /manifest.sig</code></li>
+    <li><code>GET /files/&lt;blake3&gt;</code> : le contenu, servi depuis un store adressé par hash. Aucun chemin de l'URL n'est jamais utilisé pour accéder au disque.</li>
+    <li><code>GET /health</code></li>
+  </ul>
+  <p>Pas de listing, pas d'écriture, pas d'authentification en v1 : le contenu n'est pas secret, son intégrité est garantie par la signature. TLS optionnel (rustls) si l'admin fournit un certificat.</p>
+
+  <h3>Code d'invitation</h3>
+  <p><code>valsync1:</code> suivi de l'encodage base64url d'un JSON <code>{ "url": "http://hôte:2470", "pubkey": "…", "name": "…" }</code>. Le joueur le colle dans le launcher ; la clé publique est épinglée à ce moment-là.</p>
+  <p>Exécution : console au premier plan en v1. Fournir un exemple d'unité systemd pour Linux et une note sur NSSM ou <code>sc.exe</code> pour Windows. Un vrai service Windows natif viendra plus tard.</p>
+</section>
+
+<section id="s7">
+  <h2><span class="n">§7</span>Côté joueur : <code>valsync</code></h2>
+  <h3>Déroulé d'une synchro</h3>
+  <ol>
+    <li>Localiser Valheim (<a href="#s9">§9</a>). Refuser de continuer si <code>valheim.exe</code> tourne.</li>
+    <li>Télécharger le manifeste et sa signature, vérifier avec la clé épinglée. En cas d'échec, arrêter et ne rien toucher.</li>
+    <li>Calculer le plan : fichiers à ajouter, à remplacer, à retirer (anciens fichiers ValSync qui ne sont plus au manifeste), et fichiers non gérés trouvés dans <code>managed_roots</code>.</li>
+    <li>Première synchro, ou changement de clé : afficher le plan et demander confirmation. Ensuite, synchro automatique, avec le résumé affiché.</li>
+    <li>Télécharger dans un dossier temporaire, vérifier chaque hash BLAKE3.</li>
+    <li>Sauvegarder l'état actuel, appliquer en déplaçant les fichiers (renommages atomiques), enregistrer le nouvel état.</li>
+    <li>Lancer Valheim.</li>
+  </ol>
+
+  <h3>Fichiers non gérés</h3>
+  <p>Un fichier présent dans <code>BepInEx/plugins</code> sans figurer au manifeste peut casser la connexion (cas EquipmentAndQuickSlots). Par défaut, ValSync le <strong>déplace</strong> dans <code>BepInEx/_valsync_quarantine/&lt;date&gt;/</code>, hors du dossier scanné par BepInEx. Il ne supprime jamais un fichier qu'il n'a pas lui-même installé.</p>
+
+  <h3>État local</h3>
+  <ul>
+    <li><code>%APPDATA%\valsync\</code> (ou l'équivalent via la crate <code>directories</code>) : serveurs connus, clés épinglées, état du dernier pack appliqué (chemins et hashs installés par ValSync).</li>
+    <li><code>%LOCALAPPDATA%\valsync\backups\&lt;date&gt;\</code> : sauvegardes avant synchro. Garder les 5 dernières par défaut.</li>
+  </ul>
+
+  <h3>Interface</h3>
+  <p>Une seule fenêtre, pensée pour des joueurs qui ne veulent pas réfléchir :</p>
+  <ul>
+    <li>Liste des serveurs, avec un bouton « Ajouter un serveur » qui demande le code d'invitation.</li>
+    <li>Pour le serveur sélectionné : un statut (« À jour », « 3 mods à mettre à jour », « Serveur injoignable »), puis un bouton « Jouer » qui synchronise et lance le jeu.</li>
+    <li>Menu secondaire : « Revenir à la version précédente », « Voir la quarantaine », « Jouer sans mods ».</li>
+    <li>« Jouer sans mods » renomme <code>winhttp.dll</code> en <code>winhttp.dll.off</code> (BepInEx ne se charge plus) puis lance le jeu. La synchro suivante le rétablit.</li>
+  </ul>
+  <p>Un seul pack actif à la fois, puisqu'il n'y a qu'une installation du jeu. Passer d'un serveur à l'autre resynchronise.</p>
+
+  <h3>Mode CLI</h3>
+  <p><code>valsync join &lt;code&gt;</code>, <code>valsync sync [serveur]</code>, <code>valsync play [serveur]</code>, <code>valsync status</code>, <code>valsync rollback</code>, <code>valsync vanilla on|off</code>. Le CLI arrive avant l'interface graphique (<a href="#s11">§11</a>) : il sert de base aux tests.</p>
+</section>
+
+<section id="s8">
+  <h2><span class="n">§8</span>Sécurité</h2>
+  <p>Point de départ honnête : un plugin BepInEx est du code .NET arbitraire, qui tourne avec les droits du joueur. Rejoindre un serveur ValSync revient à faire confiance à son admin, exactement comme quand on accepte son zip de mods. ValSync ne peut pas protéger contre un admin malveillant ; il doit en revanche empêcher tout le reste, et limiter les dégâts.</p>
+  <table>
+    <thead><tr><th>Menace</th><th>Parade</th></tr></thead>
+    <tbody>
+      <tr><td>Interception ou modification en transit</td><td>Manifeste signé Ed25519, clé épinglée via le code d'invitation. Chaque fichier vérifié par son hash BLAKE3 avant installation.</td></tr>
+      <tr><td>Clé du serveur qui change</td><td>Refus, avec un avertissement explicite. Le joueur doit réimporter un code d'invitation obtenu directement auprès de l'admin.</td></tr>
+      <tr><td>Chemin piégé dans le manifeste (<code>../</code>, chemin absolu, lettre de lecteur, UNC, composant vide, noms réservés Windows comme <code>CON</code> ou <code>NUL</code>)</td><td>Rejet du manifeste entier. Seuls sont acceptés <code>winhttp.dll</code>, <code>doorstop_config.ini</code>, <code>BepInEx/**</code>, et les entrées racine explicitement autorisées par la config client.</td></tr>
+      <tr><td>Lien symbolique ou jonction dans le dossier du jeu</td><td>Ne jamais suivre de lien. Vérifier que le chemin canonique final reste sous la racine du jeu.</td></tr>
+      <tr><td>Serveur qui envoie des fichiers énormes</td><td>Limites de taille par fichier et par pack, nombre de fichiers maximum, délais d'expiration. Téléchargement arrêté dès que la taille annoncée est dépassée.</td></tr>
+      <tr><td>Exécution de code par le launcher</td><td>Aucune. Le launcher ne lance que Valheim, via Steam.</td></tr>
+      <tr><td>Côté serveur : accès disque via l'URL</td><td>Store adressé par hash uniquement, pas de listing. Tourne sous un utilisateur dédié sans privilèges.</td></tr>
+      <tr><td>Chaîne d'approvisionnement Rust</td><td><code>Cargo.lock</code> versionné, <code>cargo deny</code> et <code>cargo audit</code> en CI, dépendances limitées au nécessaire.</td></tr>
+    </tbody>
+  </table>
+  <p>La validation des chemins vit dans <code>valsync-core</code>, avec une batterie de tests de chemins malveillants. C'est la fonction la plus critique du projet.</p>
+</section>
+
+<section id="s9">
+  <h2><span class="n">§9</span>Valheim et BepInEx : ce qu'il faut savoir</h2>
+  <ul>
+    <li><strong>Chargement de BepInEx.</strong> Sous Windows, le <code>winhttp.dll</code> (Doorstop) placé à côté de l'exécutable injecte BepInEx au lancement. C'est vrai pour <code>valheim.exe</code> comme pour <code>valheim_server.exe</code>. Pack de référence : BepInExPack_Valheim 5.4.2350, publié pour la 1.0.</li>
+    <li><strong>Découverte des plugins.</strong> BepInEx cherche les DLL récursivement dans <code>BepInEx/plugins</code> : un sous-dossier par mod est une convention, pas une obligation. Les patchers vont dans <code>BepInEx/patchers</code>, pas dans <code>plugins</code>.</li>
+    <li><strong>Vérifier le chargement.</strong> Dans <code>BepInEx/LogOutput.log</code>, chaque mod chargé produit une ligne <code>Loading [Nom Version]</code>. Le launcher peut s'en servir après un lancement pour signaler les erreurs de chargement (amélioration possible).</li>
+    <li><strong>Localiser Steam et le jeu.</strong> Windows : clé de registre <code>HKCU\Software\Valve\Steam\SteamPath</code>. Linux : <code>~/.steam/steam</code>, <code>~/.local/share/Steam</code>, ou Flatpak <code>~/.var/app/com.valvesoftware.Steam/.local/share/Steam</code>. Lire ensuite <code>steamapps/libraryfolders.vdf</code>, puis <code>appmanifest_892970.acf</code> pour le champ <code>installdir</code>. Toujours permettre un chemin manuel.</li>
+    <li><strong>Identifiants Steam.</strong> Valheim : 892970. Valheim Dedicated Server : 896660.</li>
+    <li><strong>Lancer le jeu.</strong> Via l'URL <code>steam://run/892970//+connect%20hôte:port/</code>. <span class="verify">À vérifier</span> : le format exact de l'URL, et la prise en charge de <code>+connect</code> et <code>+password</code> par Valheim 1.0. Si <code>+password</code> n'existe pas, le joueur tapera le mot de passe en jeu.</li>
+    <li><strong>Linux et Steam Deck.</strong> Avec Proton, BepInEx ne se charge que si l'option de lancement Steam contient <code>WINEDLLOVERRIDES="winhttp=n,b" %command%</code>. Le client Linux natif, lui, passe par <code>start_game_bepinex.sh</code>. En v1, le launcher détecte le cas et affiche l'instruction ; il ne modifie pas la config de Steam.</li>
+    <li><strong>Consoles.</strong> La 1.0 ajoute le crossplay PS5 et Switch 2, mais les consoles n'ont aucun support des mods. Un serveur qui impose des mods exclut de fait les joueurs console : à dire clairement dans la documentation admin.</li>
+    <li><strong>Succès.</strong> En 1.0, n'importe quel mod BepInEx bloque les succès. Le mod client Unshamed (Azumatt) lève ce blocage : un bon candidat pour les extras clients, mais c'est le choix de l'admin.</li>
+    <li><strong>Version du jeu.</strong> Un « Incompatible version » peut aussi venir d'un décalage de version du jeu entre serveur et client, après un hotfix appliqué d'un seul côté. Amélioration possible : lire la version du serveur dans son log et prévenir le joueur. <span class="verify">À vérifier</span> : le format de la ligne de version dans le log.</li>
+    <li><strong>Licences des mods.</strong> Redistribuer les DLL depuis le serveur est courant entre amis, mais certains auteurs l'interdisent. La documentation admin doit le rappeler. Une version ultérieure pourra référencer l'URL officielle du fichier au lieu de l'héberger.</li>
+  </ul>
+</section>
+
+<section id="s10">
+  <h2><span class="n">§10</span>Stack Rust suggérée</h2>
+  <p>Suggestion à challenger, pas une obligation. Toute dépendance ajoutée doit être justifiée dans la PR.</p>
+  <table>
+    <thead><tr><th>Besoin</th><th>Crates</th></tr></thead>
+    <tbody>
+      <tr><td>Sérialisation</td><td><code>serde</code>, <code>serde_json</code>, <code>toml</code></td></tr>
+      <tr><td>Hash et signature</td><td><code>blake3</code>, <code>ed25519-dalek</code>, <code>base64</code></td></tr>
+      <tr><td>Fichiers</td><td><code>walkdir</code>, <code>globset</code>, <code>notify</code>, <code>directories</code>, <code>tempfile</code></td></tr>
+      <tr><td>Réseau</td><td><code>tokio</code>, <code>axum</code> (serveur), <code>reqwest</code> avec <code>rustls-tls</code> et sans les fonctionnalités par défaut (client)</td></tr>
+      <tr><td>Interface</td><td><code>eframe</code>/<code>egui</code> par défaut : 100 % Rust, un seul exécutable, pas de WebView</td></tr>
+      <tr><td>Système</td><td><code>winreg</code> (Windows), <code>sysinfo</code> ou API native pour détecter le processus, un parseur VDF minimal écrit à la main</td></tr>
+      <tr><td>Divers</td><td><code>clap</code>, <code>tracing</code>, <code>thiserror</code>, <code>anyhow</code> (binaires uniquement)</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section id="s11">
+  <h2><span class="n">§11</span>Jalons</h2>
+  <ol>
+    <li><strong>M0, socle.</strong> Workspace, licence, README minimal, CI GitHub Actions : <code>fmt</code>, <code>clippy -D warnings</code>, tests, <code>cargo deny</code>, builds Windows et Linux.</li>
+    <li><strong>M1, cœur.</strong> <code>valsync-core</code> : modèle du manifeste, scan avec globs, hash, signature et vérification, validation des chemins, calcul du plan de synchro. Tests unitaires complets, y compris les chemins malveillants.</li>
+    <li><strong>M2, serveur.</strong> Config, <code>init</code>, <code>scan</code>, <code>serve</code>, <code>invite</code>, surveillance des dossiers, store adressé par hash.</li>
+    <li><strong>M3, client en CLI.</strong> <code>join</code>, <code>sync</code>, <code>status</code>, <code>rollback</code>, <code>vanilla</code> : téléchargement temporaire, application atomique, sauvegardes, quarantaine, état local. Tests d'intégration serveur + client sur un faux dossier de jeu.</li>
+    <li><strong>M4, lancement du jeu.</strong> Détection de Steam et de Valheim, détection du processus, lancement via <code>steam://</code>. Validation manuelle sur le vrai serveur de Ztnzvoid.</li>
+    <li><strong>M5, interface graphique.</strong> La fenêtre décrite en <a href="#s7">§7</a>, branchée sur le même code que le CLI.</li>
+    <li><strong>M6, publication.</strong> Releases GitHub avec binaires et sommes de contrôle, documentation admin et joueur, exemples systemd et Windows.</li>
+  </ol>
+</section>
+
+<section id="s12">
+  <h2><span class="n">§12</span>Critères d'acceptation</h2>
+  <p>La v1 est terminée quand ces scénarios passent, en test automatisé quand c'est possible, sinon sur le vrai serveur :</p>
+  <table>
+    <thead><tr><th>Scénario</th><th>Résultat attendu</th></tr></thead>
+    <tbody>
+      <tr><td>Joueur avec Valheim vanilla, serveur avec AzuCraftyBoxes + AzuExtendedPlayerInventory</td><td>Code d'invitation, « Jouer », connexion réussie. Plus de <code>never sent version</code> dans le log du serveur.</td></tr>
+      <tr><td>Joueur avec un reste d'EquipmentAndQuickSlots</td><td>Le mod part en quarantaine, AzuExtendedPlayerInventory se charge, la connexion passe.</td></tr>
+      <tr><td>L'admin met un mod à jour sur le serveur</td><td>Le manifeste se reconstruit tout seul. Au lancement suivant, le joueur ne télécharge que le fichier modifié.</td></tr>
+      <tr><td>Fichier corrompu ou modifié en transit</td><td>Synchro annulée, rien installé, message qui nomme le fichier en cause.</td></tr>
+      <tr><td>Manifeste contenant <code>../../evil.dll</code> ou <code>C:\Windows\x.dll</code></td><td>Manifeste rejeté en entier.</td></tr>
+      <tr><td>Clé du serveur modifiée</td><td>Refus, avec la marche à suivre.</td></tr>
+      <tr><td>Le joueur a changé un raccourci dans une config <code>seed</code></td><td>Son réglage est conservé après la synchro.</td></tr>
+      <tr><td>Coupure réseau au milieu d'une synchro</td><td>Installation intacte, dans son état précédent.</td></tr>
+      <tr><td>« Revenir à la version précédente »</td><td>Retour exact à l'état d'avant la dernière synchro.</td></tr>
+      <tr><td>Valheim déjà lancé</td><td>Synchro refusée, avec un message clair.</td></tr>
+      <tr><td>« Jouer sans mods », puis « Jouer »</td><td>Le jeu démarre en vanilla, puis BepInEx est rétabli à la synchro suivante.</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section id="s13">
+  <h2><span class="n">§13</span>Questions ouvertes, à poser à Ztnzvoid avant M0</h2>
+  <ol>
+    <li><strong>Nom.</strong> On garde ValSync ?</li>
+    <li><strong>Licence.</strong> Par défaut, <code>MIT OR Apache-2.0</code>, la convention de l'écosystème Rust. Autre préférence ?</li>
+    <li><strong>Interface.</strong> <code>egui</code> par défaut (exécutable unique, pur Rust). Tauri serait plus joli mais dépend de WebView2 sous Windows. Choix ?</li>
+    <li><strong>Serveur Linux.</strong> Le serveur actuel tourne sous Windows. Le support Linux côté serveur fait-il partie de la v1, ou peut-il attendre ?</li>
+    <li><strong>Port.</strong> 2470/TCP par défaut, ça convient ?</li>
+    <li><strong>Hébergement des DLL.</strong> En v1, le serveur héberge lui-même les fichiers (usage privé). OK, ou faut-il prévoir dès maintenant le mode « URL officielle » ?</li>
+  </ol>
+</section>
+
+<section id="s14">
+  <h2><span class="n">§14</span>Hors périmètre v1</h2>
+  <ul>
+    <li>Télécharger des mods depuis Thunderstore ou Hexium, ou parcourir un catalogue.</li>
+    <li>Mise à jour automatique du launcher lui-même.</li>
+    <li>Patchs différentiels ou compression des transferts.</li>
+    <li>Plusieurs packs installés en parallèle.</li>
+    <li>Modifier automatiquement les options de lancement Steam (cas Linux et Proton).</li>
+    <li>Service Windows natif pour <code>valsync-server</code>.</li>
+    <li>Toute plateforme console.</li>
+  </ul>
+</section>
+
+<footer>
+  Rédigé le 10 septembre 2026, au lendemain de la sortie de Valheim 1.0, à partir de l'installation réelle du serveur de Ztnzvoid.
+</footer>
+
+</main>
+</div>
+</body>
+</html>

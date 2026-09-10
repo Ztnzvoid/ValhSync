@@ -1,0 +1,33 @@
+[package]
+name = "valsync-server"
+description = "Scans a Valheim mod pack, publishes a signed manifest and serves the files to ValSync launchers."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "valsync-server"
+path = "src/main.rs"
+
+[dependencies]
+valsync-core.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+toml.workspace = true
+clap.workspace = true
+anyhow.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+tokio.workspace = true
+tokio-util.workspace = true
+axum.workspace = true
+notify.workspace = true
+directories.workspace = true
+time.workspace = true
+
+[lints]
+workspace = true
