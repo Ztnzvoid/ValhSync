@@ -269,7 +269,12 @@ fn full_life_cycle() {
     assert!(!exists(&g, "BepInEx/plugins/Beta"), "empty folder removed");
     let after = w.ctx.installed().unwrap().unwrap();
     assert_eq!(after.pack_id, prepared.previous.as_ref().unwrap().pack_id);
-    assert!(matches!(engine::rollback(&w.ctx), Err(SyncError::NoBackup)));
+    let newest = &Backup::list(&w.ctx.paths).unwrap()[0];
+    assert_eq!(newest.record.stamp, stamp);
+    assert!(newest.record.restored_at.is_some(), "flagged as restored");
+    // Older backups stay available: a second `rollback` would step back once more.
+    let next = Backup::latest_restorable(&w.ctx.paths).unwrap().unwrap();
+    assert!(next.record.stamp < stamp);
 
     // --- a corrupted blob on the server: nothing installed, clear error ---
     let v2 = hash::to_hex(&hash::hash_bytes(b"azu v2"));

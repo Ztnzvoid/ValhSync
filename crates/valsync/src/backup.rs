@@ -13,7 +13,9 @@ use valsync_core::path::{ensure_within_root, to_os_path};
 use valsync_core::{InstalledState, clock};
 
 use crate::error::{Result, SyncError};
-use crate::paths::{AppPaths, copy_atomic, move_file, read_json, write_json_atomic};
+use crate::paths::{
+    AppPaths, copy_atomic, move_file, read_json, remove_empty_parents, write_json_atomic,
+};
 use crate::servers::KnownServer;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -184,7 +186,10 @@ impl Backup {
                 Done::Added { path } => {
                     let target = ensure_within_root(&root, path)?;
                     match std::fs::remove_file(&target) {
-                        Ok(()) => report.deleted += 1,
+                        Ok(()) => {
+                            report.deleted += 1;
+                            remove_empty_parents(&root, &target);
+                        }
                         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
                         Err(e) => {
                             self.record.done = remaining;

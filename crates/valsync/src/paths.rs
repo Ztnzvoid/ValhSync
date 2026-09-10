@@ -99,6 +99,21 @@ pub fn move_file(src: &Path, dst: &Path) -> Result<()> {
     Ok(())
 }
 
+/// After deleting or moving a file out, drop the now-empty folders above it,
+/// stopping at `root`. Keeps `BepInEx/plugins` free of husks.
+pub fn remove_empty_parents(root: &Path, file: &Path) {
+    let mut cur = file.parent();
+    while let Some(dir) = cur {
+        if dir == root || !dir.starts_with(root) {
+            break;
+        }
+        if std::fs::remove_dir(dir).is_err() {
+            break;
+        }
+        cur = dir.parent();
+    }
+}
+
 /// Copy a file into place atomically (temp file beside the target, then rename).
 pub fn copy_atomic(src: &Path, dst: &Path) -> Result<()> {
     if let Some(parent) = dst.parent() {

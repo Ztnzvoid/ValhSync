@@ -21,7 +21,9 @@ use crate::backup::{Backup, Done};
 use crate::error::{Result, SyncError};
 use crate::game::{self, GameInstall};
 use crate::http::Client;
-use crate::paths::{AppPaths, copy_atomic, move_file, read_json, write_json_atomic};
+use crate::paths::{
+    AppPaths, copy_atomic, move_file, read_json, remove_empty_parents, write_json_atomic,
+};
 use crate::servers::{KnownServer, ServerBook};
 use crate::settings::Settings;
 
@@ -198,7 +200,14 @@ pub fn apply(ctx: &Context, prepared: &Prepared, progress: &mut dyn Progress) ->
     let _ = std::fs::remove_dir_all(&tmp);
     SyncError::at(&tmp, "cannot create", std::fs::create_dir_all(&tmp))?;
 
-    let downloaded_bytes = download_all(ctx, prepared, &tmp, progress)?;
+    let downloaded_bytes = match download_all(ctx, prepared, &tmp, progress) {
+        Ok(bytes) => bytes,
+        Err(e) => {
+            // Nothing was touched yet; just drop the partial downloads.
+            let _ = std::fs::remove_dir_all(&tmp);
+            return Err(e);
+        }
+    };
 
     let stamp = clock::dir_stamp();
     let quarantine_rel = format!("{QUARANTINE_ROOT}/{stamp}");
@@ -348,20 +357,6 @@ fn apply_changes(
         })?;
     }
     Ok(())
-}
-
-/// After a removal, drop now-empty mod folders so BepInEx/plugins stays tidy.
-fn remove_empty_parents(root: &Path, file: &Path) {
-    let mut cur = file.parent();
-    while let Some(dir) = cur {
-        if dir == root || !dir.starts_with(root) {
-            break;
-        }
-        if std::fs::remove_dir(dir).is_err() {
-            break;
-        }
-        cur = dir.parent();
-    }
 }
 
 /// Record the new installed state, note the pack on the server entry, and
