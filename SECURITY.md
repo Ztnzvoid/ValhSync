@@ -39,6 +39,9 @@ file, and ValhSync's own bugs.
 | Half-applied sync after a crash or network loss | Everything downloaded and verified first; every change journaled with the previous bytes stashed; automatic rollback on failure; `valhsync rollback` on demand | `engine::apply`, `backup::Backup` |
 | Loss of the player's own data | ValhSync never deletes a file it did not install; unknown files are moved to a quarantine folder, replaced files to a backup | `plan.rs`, `backup.rs` |
 | Panics on hostile input | `valhsync-core` denies `unwrap`/`expect`/`panic`; `unsafe` is denied workspace-wide except one documented `AttachConsole` call | `Cargo.toml` lints |
+| A server joined by address rather than by invite code | The launcher fetches the key the server publishes, checks it really signs the manifest, then shows its fingerprint and refuses to pin anything until the player confirms it against what the admin announced | `engine::discover`, add-server dialog |
+| An address that is not an address | Rejected before any request: no credentials, no second scheme, no whitespace or control characters | `invite::address_to_url` |
+| Starting the game server from the window | Only a `.bat`, `.cmd` or `.sh` the admin named in the configuration, passed to the shell as one argument, and refused outright if its name holds shell punctuation | `gameserver::start` |
 | Supply chain | `Cargo.lock` committed, `cargo deny` (advisories, licenses, sources) in CI, rustls with bundled roots, no default features on `reqwest`/`axum` | `deny.toml`, CI |
 
 ## Known limitations
@@ -63,6 +66,13 @@ file, and ValhSync's own bugs.
 - **`valhsync-invite.txt` auto-import** adds a server without a prompt. It can
   never replace an already pinned key, and the first sync with a new server
   always shows the plan and asks for confirmation.
+- **Joining by address is trust on first use.** The fingerprint shown when a
+  server is added by address is only as good as the channel the admin used to
+  announce it. An invite code carries the key directly and is the safer path;
+  the address form exists because players are given IP addresses in practice.
+- **Detecting the public IP** in the admin window calls `api.ipify.org`. It
+  happens only when the admin presses that button, and the service is named on
+  the button itself.
 - **The server's signing key** is a plain file (`valhsync-server-data/keys/server.key`,
   mode 0600 on Unix). Back it up; treat it like a password.
 

@@ -112,6 +112,7 @@ pub fn address_to_url(input: &str) -> Option<String> {
     let body = body.trim_end_matches('/');
     if body.is_empty()
         || body.contains(char::is_whitespace)
+        || body.contains(char::is_control)
         || body.contains('@')
         || body.contains("://")
     {
@@ -173,7 +174,19 @@ mod tests {
             address_to_url("http://host").as_deref(),
             Some("http://host")
         );
-        for bad in ["", "   ", "http://", "a b", "user@host", "ftp://x"] {
+        for bad in [
+            "",
+            "   ",
+            "http://",
+            "a b",
+            "user@host",
+            "ftp://x",
+            // No credentials, no second scheme, no control characters.
+            "user:pass@host",
+            "http://a@b",
+            "host\u{0}x",
+            "http://ho st",
+        ] {
             assert_eq!(address_to_url(bad), None, "{bad:?}");
         }
     }

@@ -198,6 +198,10 @@ authors forbid redistribution. Check the licenses of what you publish.
 MIT OR Apache-2.0, at your option. Written from scratch; not a fork of any
 existing mod manager.
 
+The windows embed the **Cinzel** typeface by Natanael Gama, under the SIL Open
+Font License 1.1. Its licence travels with the source in
+`crates/valhsync-ui/assets/OFL-Cinzel.txt` and with every release package.
+
 ---
 
 ## En français

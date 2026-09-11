@@ -65,6 +65,29 @@ pub fn start(launch: &Launch) -> Result<()> {
     if !path.is_file() {
         bail!("{} does not exist", path.display());
     }
+    let is_script = path.extension().is_some_and(|e| {
+        ["bat", "cmd", "sh"]
+            .iter()
+            .any(|k| e.eq_ignore_ascii_case(k))
+    });
+    if !is_script {
+        bail!(
+            "{} is not a start script (.bat, .cmd or .sh)",
+            path.display()
+        );
+    }
+    // cmd.exe re-parses its command line, so a path holding a quote or an
+    // ampersand could change the command. Refuse those rather than escape
+    // them: no real start script has such a name.
+    if path
+        .to_string_lossy()
+        .contains(['"', '&', '|', '^', '<', '>'])
+    {
+        bail!(
+            "{} has a name ValhSync will not pass to a shell; rename it",
+            path.display()
+        );
+    }
     // The script is passed as a single argument: nothing ValhSync composed is
     // ever parsed by a shell.
     let mut cmd = if cfg!(windows) {
@@ -87,6 +110,22 @@ pub fn start(launch: &Launch) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn only_real_scripts_are_launched() {
+        let dir = tempfile::tempdir().unwrap();
+        let not_a_script = dir.path().join("valheim_server.exe");
+        std::fs::write(&not_a_script, b"x").unwrap();
+        if !is_running() {
+            let err = start(&Launch(not_a_script)).unwrap_err().to_string();
+            assert!(err.contains("not a start script"), "{err}");
+
+            let tricky = dir.path().join("start&calc.bat");
+            std::fs::write(&tricky, b"@echo off").unwrap();
+            let err = start(&Launch(tricky)).unwrap_err().to_string();
+            assert!(err.contains("will not pass to a shell"), "{err}");
+        }
+    }
 
     #[test]
     fn missing_targets_are_reported() {
