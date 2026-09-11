@@ -78,21 +78,6 @@ pub fn status_dot(ui: &mut egui::Ui, color: Color32, text: &str) {
     });
 }
 
-/// The one primary action of a screen: gold plate, dark text.
-pub fn primary_button(
-    ui: &mut egui::Ui,
-    label: &str,
-    enabled: bool,
-    size: egui::Vec2,
-) -> egui::Response {
-    ui.add_enabled(
-        enabled,
-        egui::Button::new(RichText::new(label).size(18.0).strong().color(th::NIGHT))
-            .fill(th::GOLD)
-            .min_size(size),
-    )
-}
-
 /// A labelled single-line field, label above, monospace input below.
 pub fn field(ui: &mut egui::Ui, label: &str, value: &mut String, width: f32) -> egui::Response {
     ui.label(RichText::new(label).small().color(th::BONE_DIM));

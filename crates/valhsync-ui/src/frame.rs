@@ -22,27 +22,8 @@ pub fn viewport(title: &str, size: [f32; 2], min_size: [f32; 2]) -> egui::Viewpo
         .with_inner_size(size)
         .with_min_inner_size(min_size)
         .with_decorations(false)
-        .with_transparent(true)
         .with_resizable(true)
         .with_icon(th::icon())
-}
-
-/// How round the window's corners are.
-pub const CORNER: f32 = 10.0;
-
-/// Paint the window itself: a rounded plate of burnt wood with the torch
-/// halo, the grain and the vignette. Call first, before any panel.
-///
-/// The window is transparent outside this shape, so the effects are inset by
-/// the corner radius: nothing may paint where the corners are cut away.
-pub fn paint_window(ctx: &egui::Context) {
-    let painter = ctx.layer_painter(egui::LayerId::new(
-        egui::Order::Background,
-        egui::Id::new("valhsync-window-body"),
-    ));
-    let rect = ctx.screen_rect();
-    painter.rect_filled(rect, CORNER, th::NIGHT);
-    th::backdrop(ctx, &painter, rect.shrink(CORNER));
 }
 
 /// Draw the window's own edge, on top of everything: with the system frame
@@ -54,7 +35,7 @@ pub fn draw_border(ctx: &egui::Context) {
     ));
     painter.rect_stroke(
         ctx.screen_rect().shrink(0.5),
-        CORNER,
+        0.0,
         Stroke::new(1.0, th::EDGE),
         StrokeKind::Inside,
     );

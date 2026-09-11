@@ -93,6 +93,47 @@ fn normalize_url(url: &str) -> String {
     url.trim().trim_end_matches('/').to_string()
 }
 
+/// Default port of `valhsync-server`.
+pub const DEFAULT_PORT: u16 = 2470;
+
+/// Turn what an admin types or dictates into a base URL: `valheim.example.org`,
+/// `1.2.3.4:2470` and `https://pack.example.org/valheim` all work.
+///
+/// Returns `None` for something that cannot be a host at all.
+pub fn address_to_url(input: &str) -> Option<String> {
+    let text = input.trim();
+    let (has_scheme, body) = match text
+        .strip_prefix("http://")
+        .or_else(|| text.strip_prefix("https://"))
+    {
+        Some(rest) => (true, rest),
+        None => (false, text),
+    };
+    let body = body.trim_end_matches('/');
+    if body.is_empty()
+        || body.contains(char::is_whitespace)
+        || body.contains('@')
+        || body.contains("://")
+    {
+        return None;
+    }
+    let (authority, path) = body.split_once('/').map_or((body, ""), |(a, p)| (a, p));
+    if authority.is_empty() {
+        return None;
+    }
+    let scheme = if text.starts_with("https://") {
+        "https"
+    } else {
+        "http"
+    };
+    // A bare host gets the default port; anything with a port or a path is
+    // taken as the admin wrote it.
+    if !has_scheme && path.is_empty() && !authority.contains(':') {
+        return Some(format!("http://{authority}:{DEFAULT_PORT}"));
+    }
+    Some(format!("{scheme}://{body}"))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -112,6 +153,29 @@ mod tests {
         assert_eq!(back, inv);
         assert_eq!(back.url, "http://valheim.example.org:2470");
         assert_eq!(back.public_key().unwrap(), kp.public());
+    }
+
+    #[test]
+    fn addresses_become_urls() {
+        assert_eq!(
+            address_to_url("valheim.example.org").as_deref(),
+            Some("http://valheim.example.org:2470")
+        );
+        assert_eq!(
+            address_to_url(" 203.0.113.10:2470/ ").as_deref(),
+            Some("http://203.0.113.10:2470")
+        );
+        assert_eq!(
+            address_to_url("https://you.github.io/pack").as_deref(),
+            Some("https://you.github.io/pack")
+        );
+        assert_eq!(
+            address_to_url("http://host").as_deref(),
+            Some("http://host")
+        );
+        for bad in ["", "   ", "http://", "a b", "user@host", "ftp://x"] {
+            assert_eq!(address_to_url(bad), None, "{bad:?}");
+        }
     }
 
     #[test]

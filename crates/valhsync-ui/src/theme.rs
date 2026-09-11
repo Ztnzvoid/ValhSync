@@ -3,9 +3,7 @@
 //! the specification document's own stylesheet, so the windows and the paper
 //! read as one product.
 
-use eframe::egui::{
-    self, Color32, FontFamily, FontId, Rect, Stroke, StrokeKind, TextStyle, TextureWrapMode,
-};
+use eframe::egui::{self, Color32, FontFamily, FontId, Rect, Stroke, TextStyle, TextureWrapMode};
 
 pub const NIGHT: Color32 = Color32::from_rgb(0x0F, 0x0D, 0x0B);
 pub const WOOD: Color32 = Color32::from_rgb(0x17, 0x14, 0x0F);
@@ -478,24 +476,4 @@ pub fn icon() -> egui::IconData {
         width: S as u32,
         height: S as u32,
     }
-}
-
-/// A rounded plate with a soft outer glow: the one action a screen is built
-/// around.
-pub fn glowing_plate(painter: &egui::Painter, rect: Rect, colour: Color32, glow_alpha: f32) {
-    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
-    let alpha = (glow_alpha * 255.0).clamp(0.0, 255.0) as u8;
-    radial_pool(
-        painter,
-        rect.center(),
-        rect.width() * 0.75,
-        Color32::from_rgba_unmultiplied(colour.r(), colour.g(), colour.b(), alpha),
-    );
-    painter.rect(
-        rect,
-        4.0,
-        colour,
-        Stroke::new(1.0, GOLD_LIT),
-        StrokeKind::Inside,
-    );
 }

@@ -28,9 +28,13 @@ pub struct Cli {
 
 #[derive(Subcommand, Debug)]
 enum Cmd {
-    /// Add a server from its invite code (or a file containing one).
+    /// Add a server from its invite code, a file containing one, or simply
+    /// its address (`valheim.example.org` or `1.2.3.4:2470`).
     Join {
         code: String,
+        /// Accept the fingerprint the server presents without asking.
+        #[arg(long, short = 'y')]
+        yes: bool,
         /// Accept a new key for a server already known under this URL.
         #[arg(long)]
         replace_key: bool,
@@ -118,7 +122,11 @@ pub fn run() -> Result<()> {
     }
 
     match cli.cmd {
-        Cmd::Join { code, replace_key } => cmd_join(&ctx, &code, replace_key),
+        Cmd::Join {
+            code,
+            yes,
+            replace_key,
+        } => cmd_join(&ctx, &code, yes, replace_key),
         Cmd::Servers => cmd_servers(&ctx),
         Cmd::Remove { server } => {
             let mut book = ServerBook::load(&ctx.paths)?;
@@ -173,7 +181,7 @@ pub fn run() -> Result<()> {
     }
 }
 
-fn cmd_join(ctx: &Context, code: &str, replace_key: bool) -> Result<()> {
+fn cmd_join(ctx: &Context, code: &str, yes: bool, replace_key: bool) -> Result<()> {
     let text = if std::path::Path::new(code).is_file() {
         std::fs::read_to_string(code).with_context(|| format!("cannot read {code}"))?
     } else {
@@ -182,9 +190,30 @@ fn cmd_join(ctx: &Context, code: &str, replace_key: bool) -> Result<()> {
     let line = text
         .lines()
         .map(str::trim)
-        .find(|l| l.starts_with("valhsync1:"))
-        .unwrap_or(text.trim());
-    let invite = Invite::parse(line)?;
+        .find(|l| l.starts_with(valhsync_core::invite::PREFIX))
+        .unwrap_or_else(|| text.trim())
+        .to_string();
+
+    let invite = if line.starts_with(valhsync_core::invite::PREFIX) {
+        Invite::parse(&line)?
+    } else {
+        // An address: the server tells us its key, and the player confirms
+        // the fingerprint against what the admin announced.
+        let found = engine::discover(ctx, &line)?;
+        println!("Server \"{}\" at {}", found.invite.name, found.invite.url);
+        println!("  {} files in the pack", found.files);
+        println!("  Key fingerprint: {}", found.fingerprint);
+        println!(
+            "
+That fingerprint is what proves the mods come from your admin."
+        );
+        println!("Check it against what they told you.");
+        if !yes && !confirm("Add this server?")? {
+            bail!("cancelled; nothing was added");
+        }
+        found.invite
+    };
+
     let mut book = ServerBook::load(&ctx.paths)?;
     let outcome = book.join(&invite, replace_key)?;
     book.save(&ctx.paths)?;

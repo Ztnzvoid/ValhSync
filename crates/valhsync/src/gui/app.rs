@@ -20,6 +20,8 @@ use valhsync_ui::frame as chrome;
 use valhsync_ui::theme as th;
 
 const NOTICE_TTL: Duration = Duration::from_secs(7);
+/// How often the launcher asks the server again, on its own.
+const AUTO_REFRESH: Duration = Duration::from_secs(25);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Phase {
@@ -31,11 +33,13 @@ enum Phase {
 #[derive(Debug)]
 enum Msg {
     Progress {
-        frac: f32,
+        done: u64,
+        total: u64,
         phase: Phase,
         detail: String,
     },
     Prepared(Result<Box<Prepared>, String>),
+    Discovered(Result<Box<engine::Discovered>, String>),
     Applied(Result<(Applied, Option<String>), String>),
     RolledBack(Result<String, String>),
     Done,
@@ -44,6 +48,7 @@ enum Msg {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Job {
     Check,
+    Discover,
     Sync,
     Rollback,
 }
@@ -67,28 +72,28 @@ impl Progress for Reporter {
     fn on(&mut self, event: Event<'_>) {
         let msg = match event {
             Event::Fetching { .. } => Msg::Progress {
-                frac: 0.0,
+                done: 0,
+                total: 0,
                 phase: Phase::Contacting,
                 detail: String::new(),
             },
             Event::Downloading {
                 index, count, path, ..
             } => Msg::Progress {
-                frac: -1.0,
+                done: u64::MAX, // "no byte count in this event"
+                total: 0,
                 phase: Phase::Downloading { index, count },
                 detail: path.to_string(),
             },
             Event::Progress { done, total } => Msg::Progress {
-                frac: if total == 0 {
-                    1.0
-                } else {
-                    done as f32 / total as f32
-                },
+                done,
+                total,
                 phase: Phase::Downloading { index: 0, count: 0 },
                 detail: String::new(),
             },
             Event::Applying { .. } => Msg::Progress {
-                frac: 1.0,
+                done: u64::MAX,
+                total: 0,
                 phase: Phase::Applying,
                 detail: String::new(),
             },
@@ -102,13 +107,118 @@ impl Progress for Reporter {
 struct AddDialog {
     input: String,
     error: Option<String>,
+    /// Set once an address answered: the player confirms the fingerprint
+    /// before the key is pinned.
+    pending: Option<engine::Discovered>,
+    asking: bool,
 }
 
 #[derive(Debug)]
 struct ProgressView {
-    frac: f32,
+    done: u64,
+    total: u64,
     phase: Phase,
     detail: String,
+    /// Smoothed download rate in bytes per second.
+    speed: f64,
+    sample: (Instant, u64),
+}
+
+impl ProgressView {
+    fn new(phase: Phase) -> Self {
+        Self {
+            done: 0,
+            total: 0,
+            phase,
+            detail: String::new(),
+            speed: 0.0,
+            sample: (Instant::now(), 0),
+        }
+    }
+
+    #[allow(clippy::cast_precision_loss)] // a bar between 0 and 1
+    fn fraction(&self) -> f32 {
+        if self.total == 0 {
+            0.0
+        } else {
+            self.done as f32 / self.total as f32
+        }
+    }
+
+    /// Fold a new byte count into a smoothed rate. Sampling over at least a
+    /// quarter of a second keeps the figure readable instead of flickering.
+    fn observe(&mut self, done: u64) {
+        self.done = done;
+        let elapsed = self.sample.0.elapsed().as_secs_f64();
+        if elapsed < 0.25 {
+            return;
+        }
+        #[allow(clippy::cast_precision_loss)]
+        let instant = done.saturating_sub(self.sample.1) as f64 / elapsed;
+        self.speed = if self.speed == 0.0 {
+            instant
+        } else {
+            self.speed.mul_add(0.7, instant * 0.3)
+        };
+        self.sample = (Instant::now(), done);
+    }
+
+    fn seconds_left(&self) -> Option<u64> {
+        if self.speed < 1.0 || self.total <= self.done {
+            return None;
+        }
+        #[allow(
+            clippy::cast_precision_loss,
+            clippy::cast_possible_truncation,
+            clippy::cast_sign_loss
+        )]
+        Some(((self.total - self.done) as f64 / self.speed) as u64)
+    }
+}
+
+/// What the server's pack means for one mod on this machine.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ModStatus {
+    Installed,
+    ToInstall,
+    ToUpdate,
+}
+
+#[derive(Debug, Clone)]
+struct ModRow {
+    name: String,
+    status: ModStatus,
+}
+
+/// Read the mod list out of a plan: one row per folder under
+/// `BepInEx/plugins`, plus any loose plugin sitting directly in it.
+fn mod_rows(prepared: &Prepared) -> Vec<ModRow> {
+    use std::collections::BTreeMap;
+    const PLUGINS: &str = "BepInEx/plugins/";
+
+    let mut rows: BTreeMap<String, ModStatus> = BTreeMap::new();
+    for item in &prepared.plan.items {
+        let Some(rest) = item.path.strip_prefix(PLUGINS) else {
+            continue;
+        };
+        let name = rest.split_once('/').map_or(rest, |(folder, _)| folder);
+        let status = match item.action {
+            Action::Add => ModStatus::ToInstall,
+            Action::Replace => ModStatus::ToUpdate,
+            _ => ModStatus::Installed,
+        };
+        rows.entry(name.to_string())
+            .and_modify(|current| {
+                // One file to install makes the whole mod "to install".
+                if status != ModStatus::Installed && *current == ModStatus::Installed {
+                    *current = status;
+                }
+            })
+            .or_insert(status);
+    }
+    rows.into_iter()
+        .map(|(name, status)| ModRow { name, status })
+        .collect()
 }
 
 #[derive(Debug)]
@@ -127,6 +237,7 @@ pub(super) struct App {
     selected: Option<String>,
     status: Status,
     prepared: Option<Prepared>,
+    mods: Vec<ModRow>,
     mods_state: Option<vanilla::ModsState>,
     job: Option<(Job, Receiver<Msg>)>,
     progress: Option<ProgressView>,
@@ -135,6 +246,8 @@ pub(super) struct App {
     confirm_open: bool,
     settings_open: bool,
     game_root_input: String,
+    last_check: Instant,
+    was_focused: bool,
     fatal: Option<String>,
     egui_ctx: egui::Context,
 }
@@ -171,6 +284,7 @@ impl App {
             selected: None,
             status: Status::NoServer,
             prepared: None,
+            mods: Vec::new(),
             mods_state: None,
             job: None,
             progress: None,
@@ -178,6 +292,8 @@ impl App {
             add_dialog: None,
             confirm_open: false,
             settings_open: false,
+            last_check: Instant::now(),
+            was_focused: true,
             fatal,
             egui_ctx: egui_ctx.clone(),
         };
@@ -241,6 +357,7 @@ impl App {
             return;
         }
         self.status = Status::Checking;
+        self.last_check = Instant::now();
         self.start_job(Job::Check, move |mut rep| {
             let result = Context::discover()
                 .and_then(|ctx| engine::prepare(&ctx, &server, &mut rep))
@@ -342,17 +459,17 @@ impl App {
         for msg in incoming {
             match msg {
                 Msg::Progress {
-                    frac,
+                    done,
+                    total,
                     phase,
                     detail,
                 } => {
-                    let view = self.progress.get_or_insert(ProgressView {
-                        frac: 0.0,
-                        phase,
-                        detail: String::new(),
-                    });
-                    if frac >= 0.0 {
-                        view.frac = frac;
+                    let view = self
+                        .progress
+                        .get_or_insert_with(|| ProgressView::new(phase));
+                    if done != u64::MAX {
+                        view.total = total;
+                        view.observe(done);
                     }
                     if !matches!(phase, Phase::Downloading { index: 0, .. }) {
                         view.phase = phase;
@@ -362,12 +479,27 @@ impl App {
                     }
                 }
                 Msg::Prepared(Ok(prepared)) => {
+                    self.mods = mod_rows(&prepared);
                     self.mods_state = Some(vanilla::state(&prepared.install.root));
                     self.prepared = Some(*prepared);
                     self.status = Status::Ready;
                 }
+                Msg::Discovered(Ok(found)) => {
+                    if let Some(dialog) = &mut self.add_dialog {
+                        dialog.asking = false;
+                        dialog.error = None;
+                        dialog.pending = Some(*found);
+                    }
+                }
+                Msg::Discovered(Err(e)) => {
+                    if let Some(dialog) = &mut self.add_dialog {
+                        dialog.asking = false;
+                        dialog.error = Some(e);
+                    }
+                }
                 Msg::Prepared(Err(e)) => {
                     self.prepared = None;
+                    self.mods.clear();
                     self.status = Status::Error(e);
                 }
                 Msg::Applied(Ok((applied, launch_error))) => {
@@ -403,6 +535,21 @@ impl App {
         }
     }
 
+    /// Ask the server again on a timer, and the moment the window regains
+    /// focus: a player who alt-tabs back should see the truth, not a stale
+    /// screen, and should never have to press a button for it.
+    fn auto_refresh(&mut self, ctx: &egui::Context) {
+        let focused = ctx.input(|i| i.viewport().focused.unwrap_or(true));
+        let regained = focused && !self.was_focused;
+        self.was_focused = focused;
+        if self.busy() || self.selected.is_none() || self.add_dialog.is_some() {
+            return;
+        }
+        if regained || self.last_check.elapsed() >= AUTO_REFRESH {
+            self.check();
+        }
+    }
+
     fn save_settings(&mut self) {
         if let Err(e) = self.settings.save(&self.paths) {
             self.notify(e.to_string(), th::BLOOD_LIT);
@@ -413,6 +560,7 @@ impl App {
 impl eframe::App for App {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         self.drain_messages();
+        self.auto_refresh(ctx);
         if self.busy() {
             ctx.request_repaint_after(Duration::from_millis(100));
         }
@@ -425,7 +573,6 @@ impl eframe::App for App {
         }
 
         chrome::handle_edge_resize(ctx);
-        chrome::paint_window(ctx);
         self.header(ctx);
         self.notice_bar(ctx);
         egui::CentralPanel::default()
@@ -447,6 +594,10 @@ impl eframe::App for App {
                     self.empty_state(ui);
                 } else {
                     self.server_card(ui);
+                    if !self.mods.is_empty() {
+                        ui.add_space(12.0);
+                        self.mods_card(ui);
+                    }
                 }
             });
 
@@ -464,6 +615,7 @@ impl App {
         egui::TopBottomPanel::top("header")
             .frame(
                 egui::Frame::new()
+                    .fill(th::NIGHT)
                     .inner_margin(egui::Margin {
                         left: 20,
                         right: 0,
@@ -504,6 +656,7 @@ impl App {
         egui::TopBottomPanel::bottom("notice")
             .frame(
                 egui::Frame::new()
+                    .fill(th::PANEL)
                     .inner_margin(egui::Margin::symmetric(20, 10))
                     .stroke(egui::Stroke::new(1.0, th::EDGE_SOFT)),
             )
@@ -549,13 +702,6 @@ impl App {
                 .clicked()
             {
                 self.add_dialog = Some(AddDialog::default());
-            }
-            if !servers.is_empty()
-                && ui
-                    .add_enabled(!self.busy(), egui::Button::new(self.t(Key::Refresh)))
-                    .clicked()
-            {
-                self.check();
             }
         });
         if before != self.selected {
@@ -706,6 +852,38 @@ impl App {
         });
     }
 
+    /// What the selected server ships, and where this machine stands on each
+    /// of them.
+    fn mods_card(&mut self, ui: &mut egui::Ui) {
+        th::card().show(ui, |ui| {
+            ui.set_width(ui.available_width());
+            valhsync_ui::widgets::section(
+                ui,
+                &format!("{} ({})", self.t(Key::ServerMods), self.mods.len()),
+            );
+            egui::ScrollArea::vertical()
+                .max_height(150.0)
+                .id_salt("mods")
+                .show(ui, |ui| {
+                    for row in &self.mods {
+                        let (colour, label) = match row.status {
+                            ModStatus::Installed => (th::MOSS, self.t(Key::ModInstalled)),
+                            ModStatus::ToInstall => (th::GOLD, self.t(Key::ModToInstall)),
+                            ModStatus::ToUpdate => (th::GOLD_LIT, self.t(Key::ModToUpdate)),
+                        };
+                        ui.horizontal(|ui| {
+                            valhsync_ui::widgets::dot(ui, colour);
+                            ui.label(RichText::new(&row.name).color(th::BONE));
+                            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                                ui.label(RichText::new(label).small().color(colour));
+                            });
+                        });
+                    }
+                });
+        });
+    }
+
+    #[allow(clippy::too_many_lines)] // one screen region, read top to bottom
     fn status_block(&mut self, ui: &mut egui::Ui) {
         if let Some(p) = &self.progress {
             let label = match p.phase {
@@ -718,10 +896,32 @@ impl App {
             };
             ui.label(RichText::new(label).color(th::BONE_DIM));
             ui.add(
-                egui::ProgressBar::new(p.frac)
+                egui::ProgressBar::new(p.fraction())
                     .animate(true)
                     .show_percentage(),
             );
+            if p.total > 0 {
+                #[allow(
+                    clippy::cast_precision_loss,
+                    clippy::cast_possible_truncation,
+                    clippy::cast_sign_loss
+                )]
+                let speed = human_bytes(p.speed as u64);
+                let mut line = format!(
+                    "{} / {} · {speed}/s",
+                    human_bytes(p.done),
+                    human_bytes(p.total)
+                );
+                if let Some(left) = p.seconds_left() {
+                    let shown = if left >= 60 {
+                        format!("{}m {}s", left / 60, left % 60)
+                    } else {
+                        format!("{left}s")
+                    };
+                    line = format!("{line} · {shown} {}", self.t(Key::Remaining));
+                }
+                ui.label(RichText::new(line).small().color(th::RUNE));
+            }
             return;
         }
         match &self.status {
@@ -791,40 +991,80 @@ impl App {
         }
     }
 
+    #[allow(clippy::too_many_lines)] // one screen region, read top to bottom
     fn add_dialog(&mut self, ctx: &egui::Context) {
         let Some(mut dialog) = self.add_dialog.take() else {
             return;
         };
         let mut keep_open = true;
         let mut submitted = false;
+        let mut trusted = false;
+
         egui::Window::new(self.t(Key::AddServer))
             .collapsible(false)
             .resizable(false)
             .anchor(egui::Align2::CENTER_CENTER, egui::vec2(0.0, 0.0))
-            .default_width(460.0)
+            .default_width(480.0)
             .show(ctx, |ui| {
                 ui.label(RichText::new(self.t(Key::InvitePrompt)).color(th::BONE_DIM));
-                ui.add(
+                ui.add_enabled(
+                    dialog.pending.is_none() && !dialog.asking,
                     egui::TextEdit::multiline(&mut dialog.input)
-                        .desired_rows(4)
+                        .desired_rows(3)
                         .desired_width(f32::INFINITY)
                         .font(egui::TextStyle::Monospace)
                         .hint_text(self.t(Key::InviteHint)),
                 );
-                if let Some(e) = &dialog.error {
-                    th::callout(ui, th::BLOOD, |ui| {
-                        ui.label(RichText::new(e).color(th::BLOOD_LIT));
+
+                if dialog.asking {
+                    ui.horizontal(|ui| {
+                        ui.add(egui::Spinner::new().color(th::GOLD));
+                        ui.label(RichText::new(self.t(Key::Checking2)).color(th::BONE_DIM));
                     });
                 }
+                if let Some(found) = &dialog.pending {
+                    ui.add_space(8.0);
+                    valhsync_ui::widgets::section(ui, self.t(Key::ConfirmKeyTitle));
+                    ui.label(RichText::new(&found.invite.name).strong().color(th::BONE));
+                    ui.label(
+                        RichText::new(&found.invite.url)
+                            .monospace()
+                            .small()
+                            .color(th::BONE_DIM),
+                    );
+                    ui.add_space(6.0);
+                    ui.label(
+                        RichText::new(&found.fingerprint)
+                            .font(th::display_font(20.0))
+                            .color(th::GOLD_LIT),
+                    );
+                    ui.add_space(6.0);
+                    valhsync_ui::widgets::notice(ui, th::GOLD, self.t(Key::ConfirmKeyBody));
+                }
+                if let Some(e) = &dialog.error {
+                    valhsync_ui::widgets::notice(ui, th::BLOOD_LIT, e);
+                }
+
+                ui.add_space(8.0);
                 ui.horizontal(|ui| {
+                    let label = if dialog.pending.is_some() {
+                        self.t(Key::Trust)
+                    } else {
+                        self.t(Key::Apply)
+                    };
                     if ui
-                        .add(
-                            egui::Button::new(RichText::new(self.t(Key::Apply)).color(th::NIGHT))
+                        .add_enabled(
+                            !dialog.asking,
+                            egui::Button::new(RichText::new(label).strong().color(th::NIGHT))
                                 .fill(th::GOLD),
                         )
                         .clicked()
                     {
-                        submitted = true;
+                        if dialog.pending.is_some() {
+                            trusted = true;
+                        } else {
+                            submitted = true;
+                        }
                     }
                     if ui.button(self.t(Key::Cancel)).clicked() {
                         keep_open = false;
@@ -833,43 +1073,69 @@ impl App {
             });
 
         if submitted {
-            let line = dialog
+            let text = dialog
                 .input
                 .lines()
                 .map(str::trim)
-                .find(|l| l.starts_with("valhsync1:"))
+                .find(|l| l.starts_with(valhsync_core::invite::PREFIX))
                 .unwrap_or_else(|| dialog.input.trim())
                 .to_string();
-            let result = Invite::parse(&line)
-                .map_err(|e| e.to_string())
-                .and_then(|invite| {
-                    self.book
-                        .join(&invite, false)
-                        .map(|_| invite)
-                        .map_err(|e| e.to_string())
-                });
-            match result {
-                Ok(invite) => {
-                    let _ = self.book.save(&self.paths);
-                    self.selected = self
-                        .book
-                        .resolve(Some(&invite.name))
-                        .ok()
-                        .map(|s| s.id.clone());
-                    if let Some(id) = &self.selected {
-                        self.book.set_default(id);
-                        let _ = self.book.save(&self.paths);
+            if text.starts_with(valhsync_core::invite::PREFIX) {
+                match Invite::parse(&text) {
+                    Ok(invite) => {
+                        if let Err(e) = self.adopt(&invite) {
+                            dialog.error = Some(e);
+                        } else {
+                            keep_open = false;
+                        }
                     }
-                    self.notify(format!("{}: {}", self.t(Key::Added), invite.name), th::MOSS);
-                    self.check();
-                    keep_open = false;
+                    Err(e) => dialog.error = Some(e.to_string()),
                 }
-                Err(e) => dialog.error = Some(e),
+            } else {
+                // An address: ask the server who it is, then have the player
+                // confirm the fingerprint before pinning anything.
+                dialog.error = None;
+                dialog.asking = true;
+                let address = text;
+                self.start_job(Job::Discover, move |rep| {
+                    let result = Context::discover()
+                        .and_then(|ctx| engine::discover(&ctx, &address))
+                        .map(Box::new)
+                        .map_err(|e| e.to_string());
+                    rep.send(Msg::Discovered(result));
+                });
+            }
+        }
+        if trusted && let Some(found) = dialog.pending.clone() {
+            match self.adopt(&found.invite) {
+                Ok(()) => keep_open = false,
+                Err(e) => {
+                    dialog.pending = None;
+                    dialog.error = Some(e);
+                }
             }
         }
         if keep_open {
             self.add_dialog = Some(dialog);
         }
+    }
+
+    /// Pin a server and select it.
+    fn adopt(&mut self, invite: &Invite) -> Result<(), String> {
+        self.book.join(invite, false).map_err(|e| e.to_string())?;
+        self.book.save(&self.paths).map_err(|e| e.to_string())?;
+        self.selected = self
+            .book
+            .resolve(Some(&invite.name))
+            .ok()
+            .map(|s| s.id.clone());
+        if let Some(id) = self.selected.clone() {
+            self.book.set_default(&id);
+            let _ = self.book.save(&self.paths);
+        }
+        self.notify(format!("{}: {}", self.t(Key::Added), invite.name), th::MOSS);
+        self.check();
+        Ok(())
     }
 
     fn confirm_dialog(&mut self, ctx: &egui::Context) {
@@ -1052,7 +1318,7 @@ impl App {
 
                 // --- ValhSync itself ---------------------------------------
                 ui.add_space(14.0);
-                valhsync_ui::widgets::section(ui, self.t(Key::ValsyncItself));
+                valhsync_ui::widgets::section(ui, self.t(Key::AboutValhSync));
                 ui.label(
                     RichText::new(format!("Version {}", env!("CARGO_PKG_VERSION")))
                         .small()

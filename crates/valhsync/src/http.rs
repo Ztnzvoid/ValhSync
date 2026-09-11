@@ -80,6 +80,20 @@ impl Client {
         Ok(out)
     }
 
+    /// The public key a server publishes at `/key`. Fetching it is not proof
+    /// of identity: the player still has to compare the fingerprint with what
+    /// the admin told them. It only lets us verify the manifest afterwards.
+    pub fn fetch_key(&self, base_url: &str) -> Result<PublicKey> {
+        let base = base_url.trim_end_matches('/');
+        let bytes = self.get_limited(&format!("{base}/key"), "the server key", 4096)?;
+        let text = String::from_utf8_lossy(&bytes);
+        PublicKey::from_b64(text.trim()).map_err(|_| {
+            SyncError::Other(format!(
+                "{base}/key did not answer with a public key; is this a ValhSync server?"
+            ))
+        })
+    }
+
     /// Manifest and signature, verified against the pinned key before parsing.
     pub fn fetch_manifest(
         &self,

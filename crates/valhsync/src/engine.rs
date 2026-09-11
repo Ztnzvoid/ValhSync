@@ -14,7 +14,7 @@ use std::path::{Path, PathBuf};
 use valhsync_core::path::{ensure_within_root, to_os_path};
 use valhsync_core::plan::{PlanCounts, PlannedFile};
 use valhsync_core::{
-    Action, InstalledState, Limits, Manifest, QUARANTINE_ROOT, SyncPlan, clock, plan,
+    Action, InstalledState, Invite, Limits, Manifest, QUARANTINE_ROOT, SyncPlan, clock, plan,
 };
 
 use crate::backup::{Backup, Done};
@@ -140,6 +140,35 @@ pub struct Applied {
     pub downloaded_bytes: u64,
     pub backup_stamp: Option<String>,
     pub quarantine_dir: Option<String>,
+}
+
+/// What an address turned out to be, before the player accepts it.
+#[derive(Debug, Clone)]
+pub struct Discovered {
+    pub invite: Invite,
+    /// Fingerprint of the key the server published, for the player to compare
+    /// with what the admin announced.
+    pub fingerprint: String,
+    pub files: usize,
+}
+
+/// Ask the server at `address` who it is: fetch its key, then check that the
+/// key really signs its manifest. The player still confirms the fingerprint.
+pub fn discover(ctx: &Context, address: &str) -> Result<Discovered> {
+    let url = valhsync_core::invite::address_to_url(address)
+        .ok_or_else(|| SyncError::Other(format!("{address:?} is not a server address")))?;
+    let key = ctx.client.fetch_key(&url)?;
+    let (manifest, _) = ctx.client.fetch_manifest(
+        &url,
+        &key,
+        &ctx.settings.allowed_roots(),
+        &Limits::default(),
+    )?;
+    Ok(Discovered {
+        fingerprint: key.fingerprint(),
+        files: manifest.files.len(),
+        invite: Invite::new(url, &key, manifest.server_name.trim()),
+    })
 }
 
 /// Fetch and verify the manifest, locate the game, compute the plan.

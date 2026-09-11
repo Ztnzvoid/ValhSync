@@ -23,29 +23,19 @@ pub fn is_running() -> bool {
     })
 }
 
-/// How ValhSync should start the game server.
+/// The admin's own start script. Its directory becomes the working
+/// directory: the scripts Iron Gate ships call `valheim_server.exe` by bare
+/// name and only work from there.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Launch {
-    /// Run the admin's own start script. Its directory becomes the working
-    /// directory, because the scripts Iron Gate ships call
-    /// `valheim_server.exe` by bare name and only work from there.
-    Script(PathBuf),
-    /// Run the server binary directly with explicit arguments.
-    Binary { exe: PathBuf, args: Vec<String> },
-}
+pub struct Launch(pub PathBuf);
 
 impl Launch {
     pub fn describe(&self) -> String {
-        match self {
-            Self::Script(p) => p.display().to_string(),
-            Self::Binary { exe, .. } => exe.display().to_string(),
-        }
+        self.0.display().to_string()
     }
 
     fn working_dir(&self) -> Option<&Path> {
-        match self {
-            Self::Script(p) | Self::Binary { exe: p, .. } => p.parent(),
-        }
+        self.0.parent()
     }
 }
 
@@ -71,38 +61,20 @@ pub fn start(launch: &Launch) -> Result<()> {
         .working_dir()
         .context("cannot determine the server's folder")?;
 
-    let mut cmd = match launch {
-        Launch::Script(path) => {
-            if !path.is_file() {
-                bail!("{} does not exist", path.display());
-            }
-            if cfg!(windows) {
-                let mut c = Command::new("cmd");
-                // /C plus the script as a single argument: no shell parsing of
-                // anything ValhSync composed, and the admin's script is run
-                // verbatim from its own directory.
-                c.arg("/C").arg(path);
-                c
-            } else {
-                let mut c = Command::new("/bin/sh");
-                c.arg(path);
-                c
-            }
-        }
-        Launch::Binary { exe, args } => {
-            if !exe.is_file() {
-                bail!("{} does not exist", exe.display());
-            }
-            let mut c = Command::new(exe);
-            c.args(args);
-            // The stock scripts set this; without it Steam networking refuses
-            // to initialise.
-            c.env(
-                "SteamAppId",
-                valhsync_core::steam::VALHEIM_APP_ID.to_string(),
-            );
-            c
-        }
+    let path = &launch.0;
+    if !path.is_file() {
+        bail!("{} does not exist", path.display());
+    }
+    // The script is passed as a single argument: nothing ValhSync composed is
+    // ever parsed by a shell.
+    let mut cmd = if cfg!(windows) {
+        let mut c = Command::new("cmd");
+        c.arg("/C").arg(path);
+        c
+    } else {
+        let mut c = Command::new("/bin/sh");
+        c.arg(path);
+        c
     };
 
     cmd.current_dir(cwd);
@@ -118,7 +90,7 @@ mod tests {
 
     #[test]
     fn missing_targets_are_reported() {
-        let launch = Launch::Script(PathBuf::from("/definitely/not/here.bat"));
+        let launch = Launch(PathBuf::from("/definitely/not/here.bat"));
         assert!(launch.working_dir().is_some());
         if !is_running() {
             let err = start(&launch).unwrap_err().to_string();

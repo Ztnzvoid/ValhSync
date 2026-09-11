@@ -460,12 +460,12 @@ impl eframe::App for App {
         }
 
         chrome::handle_edge_resize(ctx);
-        chrome::paint_window(ctx);
         self.top_bar(ctx);
         self.bottom_bar(ctx);
         egui::CentralPanel::default()
             .frame(egui::Frame::new().inner_margin(egui::Margin::same(18)))
             .show(ctx, |ui| {
+                th::backdrop(ui.ctx(), ui.painter(), ui.max_rect().expand(18.0));
                 egui::ScrollArea::vertical().show(ui, |ui| {
                     self.card_game_server(ui);
                     ui.add_space(12.0);
@@ -495,6 +495,7 @@ impl App {
         egui::TopBottomPanel::top("top")
             .frame(
                 egui::Frame::new()
+                    .fill(th::NIGHT)
                     .inner_margin(egui::Margin {
                         left: 18,
                         right: 0,
@@ -522,6 +523,7 @@ impl App {
         egui::TopBottomPanel::bottom("bottom")
             .frame(
                 egui::Frame::new()
+                    .fill(th::PANEL)
                     .inner_margin(egui::Margin::symmetric(18, 12))
                     .stroke(egui::Stroke::new(1.0, th::EDGE_SOFT)),
             )
@@ -717,7 +719,7 @@ impl App {
                         .clicked()
                         && let Some(s) = self.scripts.get(self.script_index)
                     {
-                        let launch = gameserver::Launch::Script(s.path.clone());
+                        let launch = gameserver::Launch(s.path.clone());
                         match gameserver::start(&launch) {
                             Ok(()) => {
                                 self.game_running = true;

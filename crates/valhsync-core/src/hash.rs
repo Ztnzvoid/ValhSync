@@ -36,15 +36,6 @@ pub fn is_hex_hash(s: &str) -> bool {
     s.len() == HEX_LEN && s.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))
 }
 
-pub fn parse_hex(s: &str) -> Result<Hash> {
-    if !is_hex_hash(s) {
-        return Err(CoreError::InvalidManifest(format!(
-            "invalid blake3 digest {s:?}"
-        )));
-    }
-    Hash::from_hex(s).map_err(|e| CoreError::InvalidManifest(format!("invalid blake3 digest: {e}")))
-}
-
 /// Verify that a file on disk has the expected digest.
 pub fn verify_file(path: &Path, expected_hex: &str, label: &str) -> Result<()> {
     let actual = to_hex(&hash_file(path)?);

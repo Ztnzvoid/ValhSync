@@ -60,7 +60,7 @@ pub enum Key {
     GameFolderInUse,
     GameFolderAuto,
     ThisServer,
-    ValsyncItself,
+    AboutValhSync,
     OpenFolder,
     ResetAll,
     ResetAllHint,
@@ -70,6 +70,10 @@ pub enum Key {
     Close,
     InvitePrompt,
     InviteHint,
+    Checking2,
+    ConfirmKeyTitle,
+    ConfirmKeyBody,
+    Trust,
     Added,
     Launching,
     SyncDone,
@@ -93,6 +97,12 @@ pub enum Key {
     TrustLine,
     Installed,
     Nothing,
+    ServerMods,
+    ModToInstall,
+    ModToUpdate,
+    ModInstalled,
+    Speed,
+    Remaining,
 }
 
 pub fn text(lang: Lang, key: Key) -> &'static str {
@@ -130,7 +140,7 @@ fn fr(key: Key) -> &'static str {
         Key::GameFolderInUse => "Utilisé actuellement",
         Key::GameFolderAuto => "Détection automatique",
         Key::ThisServer => "Ce serveur",
-        Key::ValsyncItself => "ValhSync",
+        Key::AboutValhSync => "ValhSync",
         Key::OpenFolder => "Ouvrir le dossier",
         Key::ResetAll => "Tout réinitialiser",
         Key::ResetAllHint => {
@@ -140,8 +150,14 @@ fn fr(key: Key) -> &'static str {
         Key::Apply => "Appliquer",
         Key::Cancel => "Annuler",
         Key::Close => "Fermer",
-        Key::InvitePrompt => "Code d'invitation",
-        Key::InviteHint => "valhsync1:…",
+        Key::InvitePrompt => "Code d'invitation, ou adresse du serveur",
+        Key::InviteHint => "valhsync1:…  ou  203.0.113.10:2470",
+        Key::Checking2 => "Interrogation du serveur…",
+        Key::ConfirmKeyTitle => "Vérifiez l'empreinte",
+        Key::ConfirmKeyBody => {
+            "Vous ajoutez ce serveur par son adresse, sans code d'invitation. Comparez cette empreinte avec celle que l'administrateur vous a donnée : c'est elle qui garantit que les mods viennent bien de lui."
+        }
+        Key::Trust => "L'empreinte correspond, ajouter",
         Key::Added => "Serveur ajouté",
         Key::Launching => "Valheim démarre via Steam…",
         Key::SyncDone => "Synchronisation terminée",
@@ -149,8 +165,8 @@ fn fr(key: Key) -> &'static str {
         Key::Downloading => "Téléchargement",
         Key::Applying => "Application des changements…",
         Key::Contacting => "Connexion au serveur…",
-        Key::PlanInstall => "à installer",
-        Key::PlanUpdate => "à mettre à jour",
+        Key::PlanInstall | Key::ModToInstall => "à installer",
+        Key::PlanUpdate | Key::ModToUpdate => "à mettre à jour",
         Key::PlanRemove => "à retirer",
         Key::PlanQuarantine => "à mettre en quarantaine",
         Key::PlanDownload => "à télécharger",
@@ -169,6 +185,10 @@ fn fr(key: Key) -> &'static str {
         }
         Key::Installed => "installés",
         Key::Nothing => "Rien à faire.",
+        Key::ServerMods => "Mods du serveur",
+        Key::ModInstalled => "installé",
+        Key::Speed => "vitesse",
+        Key::Remaining => "restant",
     }
 }
 
@@ -200,7 +220,7 @@ fn en(key: Key) -> &'static str {
         Key::GameFolderInUse => "Currently used",
         Key::GameFolderAuto => "Automatic detection",
         Key::ThisServer => "This server",
-        Key::ValsyncItself => "ValhSync",
+        Key::AboutValhSync => "ValhSync",
         Key::OpenFolder => "Open the folder",
         Key::ResetAll => "Reset everything",
         Key::ResetAllHint => {
@@ -210,8 +230,14 @@ fn en(key: Key) -> &'static str {
         Key::Apply => "Apply",
         Key::Cancel => "Cancel",
         Key::Close => "Close",
-        Key::InvitePrompt => "Invite code",
-        Key::InviteHint => "valhsync1:…",
+        Key::InvitePrompt => "Invite code, or server address",
+        Key::InviteHint => "valhsync1:…  or  203.0.113.10:2470",
+        Key::Checking2 => "Asking the server…",
+        Key::ConfirmKeyTitle => "Check the fingerprint",
+        Key::ConfirmKeyBody => {
+            "You are adding this server by address, without an invite code. Compare this fingerprint with the one your admin gave you: it is what proves the mods really come from them."
+        }
+        Key::Trust => "The fingerprint matches, add it",
         Key::Added => "Server added",
         Key::Launching => "Valheim is starting via Steam…",
         Key::SyncDone => "Sync complete",
@@ -219,8 +245,8 @@ fn en(key: Key) -> &'static str {
         Key::Downloading => "Downloading",
         Key::Applying => "Applying changes…",
         Key::Contacting => "Contacting the server…",
-        Key::PlanInstall => "to install",
-        Key::PlanUpdate => "to update",
+        Key::PlanInstall | Key::ModToInstall => "to install",
+        Key::PlanUpdate | Key::ModToUpdate => "to update",
         Key::PlanRemove => "to remove",
         Key::PlanQuarantine => "to quarantine",
         Key::PlanDownload => "to download",
@@ -237,8 +263,11 @@ fn en(key: Key) -> &'static str {
         Key::TrustLine => {
             "Files are signed by this server and verified one by one. ValhSync only writes inside the game folder (BepInEx) and runs nothing itself: Steam starts Valheim."
         }
-        Key::Installed => "installed",
+        Key::Installed | Key::ModInstalled => "installed",
         Key::Nothing => "Nothing to do.",
+        Key::ServerMods => "Server mods",
+        Key::Speed => "speed",
+        Key::Remaining => "left",
     }
 }
 
