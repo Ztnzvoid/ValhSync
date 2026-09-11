@@ -190,6 +190,10 @@ pub(super) struct App {
     public_ip: Option<String>,
     ip_checked: Option<Instant>,
     ip_rx: Option<Receiver<Msg>>,
+    /// Start was pressed before the address was known. Publishing waits for
+    /// it rather than going online announcing a name that resolves to
+    /// nothing, and starts by itself the moment the answer arrives.
+    publish_when_addressed: bool,
     notice: Option<(String, Color32, Instant)>,
     egui_ctx: egui::Context,
 }
@@ -237,6 +241,7 @@ impl App {
             public_ip: None,
             ip_checked: None,
             ip_rx: None,
+            publish_when_addressed: false,
             game_running: false,
             game_pid: None,
             // Force a process check on the very first frame.
@@ -540,6 +545,28 @@ impl App {
             .unwrap_or(config::DEFAULT_PORT)
     }
 
+    /// Can players actually reach what the address field says? Empty, a LAN
+    /// address, or one of the template's examples all mean no.
+    fn address_is_usable(&self) -> bool {
+        let addr = self.game_address.trim();
+        !addr.is_empty()
+            && !valhsync_core::manifest::is_private_host(addr)
+            && !config::is_placeholder_address(addr)
+    }
+
+    /// Put the detected address in the field when what is there cannot work.
+    /// Returns true when the field ends up usable.
+    fn adopt_detected_ip(&mut self) -> bool {
+        if self.address_is_usable() {
+            return true;
+        }
+        let Some(ip) = self.public_ip.clone() else {
+            return false;
+        };
+        self.game_address = format!("{ip}:{}", self.game_port());
+        true
+    }
+
     /// The port the start script says the game listens on.
     fn game_port(&self) -> u16 {
         self.scripts
@@ -737,17 +764,22 @@ impl App {
             Msg::PublicIp(ip) => {
                 self.public_ip = Some(ip.clone());
                 // Only write it into the address when what is there
-                // cannot work anyway: an empty field, or a LAN address
-                // no outside player can reach. A deliberate hostname is
-                // the admin's, and gets left alone.
-                let addr = self.game_address.trim();
-                if addr.is_empty() || valhsync_core::manifest::is_private_host(addr) {
+                // cannot work anyway: an empty field, a LAN address no
+                // outside player can reach, or the example the template
+                // writes. A deliberate hostname is the admin's, and gets
+                // left alone.
+                if !self.address_is_usable() {
                     self.game_address = format!("{ip}:{}", self.game_port());
                     let msg = format!(
                         "{} {ip}",
                         self.t("Adresse publique détectée :", "Public address detected:")
                     );
                     self.notify(msg, th::MOSS);
+                }
+                // Start was pressed before this answer arrived.
+                if self.publish_when_addressed && self.address_is_usable() {
+                    self.publish_when_addressed = false;
+                    self.start_serving();
                 }
             }
             Msg::LinkChecked(detail) => {
@@ -1071,6 +1103,13 @@ impl App {
             w::hint(
                 ui,
                 self.t(
+                    "Démarrer lance le serveur de jeu, renseigne l'adresse publique si besoin, et met la publication en ligne derrière.",
+                    "Start brings up the game server, fills in the public address if it needs filling, and puts publishing online behind it.",
+                ),
+            );
+            w::hint(
+                ui,
+                self.t(
                     "Arrêter, c'est envoyer Ctrl+C à sa fenêtre : Valheim écrit le monde sur le disque avant de quitter. ValhSync ne tue jamais le processus.",
                     "Stopping sends Ctrl+C to its window: Valheim writes the world to disk before it quits. ValhSync never kills the process.",
                 ),
@@ -1179,25 +1218,53 @@ impl App {
                 "No start script: Settings tab, \"Server folder\" card.",
             ))
             .clicked()
-            && let Some(s) = self.scripts.get(self.script_index)
         {
-            let launch = gameserver::Launch(s.path.clone());
-            match gameserver::start(&launch) {
-                Ok(()) => {
-                    self.game_running = true;
-                    self.game_checked = Instant::now();
-                    self.game_pid = None;
-                    self.stop_requested = None;
-                    let msg = self
-                        .t(
-                            "Serveur de jeu lancé dans sa propre fenêtre.",
-                            "Game server started in its own window.",
-                        )
-                        .to_string();
-                    self.notify(msg, th::MOSS);
-                }
-                Err(e) => self.notify(format!("{e:#}"), th::BLOOD_LIT),
-            }
+            self.start_everything();
+        }
+    }
+
+    /// One press brings the whole thing up: the game server in its window,
+    /// the public address filled in when what is there cannot work, and
+    /// publishing online behind it. An admin who starts a server means to be
+    /// joinable, and being joinable takes all three -- a server running
+    /// beside a pack nobody can fetch is the state this tool exists to avoid.
+    fn start_everything(&mut self) {
+        let Some(path) = self.scripts.get(self.script_index).map(|s| s.path.clone()) else {
+            return;
+        };
+        if let Err(e) = gameserver::start(&gameserver::Launch(path)) {
+            self.notify(format!("{e:#}"), th::BLOOD_LIT);
+            return;
+        }
+        self.game_running = true;
+        self.game_checked = Instant::now();
+        self.game_pid = None;
+        self.stop_requested = None;
+        let msg = self
+            .t(
+                "Serveur de jeu lancé dans sa propre fenêtre.",
+                "Game server started in its own window.",
+            )
+            .to_string();
+        self.notify(msg, th::MOSS);
+
+        // Static publishing is a folder the admin uploads; there is nothing
+        // to bring online for it.
+        if self.mode != PublishMode::Live {
+            return;
+        }
+        if self.adopt_detected_ip() {
+            self.start_serving();
+        } else {
+            self.publish_when_addressed = true;
+            self.detect_public_ip();
+            let msg = self
+                .t(
+                    "Publication en attente de l'adresse publique.",
+                    "Publishing is waiting for the public address.",
+                )
+                .to_string();
+            self.notify(msg, th::GOLD);
         }
     }
 

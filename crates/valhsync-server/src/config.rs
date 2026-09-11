@@ -395,6 +395,17 @@ fn is_placeholder(host: &str) -> bool {
         .any(|p| host.eq_ignore_ascii_case(p))
 }
 
+/// Is this `host:port` one of the template's examples? The window needs to
+/// know: a placeholder parses and is not private, so nothing else catches it,
+/// and publishing one sends every player to a name that resolves to nothing.
+pub(crate) fn is_placeholder_address(address: &str) -> bool {
+    let host = address
+        .trim()
+        .rsplit_once(':')
+        .map_or(address.trim(), |(h, _)| h);
+    is_placeholder(host.trim())
+}
+
 /// The port out of a `host:port` game address.
 fn game_port(address: &str) -> Option<u16> {
     address.trim().rsplit_once(':')?.1.trim().parse().ok()
