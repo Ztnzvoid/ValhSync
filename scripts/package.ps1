@@ -97,7 +97,10 @@ function New-Zip {
 function New-Archive {
     param([string]$Name, [scriptblock]$Fill)
 
-    $stage = Join-Path $dist $Name
+    # Stage inside a folder of our own: dist/ is also where people unpack the
+    # archives, and a staging folder named after one would try to delete what
+    # they extracted -- possibly while they are running it.
+    $stage = Join-Path (Join-Path $dist ".stage") $Name
     if (Test-Path $stage) { Remove-Item -Recurse -Force $stage }
     New-Item -ItemType Directory -Force -Path $stage | Out-Null
     & $Fill $stage
@@ -105,7 +108,7 @@ function New-Archive {
     $zip = Join-Path $dist "$Name.zip"
     if (Test-Path $zip) { Remove-Item -Force $zip }
     New-Zip -Source $stage -Destination $zip -Prefix $Name
-    Remove-Item -Recurse -Force $stage
+    Remove-Item -Recurse -Force (Split-Path $stage -Parent)
 
     $sum = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLower()
     "$sum  $Name.zip" | Out-File -FilePath "$zip.sha256" -Encoding ascii
