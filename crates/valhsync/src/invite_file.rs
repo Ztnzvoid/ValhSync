@@ -24,17 +24,13 @@ pub fn import_if_present(paths: &AppPaths) -> Result<Option<(KnownServer, JoinOu
     };
     let text = std::fs::read_to_string(&path)
         .map_err(|e| crate::SyncError::io(format!("cannot read {}", path.display()), e))?;
-    let Some(line) = text
-        .lines()
-        .map(str::trim)
-        .find(|l| l.starts_with("valhsync1:"))
-    else {
+    if !text.contains(valhsync_core::invite::PREFIX) {
         return Err(crate::SyncError::Other(format!(
             "{} does not contain an invite code (a line starting with valhsync1:)",
             path.display()
         )));
-    };
-    let invite = Invite::parse(line)?;
+    }
+    let invite = Invite::parse(&text)?;
     let mut book = ServerBook::load(paths)?;
     let outcome = book.join(&invite, false)?;
     if outcome == JoinOutcome::AlreadyKnown {

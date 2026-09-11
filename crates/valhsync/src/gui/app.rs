@@ -1246,14 +1246,8 @@ impl App {
             });
 
         if submitted {
-            let text = dialog
-                .input
-                .lines()
-                .map(str::trim)
-                .find(|l| l.starts_with(valhsync_core::invite::PREFIX))
-                .unwrap_or_else(|| dialog.input.trim())
-                .to_string();
-            if text.starts_with(valhsync_core::invite::PREFIX) {
+            let text = dialog.input.trim().to_string();
+            if text.contains(valhsync_core::invite::PREFIX) {
                 match Invite::parse(&text) {
                     Ok(invite) => {
                         if let Err(e) = self.adopt(&invite) {

@@ -187,19 +187,12 @@ fn cmd_join(ctx: &Context, code: &str, yes: bool, replace_key: bool) -> Result<(
     } else {
         code.to_string()
     };
-    let line = text
-        .lines()
-        .map(str::trim)
-        .find(|l| l.starts_with(valhsync_core::invite::PREFIX))
-        .unwrap_or_else(|| text.trim())
-        .to_string();
-
-    let invite = if line.starts_with(valhsync_core::invite::PREFIX) {
-        Invite::parse(&line)?
+    let invite = if text.contains(valhsync_core::invite::PREFIX) {
+        Invite::parse(&text)?
     } else {
         // An address: the server tells us its key, and the player confirms
         // the fingerprint against what the admin announced.
-        let found = engine::discover(ctx, &line)?;
+        let found = engine::discover(ctx, text.trim())?;
         println!("Server \"{}\" at {}", found.invite.name, found.invite.url);
         println!("  {} files in the pack", found.files);
         println!("  Key fingerprint: {}", found.fingerprint);

@@ -38,16 +38,18 @@ impl Invite {
         Ok(format!("{PREFIX}{}", b64_encode(&json)))
     }
 
-    /// Parse and validate. Whitespace around the code is tolerated because
-    /// players paste it from chat apps.
+    /// Parse and validate.
+    ///
+    /// The text is what the player pasted, so it may be a whole message with
+    /// the code somewhere inside it, and the code itself may have been wrapped
+    /// across lines on the way. [`extract`] puts it back together.
     pub fn parse(text: &str) -> Result<Self> {
         let bad = |m: &str| CoreError::InvalidInvite(m.to_string());
-        let trimmed = text.trim();
-        let body = trimmed.strip_prefix(PREFIX).ok_or_else(|| {
+        let body = extract(text).ok_or_else(|| {
             bad("it should start with \"valhsync1:\"; check that the whole code was copied")
         })?;
         let json =
-            b64_decode(body).ok_or_else(|| bad("the code is corrupted (not valid base64)"))?;
+            b64_decode(&body).ok_or_else(|| bad("the code is corrupted (not valid base64)"))?;
         let mut invite: Self = serde_json::from_slice(&json)
             .map_err(|_| bad("the code is corrupted (bad payload)"))?;
         invite.url = normalize_url(&invite.url);
@@ -87,6 +89,34 @@ impl Invite {
     pub fn server_id(&self) -> String {
         self.pubkey.clone()
     }
+}
+
+/// The body of the invite code inside `text`, whatever surrounds it.
+///
+/// Chat apps, mail clients and text editors wrap a two-hundred character code
+/// onto several lines, and a player pastes the message rather than the code.
+/// So: find the line holding the prefix, then keep joining the lines that
+/// follow for as long as they are nothing but more of the code. Prose after
+/// the code stops the run, and the whitespace inside it disappears.
+#[must_use]
+pub fn extract(text: &str) -> Option<String> {
+    let mut lines = text.lines().map(str::trim);
+    let first = lines.find_map(|l| l.split_once(PREFIX).map(|(_, rest)| rest))?;
+
+    let mut body = String::from(first);
+    for line in lines {
+        if line.is_empty() || !line.chars().all(is_code_char) {
+            break;
+        }
+        body.push_str(line);
+    }
+    body.retain(|c| !c.is_whitespace());
+    Some(body)
+}
+
+/// The base64url alphabet the code is written in, padding included.
+fn is_code_char(c: char) -> bool {
+    c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '=')
 }
 
 fn normalize_url(url: &str) -> String {
@@ -159,6 +189,56 @@ pub fn on_default_port(url: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn sample() -> String {
+        let key = crate::Keypair::generate();
+        Invite::new("http://pack.example.org:2470", &key.public(), "Midgard")
+            .encode()
+            .unwrap()
+    }
+
+    #[test]
+    fn a_code_wrapped_on_the_way_still_reads() {
+        let code = sample();
+        let (head, tail) = code.split_at(70);
+
+        for text in [
+            // As sent.
+            code.clone(),
+            // Wrapped by a chat app or a mail client.
+            format!("{head}\n{tail}"),
+            format!("{head}\r\n{tail}\r\n"),
+            // Wrapped and pasted with the message around it.
+            format!("Salut, voici le code :\n\n{head}\n{tail}\n\nA plus !"),
+            // Indented by a quote marker's worth of spaces.
+            format!("   {head}\n   {tail}   "),
+        ] {
+            let invite = Invite::parse(&text).unwrap_or_else(|e| panic!("{text:?}: {e}"));
+            assert_eq!(invite.name, "Midgard");
+            assert_eq!(invite.url, "http://pack.example.org:2470");
+        }
+    }
+
+    #[test]
+    fn prose_after_the_code_is_not_swallowed() {
+        let code = sample();
+        let text = format!("{code}\nvoila, colle ca dans le launcher");
+        assert_eq!(Invite::parse(&text).unwrap().name, "Midgard");
+    }
+
+    #[test]
+    fn a_truncated_code_is_still_refused() {
+        let code = sample();
+        let err = Invite::parse(&code[..code.len() - 12])
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("corrupted"), "{err}");
+
+        let err = Invite::parse("no code here at all")
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("valhsync1:"), "{err}");
+    }
     use crate::sign::Keypair;
 
     #[test]
