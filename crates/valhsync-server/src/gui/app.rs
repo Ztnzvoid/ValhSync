@@ -19,6 +19,10 @@ use crate::config::{self, Config};
 use crate::{detect, gameserver, logs, wizard};
 
 const POLL_GAME_SERVER: Duration = Duration::from_secs(2);
+/// How long to wait before trying to publish again after a failed attempt.
+/// Long enough that a misconfiguration does not retry in a loop, short enough
+/// that fixing it takes effect without touching the button.
+const PUBLISH_RETRY: Duration = Duration::from_secs(20);
 /// How often the machine's public address is re-checked. A home connection
 /// changes it on a reboot or a lease renewal, not minute to minute.
 const POLL_PUBLIC_IP: Duration = Duration::from_secs(900);
@@ -194,6 +198,13 @@ pub(super) struct App {
     /// it rather than going online announcing a name that resolves to
     /// nothing, and starts by itself the moment the answer arrives.
     publish_when_addressed: bool,
+    /// The admin stopped publishing by hand while the game server stayed up.
+    /// Their choice stands until they start it again, or until the game
+    /// server is restarted -- a fresh start is a fresh intent.
+    publish_paused: bool,
+    /// When publishing was last attempted on its own, so a configuration it
+    /// refuses is not retried every couple of seconds.
+    publish_tried: Option<Instant>,
     notice: Option<(String, Color32, Instant)>,
     egui_ctx: egui::Context,
 }
@@ -242,6 +253,8 @@ impl App {
             ip_checked: None,
             ip_rx: None,
             publish_when_addressed: false,
+            publish_paused: false,
+            publish_tried: None,
             game_running: false,
             game_pid: None,
             // Force a process check on the very first frame.
@@ -857,12 +870,17 @@ impl eframe::App for App {
             // A server that has just started writes a log that did not exist.
             if was != self.game_running {
                 self.refresh_log_sources();
-                if !self.game_running {
+                if self.game_running {
+                    // A restart is a fresh intent, like pressing Start.
+                    self.publish_paused = false;
+                    self.publish_tried = None;
+                } else {
                     self.session = logs::Session::default();
                     self.stop_requested = None;
                 }
             }
         }
+        self.follow_game_with_publishing();
         if self.tab == Tab::Status {
             self.poll_log();
         }
@@ -1248,23 +1266,43 @@ impl App {
             .to_string();
         self.notify(msg, th::MOSS);
 
+        // Pressing Start is a fresh intent: it undoes an earlier stop.
+        self.publish_paused = false;
+        self.publish_tried = None;
+        self.follow_game_with_publishing();
+    }
+
+    /// Publishing follows the game server.
+    ///
+    /// Not a chain hung off the button: the server is just as often already
+    /// running when the window opens, or started from its own shortcut, and
+    /// in both of those there is no click to hang anything off. A running
+    /// game server beside a pack nobody can fetch is the exact state this
+    /// tool exists to prevent, so the window keeps reconciling the two
+    /// instead of waiting to be asked.
+    fn follow_game_with_publishing(&mut self) {
         // Static publishing is a folder the admin uploads; there is nothing
         // to bring online for it.
-        if self.mode != PublishMode::Live {
+        if self.mode != PublishMode::Live || !self.game_running {
             return;
         }
+        if self.publish_paused || self.serving_at.is_some() || self.serve_rx.is_some() {
+            return;
+        }
+        // A configuration the publisher refuses must not be retried, and
+        // complained about, every couple of seconds.
+        if self
+            .publish_tried
+            .is_some_and(|at| at.elapsed() < PUBLISH_RETRY)
+        {
+            return;
+        }
+        self.publish_tried = Some(Instant::now());
         if self.adopt_detected_ip() {
             self.start_serving();
         } else {
             self.publish_when_addressed = true;
             self.detect_public_ip();
-            let msg = self
-                .t(
-                    "Publication en attente de l'adresse publique.",
-                    "Publishing is waiting for the public address.",
-                )
-                .to_string();
-            self.notify(msg, th::GOLD);
         }
     }
 
@@ -1277,6 +1315,9 @@ impl App {
                 ))
                 .clicked()
             {
+                // Stopping by hand outranks following the game server, or
+                // the window would put it straight back.
+                self.publish_paused = true;
                 self.stop_serving();
             }
             return;
@@ -1294,6 +1335,8 @@ impl App {
             )
             .clicked()
         {
+            self.publish_paused = false;
+            self.publish_tried = None;
             self.start_serving();
         }
     }
@@ -1757,6 +1800,13 @@ impl App {
                         }
                     }
                     ui.add_space(6.0);
+                    w::hint(
+                        ui,
+                        self.t(
+                            "La publication suit le serveur de jeu : elle se met en ligne toute seule dès qu'il tourne, et le bouton Démarrer du panneau I la monte avec lui. L'arrêter ici la laisse arrêtée jusqu'au prochain démarrage du serveur.",
+                            "Publishing follows the game server: it goes online by itself as soon as the game is up, and Start on panel I brings both. Stopping it here keeps it stopped until the game server is next started.",
+                        ),
+                    );
                     w::hint(
                         ui,
                         self.t(
