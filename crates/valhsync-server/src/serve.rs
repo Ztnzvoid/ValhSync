@@ -80,7 +80,7 @@ pub fn prepare(cfg: &Config, keypair: Keypair, data_dir: PathBuf, watch: bool) -
         pubkey: keypair.public().to_b64(),
         // Only a publisher sitting next to the game server can see it. One
         // publishing a copy of the pack from elsewhere must not guess.
-        colocated: cfg.pack.server_root.is_some() || cfg.game_server.start_script.is_some(),
+        colocated: cfg.is_colocated(),
     });
 
     let watcher = if watch {
@@ -117,7 +117,8 @@ pub async fn run(cfg: Config, keypair: Keypair, data_dir: PathBuf) -> Result<()>
         cfg.public_url()
     );
     tracing::info!("press Ctrl+C to stop");
-    serve_until(listener, server, shutdown_signal()).await
+    let watch_game = cfg.is_colocated() && cfg.game_server.stop_with_game;
+    serve_until(listener, server, shutdown_signal(watch_game)).await
 }
 
 /// Serve `server` on `listener` until `shutdown` resolves. Used by tests and
@@ -135,9 +136,47 @@ pub async fn serve_until(
     Ok(())
 }
 
-async fn shutdown_signal() {
-    let _ = tokio::signal::ctrl_c().await;
-    tracing::info!("shutting down");
+/// How often the publisher looks for the dedicated server.
+const GAME_POLL: Duration = Duration::from_secs(10);
+
+/// Wait for Ctrl+C, or for the dedicated server to go away.
+///
+/// The second only applies when ValhSync runs beside the game and the admin
+/// left `stop_with_game` on. It waits until it has actually seen the server
+/// running before binding its own life to it, so the two can be started in
+/// either order.
+pub async fn stop_with_game(watch_game: bool) {
+    if !watch_game {
+        std::future::pending::<()>().await;
+    }
+    let mut seen_running = false;
+    loop {
+        tokio::time::sleep(GAME_POLL).await;
+        let running = tokio::task::spawn_blocking(crate::gameserver::is_running)
+            .await
+            .unwrap_or(false);
+        if running {
+            seen_running = true;
+        } else if seen_running {
+            tracing::info!("the dedicated server stopped; stopping with it");
+            return;
+        }
+    }
+}
+
+async fn shutdown_signal(watch_game: bool) {
+    let ctrl_c = async {
+        let _ = tokio::signal::ctrl_c().await;
+        tracing::info!("shutting down");
+    };
+    if !watch_game {
+        ctrl_c.await;
+        return;
+    }
+    tokio::select! {
+        () = ctrl_c => {}
+        () = stop_with_game(watch_game) => {}
+    }
 }
 
 /// Watch every source folder; rebuild after `SETTLE` of quiet. Events under

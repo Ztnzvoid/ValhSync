@@ -120,8 +120,13 @@ pub(super) fn serve_blocking(
                 format!("cannot listen on {addr}; is another valhsync-server running?")
             })?;
             rep.send(Msg::Serving(cfg.public_url()));
-            serve::serve_until(listener, server, async {
-                let _ = stop.await;
+            // The window's Stop button, or the dedicated server going away.
+            let watch_game = cfg.is_colocated() && cfg.game_server.stop_with_game;
+            serve::serve_until(listener, server, async move {
+                tokio::select! {
+                    _ = stop => {}
+                    () = serve::stop_with_game(watch_game) => {}
+                }
             })
             .await
         })

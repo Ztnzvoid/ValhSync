@@ -22,11 +22,23 @@ pub struct Config {
 
 /// How ValhSync may start the Valheim dedicated server. Optional: leave it out
 /// and ValhSync never touches the game server at all.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct GameServerSection {
     /// The admin's own start script (`.bat` / `.sh`).
     pub start_script: Option<PathBuf>,
+    /// Stop publishing when the dedicated server stops. Only applies when
+    /// ValhSync runs on the same machine and can see it.
+    pub stop_with_game: bool,
+}
+
+impl Default for GameServerSection {
+    fn default() -> Self {
+        Self {
+            start_script: None,
+            stop_with_game: true,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -225,6 +237,13 @@ impl Config {
         out
     }
 
+    /// Does this publisher run beside the dedicated server, and so know
+    /// whether the game is up? A publisher holding only a copy of the pack
+    /// must not guess.
+    pub fn is_colocated(&self) -> bool {
+        self.pack.server_root.is_some() || self.game_server.start_script.is_some()
+    }
+
     pub fn bind_addr(&self) -> Result<SocketAddr> {
         self.server
             .bind
@@ -416,6 +435,11 @@ max_files = {max_files}
 # console window. It never stops it: Valheim only saves the world when it gets
 # Ctrl+C in that window.
 {start_script}
+# Stop publishing once the dedicated server stops. ValhSync waits until it has
+# seen the game server running before binding its own life to it, so starting
+# the two in either order works. Ignored when ValhSync publishes from another
+# machine and cannot see the game.
+stop_with_game = {stop_with_game}
 "#,
         name = toml_str(cfg.server.name.trim()),
         bind = toml_str(&cfg.server.bind),
@@ -443,6 +467,7 @@ max_files = {max_files}
         max_file_mb = cfg.limits.max_file_mb,
         max_pack_mb = cfg.limits.max_pack_mb,
         max_files = cfg.limits.max_files,
+        stop_with_game = cfg.game_server.stop_with_game,
         start_script = toml_opt_path(
             "start_script",
             cfg.game_server.start_script.as_ref(),
@@ -505,6 +530,10 @@ mod tests {
         assert_eq!(back.policy.seed, cfg.policy.seed);
         assert_eq!(back.limits.max_files, cfg.limits.max_files);
         assert_eq!(back.game_server.start_script, cfg.game_server.start_script);
+        assert_eq!(
+            back.game_server.stop_with_game,
+            cfg.game_server.stop_with_game
+        );
 
         // A second pass must be byte-identical: editing in the window twice
         // may not drift the file.
