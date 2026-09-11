@@ -293,7 +293,10 @@ fn watch_and_export(cfg: &Config, kp: &Keypair, data_dir: &Path, dir: &Path) -> 
         }
         let mut last = Instant::now();
         while last.elapsed() < settle {
-            if rx.recv_timeout(settle - last.elapsed()).is_ok() {
+            if rx
+                .recv_timeout(settle.saturating_sub(last.elapsed()))
+                .is_ok()
+            {
                 last = Instant::now();
             }
         }
