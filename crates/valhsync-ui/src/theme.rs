@@ -221,11 +221,16 @@ pub fn backdrop(ctx: &egui::Context, painter: &egui::Painter, rect: Rect) {
     watermark(ctx, rect);
 }
 
-/// How much of the mark shows through. Three numbers in one place, because
-/// "a little luminous" is a judgement and it will want adjusting.
+/// How much of the mark shows through, and how heavily it is cut. Five
+/// numbers in one place, because "a little luminous" is a judgement and it
+/// will want adjusting.
 const MARK_HALO: u8 = 9;
 const MARK_BLOOM: u8 = 5;
 const MARK_CORE: u8 = 13;
+/// Stroke widths. The bloom is the soft spread around each stroke; the core
+/// is the cut itself, and carries the weight.
+const MARK_BLOOM_WIDTH: f32 = 22.0;
+const MARK_CORE_WIDTH: f32 = 7.0;
 
 /// Mannaz across the whole window, at the edge of visible.
 ///
@@ -256,7 +261,7 @@ fn watermark(ctx: &egui::Context, rect: Rect) {
         centre,
         radius,
         Stroke::new(
-            9.0,
+            MARK_BLOOM_WIDTH,
             Color32::from_rgba_unmultiplied(0xC7, 0xA4, 0x55, MARK_BLOOM),
         ),
     );
@@ -265,7 +270,7 @@ fn watermark(ctx: &egui::Context, rect: Rect) {
         centre,
         radius,
         Stroke::new(
-            2.0,
+            MARK_CORE_WIDTH,
             Color32::from_rgba_unmultiplied(0xE8, 0xCD, 0x8B, MARK_CORE),
         ),
     );
