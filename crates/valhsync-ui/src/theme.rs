@@ -150,7 +150,14 @@ pub fn apply(ctx: &egui::Context) {
         FontId::new(13.0, FontFamily::Monospace),
     );
 
-    ctx.set_style(style);
+    // eframe follows the desktop's light/dark setting unless told otherwise,
+    // and switching theme swaps the whole style -- which threw this one away
+    // and left default light widgets over our painted ground. Refuse to
+    // follow, and register the same style under both themes so nothing can
+    // swap it out from under us.
+    ctx.set_theme(egui::ThemePreference::Dark);
+    ctx.set_style_of(egui::Theme::Dark, style.clone());
+    ctx.set_style_of(egui::Theme::Light, style);
 }
 
 /// A carved plate: panel ground, a thin edge, and iron at the corners.
@@ -579,5 +586,31 @@ pub fn trash(painter: &egui::Painter, rect: Rect, colour: Color32) {
             [egui::pos2(x(t), y(0.42)), egui::pos2(x(t), y(0.82))],
             Stroke::new(1.1, colour),
         );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The window used to vanish the moment a server was added -- but only on
+    /// a desktop set to the light theme.
+    ///
+    /// eframe follows that setting, and switching theme swaps the whole style,
+    /// including `text_styles`. Our carved label lives there under a name, and
+    /// egui panics outright when a named style cannot be resolved. Everything
+    /// that used it was on a screen you only reach with a server, so the
+    /// window looked merely wrong until the first one was added, and then the
+    /// process aborted.
+    #[test]
+    fn the_carved_label_survives_a_theme_switch() {
+        let ctx = egui::Context::default();
+        apply(&ctx);
+        for theme in [egui::Theme::Dark, egui::Theme::Light] {
+            assert!(
+                ctx.style_of(theme).text_styles.contains_key(&label_style()),
+                "the {theme:?} style lost the carved label"
+            );
+        }
     }
 }

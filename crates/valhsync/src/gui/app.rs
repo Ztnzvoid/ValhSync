@@ -43,6 +43,9 @@ enum Msg {
     Prepared(Result<Box<Prepared>, Failure>),
     Discovered(Result<Box<engine::Discovered>, String>),
     Applied(Result<(Applied, Option<String>), String>),
+    /// A job failed in a way it had no plan for. The window says so rather
+    /// than closing, which is what the process did before.
+    Crashed(String),
     Done,
 }
 
@@ -397,7 +400,14 @@ impl App {
         self.job = Some((job, rx));
         self.progress = None;
         std::thread::spawn(move || {
-            f(reporter.clone());
+            // Whatever happens in here, the window keeps running and hears
+            // about it. A worker taking the process down with it leaves the
+            // person with a window that vanished and nothing to report.
+            let work = reporter.clone();
+            let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| f(work)));
+            if let Err(payload) = outcome {
+                reporter.send(Msg::Crashed(valhsync_core::crash::describe(&*payload)));
+            }
             reporter.send(Msg::Done);
         });
     }
@@ -568,6 +578,16 @@ impl App {
                     }
                 }
                 Msg::Applied(Err(e)) => self.notify(e, th::BLOOD_LIT),
+                Msg::Crashed(what) => {
+                    let where_ = valhsync_core::crash::log_path()
+                        .map(|p| format!("\n{}", p.display()))
+                        .unwrap_or_default();
+                    let message = format!("{}: {what}{where_}", self.t(Key::Crashed));
+                    self.status = Status::Error(Failure {
+                        message,
+                        offline: false,
+                    });
+                }
                 Msg::Done => finished = true,
             }
         }

@@ -86,6 +86,7 @@ enum Cmd {
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
+    install_crash_hook(cli.config.as_deref());
     if cli.cmd.is_some() {
         valhsync_ui::console::attach_parent();
     }
@@ -386,6 +387,16 @@ fn start_script(cfg: &Config) -> Result<gameserver::Launch> {
         .next()
         .map(|s| gameserver::Launch(s.path))
         .with_context(|| format!("no start script found in {}", root.display()))
+}
+
+/// A window that dies must say why: write panics next to the configuration.
+fn install_crash_hook(config: Option<&Path>) {
+    if let Some(dir) = config
+        .and_then(Path::parent)
+        .filter(|p| !p.as_os_str().is_empty())
+    {
+        valhsync_core::crash::install_hook(dir);
+    }
 }
 
 fn print_invite(cfg: &Config, kp: &Keypair) -> Result<()> {

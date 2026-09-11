@@ -85,4 +85,5 @@ opt-level = 3
 lto = "thin"
 codegen-units = 1
 strip = true
-panic = "abort"
+# Not "abort": a background job that fails must show the person what happened,
+# not make the window disappear. See `gui::worker` and `crash::install_hook`.

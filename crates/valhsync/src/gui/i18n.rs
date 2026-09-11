@@ -70,6 +70,7 @@ pub enum Key {
     Close,
     InvitePrompt,
     InviteHint,
+    Crashed,
     VersionGap,
     JoinCodeNotAnAddress,
     Checking2,
@@ -164,6 +165,7 @@ fn fr(key: Key) -> &'static str {
             "Code d'invitation, ou simplement l'adresse du serveur de jeu — la même que dans Valheim"
         }
         Key::InviteHint => "valhsync1:…  ou  monserveur.exemple.org:2456",
+        Key::Crashed => "ValhSync a rencontré une erreur inattendue",
         Key::VersionGap => {
             "Votre Valheim et ce serveur ne tournent pas sur la même version du jeu. Valheim refusera la connexion, quels que soient les mods. Le jeu et le serveur dédié se mettent à jour séparément : prévenez votre administrateur."
         }
@@ -260,6 +262,7 @@ fn en(key: Key) -> &'static str {
             "Invite code, or simply the game server's address — the same one you use in Valheim"
         }
         Key::InviteHint => "valhsync1:…  or  myserver.example.org:2456",
+        Key::Crashed => "ValhSync hit an unexpected error",
         Key::VersionGap => {
             "Your Valheim and this server are not on the same version of the game. Valheim will refuse the connection, whatever the mods say. The game and the dedicated server update separately: tell your admin."
         }

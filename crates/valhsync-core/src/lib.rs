@@ -15,6 +15,7 @@
 )]
 
 pub mod clock;
+pub mod crash;
 pub mod error;
 pub mod gamelog;
 pub mod hash;

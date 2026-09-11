@@ -8,6 +8,11 @@
 #![cfg_attr(windows, windows_subsystem = "windows")]
 
 fn main() {
+    // Before anything else: a panic must leave a file behind. A windowed
+    // program that dies otherwise vanishes with nothing to report.
+    if let Ok(paths) = valhsync::paths::AppPaths::discover() {
+        valhsync_core::crash::install_hook(&paths.config_dir);
+    }
     let has_args = std::env::args_os().len() > 1;
     if !has_args {
         if let Err(e) = valhsync::gui::run() {

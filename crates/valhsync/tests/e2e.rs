@@ -300,6 +300,57 @@ fn full_life_cycle() {
 }
 
 #[test]
+fn adding_a_server_by_address_never_panics() {
+    // What the window does when someone types an address into "Add a server":
+    // ask the server who it is, pin it, then plan the first sync. Every step
+    // here has run on someone else's machine and taken the window down with
+    // it, so the whole path is walked rather than its pieces.
+    let w = world();
+    let server = TestServer::start(&w.cfg, &w.kp, &w.data_dir);
+    let url = server.url();
+
+    let found = engine::discover(&w.ctx, &url).expect("the address should resolve");
+    assert_eq!(found.invite.name, "E2E");
+    assert_eq!(found.fingerprint, w.kp.public().fingerprint());
+    assert!(found.files > 0);
+
+    // The address typed as `host:port`, the way a player is given it.
+    let bare = url.trim_start_matches("http://").to_string();
+    assert_eq!(
+        engine::discover(&w.ctx, &bare).unwrap().invite.url,
+        found.invite.url
+    );
+
+    // Pinned, then planned: this is what the window does on Trust.
+    let mut book = ServerBook::load(&w.ctx.paths).unwrap();
+    book.join(&found.invite, false).unwrap();
+    book.save(&w.ctx.paths).unwrap();
+    let known = book.resolve(None).unwrap().clone();
+
+    let prepared = engine::prepare(&w.ctx, &known, &mut Silent).expect("planning the first sync");
+    assert!(prepared.needs_confirmation, "a server never seen before");
+    assert!(!prepared.plan.is_noop());
+    // Neither side has a Valheim log in this fixture, so nothing is claimed.
+    assert_eq!(prepared.version_gap, None);
+}
+
+#[test]
+fn an_address_that_is_not_one_is_refused_quietly() {
+    let w = world();
+    for text in [
+        "236486",         // Valheim's own join code
+        "",               //
+        "   ",            //
+        "user:pass@host", //
+        "http://ho st",   //
+        "not a server",   //
+    ] {
+        let result = engine::discover(&w.ctx, text);
+        assert!(result.is_err(), "{text:?} should not resolve");
+    }
+}
+
+#[test]
 fn unreachable_server_is_reported_not_panicked() {
     let w = world();
     let server = join(&w, "http://127.0.0.1:9", &w.kp);
