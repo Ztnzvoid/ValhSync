@@ -1108,6 +1108,16 @@ impl App {
                         .strong()
                         .color(th::GOLD_LIT),
                 );
+                if let Some((colour, line)) = self.ready_summary() {
+                    ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                        ui.label(
+                            RichText::new(line)
+                                .text_style(th::label_style())
+                                .color(th::BONE),
+                        );
+                        valhsync_ui::widgets::dot(ui, colour);
+                    });
+                }
             });
             ui.label(RichText::new(&server.url).small().color(th::BONE_DIM));
             ui.add_space(10.0);
@@ -1247,7 +1257,10 @@ impl App {
             return;
         }
         match &self.status {
-            Status::NoServer => {}
+            // Nothing to say: no server picked, and for Ready, the line
+            // beside the server's name has already said it -- only what
+            // needs the full width stays under the card.
+            Status::NoServer | Status::Ready => {}
             Status::Checking => {
                 ui.horizontal(|ui| {
                     ui.add(egui::Spinner::new().color(th::GOLD));
@@ -1260,65 +1273,54 @@ impl App {
                     ui.label(RichText::new(message).color(th::BLOOD_LIT));
                 });
             }
-            Status::Ready => {
-                let Some(p) = &self.prepared else {
-                    return;
-                };
-                let c = p.plan.counts();
-                if p.is_up_to_date() {
-                    ui.horizontal(|ui| {
-                        valhsync_ui::widgets::dot(ui, th::MOSS);
-                        ui.label(
-                            RichText::new(format!(
-                                "{} · {} {}",
-                                self.t(Key::UpToDate),
-                                c.keep + c.seed_kept,
-                                self.t(Key::Installed)
-                            ))
-                            .text_style(th::label_style())
-                            .color(th::BONE),
-                        );
-                    });
-                } else {
-                    let title = if p.needs_confirmation {
-                        self.t(Key::FirstSync)
-                    } else {
-                        self.t(Key::Pending)
-                    };
-                    ui.horizontal(|ui| {
-                        valhsync_ui::widgets::dot(ui, th::GOLD);
-                        ui.label(
-                            RichText::new(title)
-                                .text_style(th::label_style())
-                                .color(th::BONE),
-                        );
-                    });
-                    let mut parts = Vec::new();
-                    if c.add > 0 {
-                        parts.push(format!("{} {}", c.add, self.t(Key::PlanInstall)));
-                    }
-                    if c.replace > 0 {
-                        parts.push(format!("{} {}", c.replace, self.t(Key::PlanUpdate)));
-                    }
-                    if c.remove > 0 {
-                        parts.push(format!("{} {}", c.remove, self.t(Key::PlanRemove)));
-                    }
-                    if c.quarantine > 0 {
-                        parts.push(format!("{} {}", c.quarantine, self.t(Key::PlanQuarantine)));
-                    }
-                    parts.push(format!(
-                        "{} {}",
-                        human_bytes(p.plan.download_bytes),
-                        self.t(Key::PlanDownload)
-                    ));
-                    ui.label(
-                        RichText::new(parts.join(" · "))
-                            .text_style(th::label_style())
-                            .color(th::BONE_DIM),
-                    );
-                }
-            }
         }
+    }
+
+    /// What the next press would do, in one line. `None` while a job is
+    /// running or the server has not answered: those have their own space.
+    fn ready_summary(&self) -> Option<(Color32, String)> {
+        if self.progress.is_some() || !matches!(self.status, Status::Ready) {
+            return None;
+        }
+        let p = self.prepared.as_ref()?;
+        let c = p.plan.counts();
+        if p.is_up_to_date() {
+            return Some((
+                th::MOSS,
+                format!(
+                    "{} · {} {}",
+                    self.t(Key::UpToDate),
+                    c.keep + c.seed_kept,
+                    self.t(Key::Installed)
+                ),
+            ));
+        }
+        let mut parts = vec![
+            if p.needs_confirmation {
+                self.t(Key::FirstSync)
+            } else {
+                self.t(Key::Pending)
+            }
+            .to_string(),
+        ];
+        if c.add > 0 {
+            parts.push(format!("{} {}", c.add, self.t(Key::PlanInstall)));
+        }
+        if c.replace > 0 {
+            parts.push(format!("{} {}", c.replace, self.t(Key::PlanUpdate)));
+        }
+        if c.remove > 0 {
+            parts.push(format!("{} {}", c.remove, self.t(Key::PlanRemove)));
+        }
+        if c.quarantine > 0 {
+            parts.push(format!("{} {}", c.quarantine, self.t(Key::PlanQuarantine)));
+        }
+        parts.push(format!(
+            "{} {}",
+            human_bytes(p.plan.download_bytes),
+            self.t(Key::PlanDownload)
+        ));
+        Some((th::GOLD, parts.join(" · ")))
     }
 
     #[allow(clippy::too_many_lines)] // one screen region, read top to bottom

@@ -205,12 +205,21 @@ pub(super) struct App {
     /// When publishing was last attempted on its own, so a configuration it
     /// refuses is not retried every couple of seconds.
     publish_tried: Option<Instant>,
+    /// Set when this run had to mint a signing key. The key is the server's
+    /// identity and every player pins it, so a new one is never a detail:
+    /// it used to be a line in a log nobody reads, and an admin whose players
+    /// were suddenly all refused had nothing to go on.
+    new_key_at: Option<String>,
     notice: Option<(String, Color32, Instant)>,
     egui_ctx: egui::Context,
 }
 
 impl App {
     pub(super) fn new(ctx: &egui::Context, config_path: PathBuf, data_dir: PathBuf) -> Self {
+        let new_key_at = match crate::keys::load_or_create(&data_dir) {
+            Ok((_, true)) => Some(crate::keys::key_path(&data_dir).display().to_string()),
+            _ => None,
+        };
         let (cfg, loaded) = match Config::load(&config_path) {
             Ok(cfg) => (cfg, true),
             Err(_) => (Self::fresh_config(&config_path), false),
@@ -255,6 +264,7 @@ impl App {
             publish_when_addressed: false,
             publish_paused: false,
             publish_tried: None,
+            new_key_at,
             game_running: false,
             game_pid: None,
             // Force a process check on the very first frame.
@@ -913,6 +923,18 @@ impl eframe::App for App {
                     &[(Tab::Status, status), (Tab::Settings, settings)],
                 );
                 ui.add_space(12.0);
+                if let Some(path) = self.new_key_at.clone() {
+                    let text = format!(
+                        "{}
+{path}",
+                        self.t(
+                            "Nouvelle clé de signature générée. C'est l'identité de ce serveur : sauvegardez ce dossier. Si elle change, tous vos joueurs sont refusés et doivent réimporter un code d'invitation.",
+                            "A new signing key was generated. It is this server's identity: back this folder up. If it changes, every player is refused and has to import a fresh invite code.",
+                        )
+                    );
+                    w::notice(ui, th::GOLD, &text);
+                    ui.add_space(12.0);
+                }
                 egui::ScrollArea::vertical()
                     .auto_shrink([false, false])
                     .show(ui, |ui| match self.tab {

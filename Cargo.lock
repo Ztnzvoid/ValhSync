@@ -3690,6 +3690,7 @@ dependencies = [
  "axum",
  "bytes",
  "clap",
+ "directories",
  "eframe",
  "notify",
  "reqwest",

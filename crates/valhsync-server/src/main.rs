@@ -290,12 +290,33 @@ fn cmd_init(config_path: &Path, data_dir: &Path, args: InitArgs) -> Result<()> {
 
 /// Where the configuration lives when `--config` is not given: next to the
 /// executable, not in whatever directory the shortcut happened to start in.
+const CONFIG_NAME: &str = "valhsync-server.toml";
+
+/// Where the publisher keeps its configuration, and beside it, its signing
+/// key.
+///
+/// The key is the server's identity: every player pins it, and a publisher
+/// that comes back under a different one is refused by every launcher that
+/// ever synced with it. Keeping it beside the executable meant unpacking a
+/// new build into a new folder silently minted a new identity and depinned
+/// everyone, which is the one thing an update must never do.
+///
+/// So: a configuration already sitting beside the executable is honoured --
+/// that is a deliberate portable install, and moving someone's key out from
+/// under them would cause the very break this avoids. Anything else lives in
+/// the user's configuration directory, where it survives the binary.
 fn default_config_path() -> PathBuf {
-    std::env::current_exe()
+    let beside = std::env::current_exe()
         .ok()
         .and_then(|exe| exe.parent().map(Path::to_path_buf))
         .unwrap_or_else(|| PathBuf::from("."))
-        .join("valhsync-server.toml")
+        .join(CONFIG_NAME);
+    if beside.is_file() {
+        return beside;
+    }
+    directories::BaseDirs::new().map_or(beside, |base| {
+        base.config_dir().join("valhsync").join(CONFIG_NAME)
+    })
 }
 
 /// Print non-fatal configuration warnings, once, before publishing.

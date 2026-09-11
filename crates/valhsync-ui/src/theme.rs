@@ -218,6 +218,57 @@ pub fn backdrop(ctx: &egui::Context, painter: &egui::Painter, rect: Rect) {
     );
     dust(ctx, painter, rect);
     vignette(painter, rect);
+    watermark(ctx, rect);
+}
+
+/// How much of the mark shows through. Three numbers in one place, because
+/// "a little luminous" is a judgement and it will want adjusting.
+const MARK_HALO: u8 = 9;
+const MARK_BLOOM: u8 = 5;
+const MARK_CORE: u8 = 13;
+
+/// Mannaz across the whole window, at the edge of visible.
+///
+/// Painted on the layer above the panel rather than beneath it: the plates
+/// are opaque, and a mark showing only in the gaps between them would read as
+/// four unrelated scratches instead of one shape. Above them, at this alpha,
+/// it is felt rather than seen -- if it reads as a picture it is too strong.
+fn watermark(ctx: &egui::Context, rect: Rect) {
+    let painter = egui::Painter::new(
+        ctx.clone(),
+        egui::LayerId::new(egui::Order::Middle, egui::Id::new("mannaz-watermark")),
+        rect,
+    );
+    let centre = rect.center();
+    let radius = rect.width().min(rect.height()) * 0.34;
+    // The halo a lamp has, so the mark sits inside the torchlight rather
+    // than on top of it.
+    radial_pool(
+        &painter,
+        centre,
+        radius * 2.0,
+        Color32::from_rgba_unmultiplied(0xC7, 0xA4, 0x55, MARK_HALO),
+    );
+    // A wide dim pass for the bloom along each stroke, a narrow bright one
+    // for the carved edge: the same two-step the lamps are built from.
+    rune(
+        &painter,
+        centre,
+        radius,
+        Stroke::new(
+            9.0,
+            Color32::from_rgba_unmultiplied(0xC7, 0xA4, 0x55, MARK_BLOOM),
+        ),
+    );
+    rune(
+        &painter,
+        centre,
+        radius,
+        Stroke::new(
+            2.0,
+            Color32::from_rgba_unmultiplied(0xE8, 0xCD, 0x8B, MARK_CORE),
+        ),
+    );
 }
 
 /// A fine dust over the ground, so the surface is a material rather than a
