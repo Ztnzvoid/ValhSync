@@ -67,6 +67,8 @@ enum PublishMode {
 #[derive(Debug, Clone)]
 struct ModEntry {
     folder: String,
+    /// A plugin sitting directly in `plugins`, not in a folder of its own.
+    loose: bool,
     /// Excluded from the pack: it runs on the server only.
     server_only: bool,
     /// Comes from the client-extras folder: it runs on players only.
@@ -291,7 +293,13 @@ impl App {
                 return;
             };
             for e in entries.flatten() {
-                if !e.path().is_dir() {
+                let path = e.path();
+                // A mod is a folder, or a plugin dropped loose in `plugins`.
+                let is_loose_plugin = path.is_file()
+                    && path
+                        .extension()
+                        .is_some_and(|x| x.eq_ignore_ascii_case("dll"));
+                if !path.is_dir() && !is_loose_plugin {
                     continue;
                 }
                 let Some(folder) = e.file_name().to_str().map(str::to_string) else {
@@ -303,6 +311,7 @@ impl App {
                 out.push(ModEntry {
                     server_only: false,
                     client_only,
+                    loose: is_loose_plugin,
                     folder,
                 });
             }
@@ -310,19 +319,15 @@ impl App {
         add(self.cfg.pack.server_root.as_ref(), false, &mut out);
         add(self.cfg.pack.client_extras.as_ref(), true, &mut out);
         for m in &mut out {
-            m.server_only = self
-                .cfg
-                .pack
-                .exclude
-                .iter()
-                .any(|p| p == &exclude_pattern(&m.folder));
+            let pattern = exclude_pattern(&m.folder, m.loose);
+            m.server_only = self.cfg.pack.exclude.iter().any(|p| p == &pattern);
         }
         out.sort_by_key(|m| m.folder.to_lowercase());
         out
     }
 
-    fn set_server_only(&mut self, folder: &str, server_only: bool) {
-        let pattern = exclude_pattern(folder);
+    fn set_server_only(&mut self, folder: &str, loose: bool, server_only: bool) {
+        let pattern = exclude_pattern(folder, loose);
         if server_only {
             if !self.cfg.pack.exclude.contains(&pattern) {
                 self.cfg.pack.exclude.push(pattern);
@@ -463,8 +468,14 @@ impl App {
     }
 }
 
-fn exclude_pattern(folder: &str) -> String {
-    format!("BepInEx/plugins/{folder}/**")
+/// How a mod is named in `exclude`: a folder and everything under it, or the
+/// single file of a loose plugin.
+fn exclude_pattern(name: &str, loose: bool) -> String {
+    if loose {
+        format!("BepInEx/plugins/{name}")
+    } else {
+        format!("BepInEx/plugins/{name}/**")
+    }
 }
 
 impl eframe::App for App {
@@ -920,7 +931,7 @@ impl App {
                 ),
             );
             ui.add_space(6.0);
-            let mut changed: Vec<(String, bool)> = Vec::new();
+            let mut changed: Vec<(String, bool, bool)> = Vec::new();
             egui::ScrollArea::vertical()
                 .max_height(190.0)
                 .id_salt("mods")
@@ -929,7 +940,7 @@ impl App {
                         ui.horizontal(|ui| {
                             let mut sent = !m.server_only;
                             if ui.checkbox(&mut sent, "").changed() {
-                                changed.push((m.folder.clone(), !sent));
+                                changed.push((m.folder.clone(), m.loose, !sent));
                             }
                             ui.label(RichText::new(&m.folder).color(if m.server_only {
                                 th::BONE_DIM
@@ -953,8 +964,8 @@ impl App {
                         });
                     }
                 });
-            for (folder, server_only) in changed {
-                self.set_server_only(&folder, server_only);
+            for (folder, loose, server_only) in changed {
+                self.set_server_only(&folder, loose, server_only);
                 self.mods = self.collect_mods();
             }
             if let Some(extras) = self.cfg.pack.client_extras.clone() {

@@ -86,19 +86,23 @@ pub struct LimitsSection {
     pub max_files: usize,
 }
 
+/// What gets published unless the admin says otherwise.
+///
+/// The whole `BepInEx` tree, not a list of its subfolders: which ones exist
+/// depends on the BepInEx version (`monomod`, `unity-libs`, `interop`...) and
+/// mods drop files wherever they like inside it. Enumerating would quietly
+/// miss whatever the list did not foresee.
 pub fn default_include() -> Vec<String> {
     [
+        // Doorstop, which is what loads BepInEx at all.
         "winhttp.dll",
         "doorstop_config.ini",
         ".doorstop_version",
-        "BepInEx/core/**",
-        "BepInEx/plugins/**",
-        "BepInEx/patchers/**",
-        "BepInEx/config/**",
-        // Shipped by BepInExPack_Valheim for Linux players; harmless on Windows.
         "doorstop_libs/**",
         "start_game_bepinex.sh",
-        // Older packs shipped a corlib; 5.4.2350 does not, the glob then matches nothing.
+        // Everything BepInEx and its mods use.
+        "BepInEx/**",
+        // Shipped by older packs; the glob matches nothing when absent.
         "unstripped_corlib/**",
     ]
     .iter()
@@ -106,11 +110,15 @@ pub fn default_include() -> Vec<String> {
     .collect()
 }
 
+/// Noise that lives inside the tree and must not travel: logs, caches and the
+/// backups editors leave behind.
 pub fn default_exclude() -> Vec<String> {
     [
-        "BepInEx/LogOutput.log",
+        "BepInEx/**/*.log",
         "BepInEx/cache/**",
-        "BepInEx/config/**/*.bak",
+        "BepInEx/**/*.bak",
+        "BepInEx/**/*.old",
+        "BepInEx/**/*.tmp",
     ]
     .iter()
     .map(ToString::to_string)
