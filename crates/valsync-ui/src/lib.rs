@@ -4,6 +4,7 @@
 //! `docs/palette.md`.
 
 pub mod console;
+pub mod frame;
 pub mod theme;
 pub mod widgets;
 

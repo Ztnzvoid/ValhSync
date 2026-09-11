@@ -12,18 +12,13 @@ mod worker;
 use std::path::PathBuf;
 
 use anyhow::{Context as _, Result};
-use eframe::egui;
 use valsync_ui::theme;
 
 /// Open the window. `config_path` and `data_dir` are the same ones the CLI
 /// uses, so both faces of the program work on one configuration.
 pub fn run(config_path: PathBuf, data_dir: PathBuf) -> Result<()> {
     let options = eframe::NativeOptions {
-        viewport: egui::ViewportBuilder::default()
-            .with_title("ValSync · Serveur")
-            .with_inner_size([780.0, 760.0])
-            .with_min_inner_size([680.0, 560.0])
-            .with_icon(theme::icon()),
+        viewport: valsync_ui::frame::viewport("ValSync · Serveur", [780.0, 780.0], [680.0, 560.0]),
         ..Default::default()
     };
     eframe::run_native(

@@ -5,18 +5,53 @@ use eframe::egui::{self, Color32, RichText};
 
 use crate::theme as th;
 
-/// The product header: name in carved gold, one line of subtitle.
-pub fn header(ui: &mut egui::Ui, title: &str, subtitle: &str) {
-    ui.vertical(|ui| {
-        ui.label(RichText::new(title).size(24.0).strong().color(th::GOLD));
-        ui.label(RichText::new(subtitle).small().color(th::BONE_DIM));
+/// The product header: the valknut and the name, carved in gold over a
+/// faint glow. The glow is the document's `text-shadow` on `h1`.
+pub fn header(ui: &mut egui::Ui, title: &str) {
+    ui.horizontal(|ui| {
+        // The valknut, struck like a maker's mark to the left of the name.
+        let mark = 30.0;
+        let (mark_rect, _) =
+            ui.allocate_exact_size(egui::vec2(mark, mark), egui::Sense::hover());
+        th::glow(ui.painter(), mark_rect, th::GOLD.gamma_multiply(0.12));
+        th::valknut(
+            ui.painter(),
+            mark_rect.center(),
+            mark * 0.50,
+            egui::Stroke::new(1.4, th::GOLD),
+        );
+        ui.add_space(10.0);
+        let galley = ui
+            .painter()
+            .layout_no_wrap(title.to_owned(), th::display_font(23.0), th::GOLD);
+        let (rect, _) = ui.allocate_exact_size(galley.size(), egui::Sense::hover());
+        th::glow(ui.painter(), rect, th::GOLD.gamma_multiply(0.18));
+        ui.painter().galley(rect.min, galley, th::GOLD);
     });
 }
 
-/// Section title inside a card.
+/// Section title inside a card: the number in northern mist, the words in
+/// brass small-caps, a hairline underneath. The document's `h2`, in a window.
 pub fn section(ui: &mut egui::Ui, text: &str) {
-    ui.label(RichText::new(text).size(16.0).strong().color(th::GOLD_LIT));
-    ui.add_space(2.0);
+    let (number, words) = text.split_once('·').unwrap_or(("", text));
+    ui.horizontal(|ui| {
+        if !number.is_empty() {
+            ui.label(
+                RichText::new(number.trim())
+                    .font(th::display_font(15.0))
+                    .color(th::RUNE),
+            );
+        }
+        ui.label(
+            RichText::new(words.trim().to_uppercase())
+                .font(th::display_font(15.0))
+                .strong()
+                .color(th::GOLD),
+        );
+    });
+    ui.add_space(3.0);
+    th::hairline(ui);
+    ui.add_space(7.0);
 }
 
 /// Dimmed explanatory line under a control.
@@ -69,14 +104,16 @@ pub fn field(ui: &mut egui::Ui, label: &str, value: &mut String, width: f32) -> 
     )
 }
 
-/// A warning or error plate: leather ground, coloured rule, coloured text.
+/// A warning or error plate: leather ground, coloured rule down the left,
+/// coloured text.
 pub fn notice(ui: &mut egui::Ui, color: Color32, text: &str) {
-    th::callout(color).show(ui, |ui| {
+    th::callout(ui, color, |ui| {
         ui.label(RichText::new(text).color(color));
     });
 }
 
-/// Monospace read-only text the user is meant to copy (invite codes, paths).
+/// Monospace text the user is meant to copy, on the dark ground and with the
+/// blood rule of the document's log block.
 pub fn code_block(ui: &mut egui::Ui, text: &str) {
     let mut owned = text.to_string();
     ui.add(

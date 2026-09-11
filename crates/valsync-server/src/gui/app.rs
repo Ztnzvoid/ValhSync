@@ -10,6 +10,7 @@ use std::time::{Duration, Instant};
 
 use eframe::egui::{self, Align, Color32, Layout, RichText};
 use valsync_core::limits::human_bytes;
+use valsync_ui::frame as chrome;
 use valsync_ui::theme as th;
 use valsync_ui::widgets as w;
 
@@ -458,14 +459,12 @@ impl eframe::App for App {
             self.notice = None;
         }
 
+        chrome::handle_edge_resize(ctx);
+        chrome::paint_window(ctx);
         self.top_bar(ctx);
         self.bottom_bar(ctx);
         egui::CentralPanel::default()
-            .frame(
-                egui::Frame::new()
-                    .fill(th::NIGHT)
-                    .inner_margin(egui::Margin::same(18)),
-            )
+            .frame(egui::Frame::new().inner_margin(egui::Margin::same(18)))
             .show(ctx, |ui| {
                 egui::ScrollArea::vertical().show(ui, |ui| {
                     self.card_game_server(ui);
@@ -479,6 +478,7 @@ impl eframe::App for App {
                     self.card_invite(ui);
                 });
             });
+        chrome::draw_border(ctx);
     }
 
     fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
@@ -495,21 +495,21 @@ impl App {
         egui::TopBottomPanel::top("top")
             .frame(
                 egui::Frame::new()
-                    .fill(th::NIGHT)
-                    .inner_margin(egui::Margin::symmetric(18, 14))
+                    .inner_margin(egui::Margin {
+                        left: 18,
+                        right: 0,
+                        top: 10,
+                        bottom: 12,
+                    })
                     .stroke(egui::Stroke::new(1.0, th::EDGE_SOFT)),
             )
             .show(ctx, |ui| {
+                chrome::draggable(ui, ui.max_rect());
                 ui.horizontal(|ui| {
-                    w::header(
-                        ui,
-                        "V A L S Y N C   ·   S E R V E U R",
-                        self.t(
-                            "Publiez vos mods. Vos joueurs n'ont qu'à cliquer Jouer.",
-                            "Publish your mods. Your players just press Play.",
-                        ),
-                    );
-                    ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                    w::header(ui, "V A L S Y N C   ·   S E R V E U R");
+                    ui.with_layout(Layout::right_to_left(Align::Min), |ui| {
+                        chrome::window_controls(ui);
+                        ui.add_space(8.0);
                         if ui.button(self.lang.other().code()).clicked() {
                             self.lang = self.lang.other();
                         }
@@ -522,7 +522,6 @@ impl App {
         egui::TopBottomPanel::bottom("bottom")
             .frame(
                 egui::Frame::new()
-                    .fill(th::PANEL)
                     .inner_margin(egui::Margin::symmetric(18, 12))
                     .stroke(egui::Stroke::new(1.0, th::EDGE_SOFT)),
             )
@@ -820,6 +819,7 @@ impl App {
         });
     }
 
+    #[allow(clippy::too_many_lines)] // one card, read top to bottom
     fn card_mods(&mut self, ui: &mut egui::Ui) {
         th::card().show(ui, |ui| {
             ui.set_width(ui.available_width());
@@ -833,6 +833,28 @@ impl App {
                     ),
                 );
                 return;
+            }
+            // Say where the list comes from: it is read from the server's own
+            // BepInEx folder, which is not obvious from a list of names.
+            if let Some(plugins) = self
+                .cfg
+                .pack
+                .server_root
+                .as_ref()
+                .map(|r| r.join("BepInEx").join("plugins"))
+            {
+                ui.horizontal(|ui| {
+                    w::hint(ui, self.t("Lus dans", "Read from"));
+                    ui.label(
+                        RichText::new(plugins.display().to_string())
+                            .monospace()
+                            .small()
+                            .color(th::RUNE),
+                    );
+                    if ui.small_button(self.t("Ouvrir", "Open")).clicked() {
+                        open_path(&plugins);
+                    }
+                });
             }
             w::hint(
                 ui,
@@ -880,12 +902,22 @@ impl App {
                 self.mods = self.collect_mods();
             }
             if let Some(extras) = self.cfg.pack.client_extras.clone() {
-                ui.add_space(6.0);
+                ui.add_space(10.0);
+                th::hairline(ui);
+                ui.add_space(8.0);
+                ui.label(
+                    RichText::new(self.t(
+                        "Optionnel · mods qui ne tournent QUE chez les joueurs",
+                        "Optional · mods that run ONLY on players",
+                    ))
+                    .font(th::display_font(13.0))
+                    .color(th::GOLD_LIT),
+                );
                 w::hint(
                     ui,
                     self.t(
-                        "Mods réservés aux joueurs : déposez-les dans ce dossier, à la même arborescence que le jeu.",
-                        "Player-only mods: drop them in this folder, laid out like the game.",
+                        "Unshamed, ConfigurationManager, EquipmentAndQuickSlots… Ils ne sont pas installés sur le serveur, donc ValSync ne peut pas les y trouver : déposez-les ici, à la même arborescence que le jeu (BepInEx/plugins/...). Si vous n'en avez aucun, ignorez ce dossier.",
+                        "Unshamed, ConfigurationManager, EquipmentAndQuickSlots… They are not installed on the server, so ValSync cannot find them there: drop them here, laid out like the game (BepInEx/plugins/...). If you have none, ignore this folder.",
                     ),
                 );
                 ui.horizontal(|ui| {

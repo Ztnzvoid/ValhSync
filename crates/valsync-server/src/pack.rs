@@ -21,6 +21,8 @@ pub struct Published {
     pub manifest_bytes: Bytes,
     pub signature: String,
     pub hashes: HashSet<String>,
+    /// Base64url public key, published next to the manifest.
+    pub pubkey: String,
 }
 
 #[derive(Debug)]
@@ -122,6 +124,7 @@ pub fn build(cfg: &Config, keypair: &Keypair, data_dir: &Path) -> Result<BuildOu
             manifest_bytes: Bytes::from(manifest_bytes),
             signature,
             hashes,
+            pubkey: keypair.public().to_b64(),
         }),
         scan,
         previous,

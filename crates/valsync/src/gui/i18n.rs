@@ -52,9 +52,19 @@ pub enum Key {
     ModsDisabled,
     ModsEnabled,
     Rollback,
-    OpenQuarantine,
+    SetAside,
+    SetAsideHint,
+    SetAsideNone,
     GameFolder,
     GameFolderHint,
+    GameFolderInUse,
+    GameFolderAuto,
+    ThisServer,
+    ValsyncItself,
+    OpenFolder,
+    ResetAll,
+    ResetAllHint,
+    ResetDone,
     Apply,
     Cancel,
     Close,
@@ -108,11 +118,25 @@ fn fr(key: Key) -> &'static str {
         Key::ModsDisabled => "Mods désactivés. La prochaine synchronisation les rétablira.",
         Key::ModsEnabled => "Mods réactivés.",
         Key::Rollback => "Revenir à la version précédente",
-        Key::OpenQuarantine => "Voir la quarantaine",
+        Key::SetAside => "Mods mis de côté",
+        Key::SetAsideHint => {
+            "Fichiers de mods trouvés chez vous mais absents du pack du serveur : ValSync les a déplacés pour qu'ils ne bloquent pas la connexion. Rien n'est supprimé, vous pouvez les récupérer."
+        }
+        Key::SetAsideNone => "Aucun mod mis de côté.",
         Key::GameFolder => "Dossier du jeu",
         Key::GameFolderHint => {
-            "Dossier contenant valheim.exe. Vide = détection automatique via Steam."
+            "Laissez vide pour que ValSync trouve Valheim tout seul via Steam. Remplissez seulement si la détection échoue."
         }
+        Key::GameFolderInUse => "Utilisé actuellement",
+        Key::GameFolderAuto => "Détection automatique",
+        Key::ThisServer => "Ce serveur",
+        Key::ValsyncItself => "ValSync",
+        Key::OpenFolder => "Ouvrir le dossier",
+        Key::ResetAll => "Tout réinitialiser",
+        Key::ResetAllHint => {
+            "Oublie tous les serveurs et les réglages de ValSync. Ne touche pas au jeu ni aux mods installés."
+        }
+        Key::ResetDone => "ValSync réinitialisé.",
         Key::Apply => "Appliquer",
         Key::Cancel => "Annuler",
         Key::Close => "Fermer",
@@ -164,11 +188,25 @@ fn en(key: Key) -> &'static str {
         Key::ModsDisabled => "Mods disabled. The next sync will restore them.",
         Key::ModsEnabled => "Mods enabled again.",
         Key::Rollback => "Go back to the previous version",
-        Key::OpenQuarantine => "Open quarantine",
+        Key::SetAside => "Mods set aside",
+        Key::SetAsideHint => {
+            "Mod files found on your machine but absent from the server's pack: ValSync moved them so they cannot block your connection. Nothing is deleted, you can take them back."
+        }
+        Key::SetAsideNone => "Nothing set aside.",
         Key::GameFolder => "Game folder",
         Key::GameFolderHint => {
-            "Folder containing valheim.exe. Empty = automatic detection via Steam."
+            "Leave empty and ValSync finds Valheim by itself through Steam. Fill it in only if detection fails."
         }
+        Key::GameFolderInUse => "Currently used",
+        Key::GameFolderAuto => "Automatic detection",
+        Key::ThisServer => "This server",
+        Key::ValsyncItself => "ValSync",
+        Key::OpenFolder => "Open the folder",
+        Key::ResetAll => "Reset everything",
+        Key::ResetAllHint => {
+            "Forgets every server and every ValSync setting. Leaves the game and the installed mods alone."
+        }
+        Key::ResetDone => "ValSync reset.",
         Key::Apply => "Apply",
         Key::Cancel => "Cancel",
         Key::Close => "Close",

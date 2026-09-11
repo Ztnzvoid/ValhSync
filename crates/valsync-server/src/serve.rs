@@ -31,6 +31,8 @@ struct AppState {
     store: Store,
     invite: String,
     server_name: String,
+    /// Base64url public key, so a player who only has an address can pin it.
+    pubkey: String,
 }
 
 impl AppState {
@@ -72,6 +74,7 @@ pub fn prepare(cfg: &Config, keypair: Keypair, data_dir: PathBuf, watch: bool) -
         store: Store::open(&data_dir)?,
         invite,
         server_name: cfg.server.name.trim().to_string(),
+        pubkey: keypair.public().to_b64(),
     });
 
     let watcher = if watch {
@@ -84,6 +87,7 @@ pub fn prepare(cfg: &Config, keypair: Keypair, data_dir: PathBuf, watch: bool) -
         .route("/", get(root))
         .route("/manifest.json", get(manifest))
         .route("/manifest.sig", get(signature))
+        .route("/key", get(public_key))
         .route("/files/{hash}", get(file))
         .route("/health", get(health))
         .with_state(state);
@@ -251,6 +255,20 @@ async fn signature(State(st): State<Arc<AppState>>) -> Response {
             (header::CACHE_CONTROL, HeaderValue::from_static("no-cache")),
         ],
         format!("{}\n", cur.signature),
+    )
+        .into_response()
+}
+
+/// The server's public key. Nothing secret: it is what a launcher pins, and
+/// it is already inside every invite code.
+async fn public_key(State(st): State<Arc<AppState>>) -> Response {
+    (
+        [
+            (header::CONTENT_TYPE, HeaderValue::from_static("text/plain")),
+            (header::CACHE_CONTROL, HeaderValue::from_static("no-cache")),
+        ],
+        format!("{}
+", st.pubkey),
     )
         .into_response()
 }

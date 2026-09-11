@@ -16,6 +16,7 @@ use crate::paths::AppPaths;
 use crate::servers::{KnownServer, ServerBook};
 use crate::settings::Settings;
 use crate::{game, invite_file, vanilla};
+use valsync_ui::frame as chrome;
 use valsync_ui::theme as th;
 
 const NOTICE_TTL: Duration = Duration::from_secs(7);
@@ -423,6 +424,8 @@ impl eframe::App for App {
             }
         }
 
+        chrome::handle_edge_resize(ctx);
+        chrome::paint_window(ctx);
         self.header(ctx);
         self.notice_bar(ctx);
         egui::CentralPanel::default()
@@ -433,7 +436,9 @@ impl eframe::App for App {
             )
             .show(ctx, |ui| {
                 if let Some(fatal) = self.fatal.clone() {
-                    th::callout(th::BLOOD).show(ui, |ui| ui.colored_label(th::BLOOD_LIT, fatal));
+                    th::callout(ui, th::BLOOD, |ui| {
+                        ui.colored_label(th::BLOOD_LIT, fatal);
+                    });
                     return;
                 }
                 self.server_row(ui);
@@ -445,6 +450,7 @@ impl eframe::App for App {
                 }
             });
 
+        chrome::draw_border(ctx);
         self.add_dialog(ctx);
         self.confirm_dialog(ctx);
         self.settings_dialog(ctx);
@@ -458,26 +464,21 @@ impl App {
         egui::TopBottomPanel::top("header")
             .frame(
                 egui::Frame::new()
-                    .fill(th::NIGHT)
-                    .inner_margin(egui::Margin::symmetric(20, 14))
+                    .inner_margin(egui::Margin {
+                        left: 20,
+                        right: 0,
+                        top: 10,
+                        bottom: 12,
+                    })
                     .stroke(egui::Stroke::new(1.0, th::EDGE_SOFT)),
             )
             .show(ctx, |ui| {
+                chrome::draggable(ui, ui.max_rect());
                 ui.horizontal(|ui| {
-                    ui.vertical(|ui| {
-                        ui.label(
-                            RichText::new("V A L S Y N C")
-                                .size(24.0)
-                                .strong()
-                                .color(th::GOLD),
-                        );
-                        ui.label(
-                            RichText::new(self.t(Key::Subtitle))
-                                .small()
-                                .color(th::BONE_DIM),
-                        );
-                    });
-                    ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                    valsync_ui::widgets::header(ui, "V A L S Y N C");
+                    ui.with_layout(Layout::right_to_left(Align::Min), |ui| {
+                        chrome::window_controls(ui);
+                        ui.add_space(8.0);
                         if ui.button(self.t(Key::Settings)).clicked() {
                             self.settings_open = !self.settings_open;
                         }
@@ -503,7 +504,6 @@ impl App {
         egui::TopBottomPanel::bottom("notice")
             .frame(
                 egui::Frame::new()
-                    .fill(th::PANEL)
                     .inner_margin(egui::Margin::symmetric(20, 10))
                     .stroke(egui::Stroke::new(1.0, th::EDGE_SOFT)),
             )
@@ -595,6 +595,7 @@ impl App {
         });
     }
 
+    #[allow(clippy::too_many_lines)] // one card, read top to bottom
     fn server_card(&mut self, ui: &mut egui::Ui) {
         let Some(server) = self.selected_server() else {
             return;
@@ -625,20 +626,31 @@ impl App {
 
             let can_play = matches!(self.status, Status::Ready) && !self.busy();
             ui.vertical_centered(|ui| {
-                if ui
-                    .add_enabled(
-                        can_play,
-                        egui::Button::new(
-                            RichText::new(self.t(Key::Play))
-                                .size(22.0)
-                                .strong()
-                                .color(th::NIGHT),
-                        )
-                        .fill(th::GOLD)
-                        .min_size(egui::vec2(260.0, 54.0)),
+                let (ink, plate) = if can_play {
+                    (th::NIGHT, th::GOLD)
+                } else {
+                    (th::BONE_DIM, th::LEATHER)
+                };
+                let play = ui.add_enabled(
+                    can_play,
+                    egui::Button::new(
+                        RichText::new(self.t(Key::Play))
+                            .font(th::display_font(22.0))
+                            .strong()
+                            .color(ink),
                     )
-                    .clicked()
-                {
+                    .fill(plate)
+                    .corner_radius(4)
+                    .min_size(egui::vec2(280.0, 56.0)),
+                );
+                if can_play {
+                    // A brass plate under torchlight: brighter as the pointer
+                    // comes to rest on it.
+                    let heat = if play.hovered() { 0.30 } else { 0.16 };
+                    th::glow(ui.painter(), play.rect, th::GOLD.gamma_multiply(heat));
+                    th::brackets(ui.painter(), play.rect.expand(5.0), th::EDGE);
+                }
+                if play.clicked() {
                     self.on_play();
                 }
             });
@@ -656,11 +668,11 @@ impl App {
                     .as_ref()
                     .map(|p| engine::quarantine_dir(&p.install.root))
                     .filter(|q| q.is_dir());
+                let has_quarantine = quarantine.is_some();
                 if ui
-                    .add_enabled(
-                        quarantine.is_some(),
-                        egui::Button::new(self.t(Key::OpenQuarantine)),
-                    )
+                    .add_enabled(has_quarantine, egui::Button::new(self.t(Key::SetAside)))
+                    .on_hover_text(self.t(Key::SetAsideHint))
+                    .on_disabled_hover_text(self.t(Key::SetAsideNone))
                     .clicked()
                     && let Some(q) = quarantine
                 {
@@ -687,7 +699,7 @@ impl App {
                 .and_then(|p| game::bepinex_hint(&p.install))
             {
                 ui.add_space(10.0);
-                th::callout(th::GOLD).show(ui, |ui| {
+                th::callout(ui, th::GOLD, |ui| {
                     ui.label(RichText::new(hint).small().color(th::GOLD_LIT));
                 });
             }
@@ -722,7 +734,7 @@ impl App {
             }
             Status::Error(e) => {
                 let e = e.clone();
-                th::callout(th::BLOOD).show(ui, |ui| {
+                th::callout(ui, th::BLOOD, |ui| {
                     ui.label(RichText::new(e).color(th::BLOOD_LIT));
                 });
             }
@@ -800,7 +812,7 @@ impl App {
                         .hint_text(self.t(Key::InviteHint)),
                 );
                 if let Some(e) = &dialog.error {
-                    th::callout(th::BLOOD).show(ui, |ui| {
+                    th::callout(ui, th::BLOOD, |ui| {
                         ui.label(RichText::new(e).color(th::BLOOD_LIT));
                     });
                 }
@@ -947,6 +959,7 @@ impl App {
         }
     }
 
+    #[allow(clippy::too_many_lines)] // one dialog, read top to bottom
     fn settings_dialog(&mut self, ctx: &egui::Context) {
         if !self.settings_open {
             return;
@@ -954,52 +967,134 @@ impl App {
         let mut close = false;
         let mut apply_root = false;
         let mut forget = false;
+        let mut reset = false;
+        let server = self.selected_server();
+        let install = self.prepared.as_ref().map(|p| p.install.clone());
+
         egui::Window::new(self.t(Key::Settings))
             .collapsible(false)
             .resizable(false)
             .anchor(egui::Align2::CENTER_CENTER, egui::vec2(0.0, 0.0))
-            .default_width(520.0)
+            .default_width(540.0)
             .show(ctx, |ui| {
-                ui.label(
-                    RichText::new(self.t(Key::GameFolder))
-                        .strong()
-                        .color(th::GOLD),
-                );
-                ui.label(
-                    RichText::new(self.t(Key::GameFolderHint))
-                        .small()
-                        .color(th::BONE_DIM),
-                );
+                // --- where Valheim is -------------------------------------
+                valsync_ui::widgets::section(ui, self.t(Key::GameFolder));
+                match &install {
+                    Some(i) => {
+                        ui.horizontal_wrapped(|ui| {
+                            ui.label(
+                                RichText::new(format!("{} :", self.t(Key::GameFolderInUse)))
+                                    .small()
+                                    .color(th::BONE_DIM),
+                            );
+                            ui.label(
+                                RichText::new(i.root.display().to_string())
+                                    .monospace()
+                                    .small()
+                                    .color(th::BONE),
+                            );
+                        });
+                        if self.settings.game_root.is_none() {
+                            ui.label(
+                                RichText::new(self.t(Key::GameFolderAuto))
+                                    .small()
+                                    .color(th::RUNE),
+                            );
+                        }
+                    }
+                    None => {
+                        valsync_ui::widgets::notice(
+                            ui,
+                            th::BLOOD_LIT,
+                            &crate::SyncError::GameNotFound.to_string(),
+                        );
+                    }
+                }
+                ui.add_space(6.0);
+                valsync_ui::widgets::hint(ui, self.t(Key::GameFolderHint));
                 ui.horizontal(|ui| {
                     ui.add(
                         egui::TextEdit::singleline(&mut self.game_root_input)
-                            .desired_width(380.0)
-                            .font(egui::TextStyle::Monospace),
+                            .desired_width(340.0)
+                            .font(egui::TextStyle::Monospace)
+                            .hint_text("…/steamapps/common/Valheim"),
                     );
                     if ui.button(self.t(Key::Apply)).clicked() {
                         apply_root = true;
                     }
                 });
-                if let Some(p) = &self.prepared {
+
+                // --- the selected server ----------------------------------
+                if let Some(s) = &server {
+                    ui.add_space(14.0);
+                    valsync_ui::widgets::section(ui, self.t(Key::ThisServer));
+                    ui.label(RichText::new(&s.name).strong().color(th::BONE));
+                    ui.label(
+                        RichText::new(&s.url)
+                            .monospace()
+                            .small()
+                            .color(th::BONE_DIM),
+                    );
                     ui.label(
                         RichText::new(format!(
-                            "→ {} ({:?})",
-                            p.install.root.display(),
-                            p.install.flavor
+                            "{} : {}",
+                            self.t(Key::KeyFingerprint),
+                            s.fingerprint()
                         ))
                         .small()
                         .color(th::RUNE),
                     );
+                    ui.add_space(6.0);
+                    if ui.button(self.t(Key::Forget)).clicked() {
+                        forget = true;
+                    }
                 }
-                ui.add_space(12.0);
-                if self.selected.is_some() && ui.button(self.t(Key::Forget)).clicked() {
-                    forget = true;
+
+                // --- ValSync itself ---------------------------------------
+                ui.add_space(14.0);
+                valsync_ui::widgets::section(ui, self.t(Key::ValsyncItself));
+                ui.label(
+                    RichText::new(format!("Version {}", env!("CARGO_PKG_VERSION")))
+                        .small()
+                        .color(th::BONE_DIM),
+                );
+                ui.horizontal(|ui| {
+                    ui.label(
+                        RichText::new(self.paths.config_dir.display().to_string())
+                            .monospace()
+                            .small()
+                            .color(th::BONE_DIM),
+                    );
+                    if ui.small_button(self.t(Key::OpenFolder)).clicked() {
+                        open_folder(&self.paths.config_dir);
+                    }
+                });
+                ui.add_space(6.0);
+                valsync_ui::widgets::hint(ui, self.t(Key::ResetAllHint));
+                if ui.button(self.t(Key::ResetAll)).clicked() {
+                    reset = true;
                 }
-                ui.add_space(8.0);
+
+                ui.add_space(14.0);
                 if ui.button(self.t(Key::Close)).clicked() {
                     close = true;
                 }
             });
+
+        if reset {
+            for path in [self.paths.servers_file(), self.paths.settings_file()] {
+                let _ = std::fs::remove_file(path);
+            }
+            self.book = ServerBook::default();
+            self.settings = Settings::default();
+            self.game_root_input.clear();
+            self.selected = None;
+            self.prepared = None;
+            self.status = Status::NoServer;
+            let msg = self.t(Key::ResetDone).to_string();
+            self.notify(msg, th::GOLD_LIT);
+            self.settings_open = false;
+        }
 
         if apply_root {
             let input = self.game_root_input.trim().to_string();

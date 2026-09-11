@@ -7,15 +7,10 @@ pub mod i18n;
 pub use valsync_ui::theme;
 
 use anyhow::{Context as _, Result};
-use eframe::egui;
 
 pub fn run() -> Result<()> {
     let options = eframe::NativeOptions {
-        viewport: egui::ViewportBuilder::default()
-            .with_title("ValSync")
-            .with_inner_size([640.0, 500.0])
-            .with_min_inner_size([540.0, 420.0])
-            .with_icon(theme::icon()),
+        viewport: valsync_ui::frame::viewport("ValSync", [660.0, 540.0], [560.0, 440.0]),
         ..Default::default()
     };
     eframe::run_native(
