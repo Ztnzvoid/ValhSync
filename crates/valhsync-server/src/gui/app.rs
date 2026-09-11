@@ -488,6 +488,15 @@ impl App {
     /// The invite code, if a signing key already exists. Opening the window
     /// must not create one: a release package would then ship with a key in
     /// it. The key is generated on the first Save, Scan or Export.
+    /// The port out of `bind`, falling back to the game's.
+    fn bind_port(&self) -> u16 {
+        self.bind
+            .trim()
+            .rsplit_once(':')
+            .and_then(|(_, p)| p.trim().parse().ok())
+            .unwrap_or(config::DEFAULT_PORT)
+    }
+
     fn refresh_invite(&mut self) {
         self.invite = crate::keys::load(&self.data_dir)
             .ok()
@@ -512,8 +521,18 @@ impl App {
         std::thread::spawn(move || job(rep));
     }
 
+    /// `client-extras` is ours; make it rather than ask for it.
+    fn ensure_client_extras(&self) {
+        if let Some(dir) = &self.cfg.pack.client_extras
+            && !dir.is_dir()
+        {
+            let _ = std::fs::create_dir_all(dir);
+        }
+    }
+
     fn save(&mut self) -> bool {
         self.pull_fields();
+        self.ensure_client_extras();
         if let Err(e) = self.cfg.validate() {
             self.notify(format!("{e:#}"), th::BLOOD_LIT);
             return false;
@@ -1378,11 +1397,25 @@ impl App {
                         ),
                     );
                     ui.horizontal(|ui| {
-                        ui.add(
-                            egui::TextEdit::singleline(&mut self.bind)
-                                .desired_width(180.0)
-                                .font(egui::TextStyle::Monospace),
+                        ui.label(
+                            RichText::new(self.t("Port", "Port"))
+                                .small()
+                                .color(th::BONE_DIM),
                         );
+                        let mut port = self.bind_port();
+                        if ui
+                            .add_enabled(
+                                self.serving_at.is_none(),
+                                egui::DragValue::new(&mut port).range(1024..=65_533),
+                            )
+                            .on_hover_text(self.t(
+                                "Celui du jeu par défaut. Le changer voudrait dire ouvrir un port de plus.",
+                                "The game's, by default. Changing it would mean opening one more port.",
+                            ))
+                            .changed()
+                        {
+                            self.bind = format!("0.0.0.0:{port}");
+                        }
                         match self.serving_at.clone() {
                             None => {
                                 if ui
@@ -1487,13 +1520,26 @@ impl App {
             );
             ui.add_space(4.0);
             if self.invite.is_empty() {
-                w::hint(
-                    ui,
-                    self.t(
-                        "Le code apparaîtra après le premier Enregistrer : c'est à ce moment que votre clé de signature est créée.",
-                        "The code appears after the first Save: that is when your signing key is created.",
-                    ),
-                );
+                // A code is missing for exactly one of two reasons, and the
+                // admin can act on either -- as long as the window says which.
+                if self.edited().public_url().is_none() {
+                    w::notice(
+                        ui,
+                        th::GOLD,
+                        self.t(
+                            "Pas encore d'adresse à mettre dans le code. Renseignez ci-dessus l'adresse de votre serveur de jeu — celle que vos joueurs utilisent déjà dans Valheim — ou, si vous hébergez l'export, son URL publique.",
+                            "No address to put in the code yet. Fill in your game server's address above — the one your players already use in Valheim — or, if you host the export, its public URL.",
+                        ),
+                    );
+                } else {
+                    w::hint(
+                        ui,
+                        self.t(
+                            "Le code apparaîtra après le premier Enregistrer : c'est à ce moment que votre clé de signature est créée.",
+                            "The code appears after the first Save: that is when your signing key is created.",
+                        ),
+                    );
+                }
                 return;
             }
             self.reachability(ui);

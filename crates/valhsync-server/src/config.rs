@@ -333,7 +333,8 @@ impl Config {
             }
         }
         let host = self.server.game_address.trim().rsplit_once(':')?.0.trim();
-        if host.is_empty() || valhsync_core::manifest::is_private_host(host) {
+        if host.is_empty() || is_placeholder(host) || valhsync_core::manifest::is_private_host(host)
+        {
             return None;
         }
         let port = self.bind_addr().map_or(DEFAULT_PORT, |a| a.port());
@@ -348,8 +349,8 @@ impl Config {
             .trim()
             .rsplit_once(':')
             .map_or("", |(h, _)| h.trim());
-        if host.is_empty() {
-            "no game address is set, and no public URL either"
+        if host.is_empty() || is_placeholder(host) {
+            "the game address is still the example one"
         } else {
             "the game address is a local one, so it cannot be handed to players"
         }
@@ -382,6 +383,15 @@ impl From<&TemplateOptions> for Config {
         cfg.game_server.start_script.clone_from(&o.start_script);
         cfg
     }
+}
+
+/// The hostnames the templates write as examples. They parse, they resolve to
+/// nothing, and a code built on one fails at the player's end with no clue as
+/// to why.
+fn is_placeholder(host: &str) -> bool {
+    ["valheim.example.org", "your.public.address", "example.com"]
+        .iter()
+        .any(|p| host.eq_ignore_ascii_case(p))
 }
 
 /// The port out of a `host:port` game address.
@@ -551,7 +561,7 @@ mod tests {
         let extras = tmp.path().join("client-extras");
         std::fs::create_dir_all(&extras).unwrap();
         let mut cfg = Config::default();
-        cfg.server.name = "Ztnzvoid' server".into();
+        cfg.server.name = "A modded server".into();
         cfg.server.game_address = "203.0.113.10:2456".into();
         cfg.server.public_url = Some("https://you.github.io/pack".into());
         cfg.pack.server_root = Some(tmp.path().to_path_buf());
@@ -606,7 +616,7 @@ mod tests {
         let extras = tmp.path().join("client-extras");
         std::fs::create_dir_all(&extras).unwrap();
         let text = template(&TemplateOptions {
-            name: "Ztnzvoid' server".into(),
+            name: "A modded server".into(),
             game_address: "valheim.example.org:2456".into(),
             public_url: None,
             server_root: Some(tmp.path().to_path_buf()),
@@ -615,12 +625,43 @@ mod tests {
         });
         let cfg: Config = toml::from_str(&text).unwrap();
         cfg.validate().unwrap();
-        assert_eq!(cfg.server.name, "Ztnzvoid' server");
+        assert_eq!(cfg.server.name, "A modded server");
         assert_eq!(cfg.pack.include, default_include());
         assert_eq!(cfg.pack.client_extras.as_deref(), Some(extras.as_path()));
         assert_eq!(cfg.sources().len(), 2);
         assert_eq!(cfg.limits(), Limits::default());
-        assert!(cfg.public_url().unwrap().starts_with("http://"));
+
+        // A template still carrying the example address has nothing to hand
+        // to players, and says so instead of building a code around it.
+        assert_eq!(cfg.public_url(), None);
+        assert!(cfg.public_url_problem().contains("example"));
+    }
+
+    #[test]
+    fn the_invite_address_is_the_game_address() {
+        let mut cfg = Config::default();
+        cfg.server.bind = "0.0.0.0:2456".into();
+
+        // Players already have this one, and it is already routed.
+        cfg.server.game_address = "203.0.113.10:2456".into();
+        assert_eq!(
+            cfg.public_url().as_deref(),
+            Some("http://203.0.113.10:2456")
+        );
+
+        // Never this machine's own address: it works for the admin alone.
+        for local in ["192.168.1.13:2456", "10.0.0.4:2456", "127.0.0.1:2456"] {
+            cfg.server.game_address = local.into();
+            assert_eq!(cfg.public_url(), None, "{local}");
+            assert!(cfg.public_url_problem().contains("local"));
+        }
+
+        // A hosted export wins over everything.
+        cfg.server.public_url = Some("https://you.github.io/pack/".into());
+        assert_eq!(
+            cfg.public_url().as_deref(),
+            Some("https://you.github.io/pack")
+        );
     }
 
     #[test]
