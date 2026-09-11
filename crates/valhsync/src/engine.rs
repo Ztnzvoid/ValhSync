@@ -175,6 +175,15 @@ pub fn discover(ctx: &Context, address: &str) -> Result<Discovered> {
     })
 }
 
+/// Could the server not be reached at all? A different failure means it
+/// answered, and the problem is elsewhere.
+pub fn is_unreachable(error: &SyncError) -> bool {
+    matches!(
+        error,
+        SyncError::Unreachable { .. } | SyncError::HttpStatus { .. }
+    )
+}
+
 /// Fetch and verify the manifest, locate the game, compute the plan.
 pub fn prepare(
     ctx: &Context,

@@ -40,7 +40,7 @@ enum Msg {
         phase: Phase,
         detail: String,
     },
-    Prepared(Result<Box<Prepared>, String>),
+    Prepared(Result<Box<Prepared>, Failure>),
     Discovered(Result<Box<engine::Discovered>, String>),
     Applied(Result<(Applied, Option<String>), String>),
     Done,
@@ -246,12 +246,28 @@ fn mod_row(ui: &mut egui::Ui, row: &ModRow, lang: Lang) {
     });
 }
 
+/// Why a check failed, and whether the server answered at all.
+#[derive(Debug, Clone)]
+struct Failure {
+    message: String,
+    offline: bool,
+}
+
+impl From<crate::SyncError> for Failure {
+    fn from(error: crate::SyncError) -> Self {
+        Self {
+            offline: engine::is_unreachable(&error),
+            message: error.to_string(),
+        }
+    }
+}
+
 #[derive(Debug)]
 enum Status {
     NoServer,
     Checking,
     Ready,
-    Error(String),
+    Error(Failure),
 }
 
 pub(super) struct App {
@@ -400,7 +416,7 @@ impl App {
             let result = Context::discover()
                 .and_then(|ctx| engine::prepare(&ctx, &server, &mut rep))
                 .map(Box::new)
-                .map_err(|e| e.to_string());
+                .map_err(Failure::from);
             rep.send(Msg::Prepared(result));
         });
     }
@@ -557,10 +573,10 @@ impl App {
                         dialog.error = Some(e);
                     }
                 }
-                Msg::Prepared(Err(e)) => {
+                Msg::Prepared(Err(failure)) => {
                     self.prepared = None;
                     self.mods.clear();
-                    self.status = Status::Error(e);
+                    self.status = Status::Error(failure);
                 }
                 Msg::Applied(Ok((applied, launch_error))) => {
                     let c = applied.counts;
@@ -960,6 +976,17 @@ impl App {
                     .color(th::GOLD_LIT),
             );
             ui.horizontal(|ui| {
+                let (colour, label) = match &self.status {
+                    Status::Checking => (th::BONE_DIM, self.t(Key::Checking)),
+                    Status::Error(failure) if failure.offline => {
+                        (th::BLOOD_LIT, self.t(Key::Offline))
+                    }
+                    Status::Error(_) => (th::GOLD, self.t(Key::Offline)),
+                    _ => (th::MOSS, self.t(Key::Online)),
+                };
+                valhsync_ui::widgets::dot(ui, colour);
+                ui.label(RichText::new(label).small().strong().color(colour));
+                ui.label(RichText::new("·").small().color(th::EDGE));
                 ui.label(RichText::new(&server.url).small().color(th::BONE_DIM));
                 ui.label(
                     RichText::new(format!(
@@ -1125,10 +1152,10 @@ impl App {
                     ui.label(RichText::new(self.t(Key::Checking)).color(th::BONE_DIM));
                 });
             }
-            Status::Error(e) => {
-                let e = e.clone();
+            Status::Error(failure) => {
+                let message = failure.message.clone();
                 th::callout(ui, th::BLOOD, |ui| {
-                    ui.label(RichText::new(e).color(th::BLOOD_LIT));
+                    ui.label(RichText::new(message).color(th::BLOOD_LIT));
                 });
             }
             Status::Ready => {

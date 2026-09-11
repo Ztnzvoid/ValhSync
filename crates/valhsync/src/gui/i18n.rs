@@ -39,6 +39,8 @@ pub enum Key {
     AddServer,
     NoServerHint,
     Checking,
+    Online,
+    Offline,
     UpToDate,
     FirstSync,
     Pending,
@@ -122,6 +124,8 @@ fn fr(key: Key) -> &'static str {
             "Collez le code d'invitation que l'admin vous a envoyé, ou placez son fichier valhsync-invite.txt à côté de valhsync.exe."
         }
         Key::Checking => "Vérification auprès du serveur…",
+        Key::Online => "En ligne",
+        Key::Offline => "Hors ligne",
         Key::UpToDate => "À jour",
         Key::FirstSync => "Première synchronisation",
         Key::Pending => "Mise à jour disponible",
@@ -211,6 +215,8 @@ fn en(key: Key) -> &'static str {
             "Paste the invite code your admin sent you, or drop their valhsync-invite.txt next to valhsync.exe."
         }
         Key::Checking => "Checking with the server…",
+        Key::Online => "Online",
+        Key::Offline => "Offline",
         Key::UpToDate => "Up to date",
         Key::FirstSync => "First sync",
         Key::Pending => "Update available",
