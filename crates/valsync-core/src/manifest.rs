@@ -78,6 +78,36 @@ pub fn is_valid_game_address(s: &str) -> bool {
             .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '_' | ':' | '[' | ']'))
 }
 
+/// Is the host part of `host:port` a private, loopback or link-local address?
+///
+/// It matters because a Valheim server started with `-crossplay` relays every
+/// connection through PlayFab and, in Iron Gate's own words, "it's not
+/// possible to connect using a local IP address or a loopback IP address".
+/// Such a server is only reachable through its **public** address or its join
+/// code, even from the same LAN.
+pub fn is_private_host(address: &str) -> bool {
+    let host = address.rsplit_once(':').map_or(address, |(h, _)| h);
+    let host = host.trim_start_matches('[').trim_end_matches(']');
+    if host.eq_ignore_ascii_case("localhost") {
+        return true;
+    }
+    let Ok(ip) = host.parse::<std::net::IpAddr>() else {
+        return false; // a host name: we cannot tell, assume it is fine
+    };
+    match ip {
+        std::net::IpAddr::V4(v4) => {
+            v4.is_private() || v4.is_loopback() || v4.is_link_local() || v4.is_unspecified()
+        }
+        std::net::IpAddr::V6(v6) => {
+            v6.is_loopback()
+                || v6.is_unspecified()
+                // fc00::/7 unique local, fe80::/10 link local
+                || (v6.segments()[0] & 0xfe00) == 0xfc00
+                || (v6.segments()[0] & 0xffc0) == 0xfe80
+        }
+    }
+}
+
 /// Display strings (server names) must not carry control characters: they end
 /// up in terminals and logs, where escape sequences could forge output.
 pub fn is_clean_text(s: &str, max: usize) -> bool {
@@ -432,6 +462,29 @@ pub(crate) mod tests {
         let mut m = sample();
         m.server_name = "Spoof\u{1b}[1A".into();
         assert!(m.validate(&roots(), &Limits::default()).is_err());
+    }
+
+    #[test]
+    fn private_hosts_are_recognised() {
+        for p in [
+            "192.168.1.13:2456",
+            "10.0.0.5:2456",
+            "172.16.4.1:2456",
+            "127.0.0.1:2456",
+            "localhost:2456",
+            "[::1]:2456",
+            "[fe80::1]:2456",
+        ] {
+            assert!(is_private_host(p), "{p}");
+        }
+        for p in [
+            "203.0.113.10:2456",
+            "valheim.example.org:2456",
+            "[2001:db8::1]:2456",
+            "8.8.8.8:2456",
+        ] {
+            assert!(!is_private_host(p), "{p}");
+        }
     }
 
     #[test]

@@ -111,6 +111,7 @@ fn main() -> Result<()> {
         ),
         Cmd::Scan => {
             let cfg = Config::load(&cli.config)?;
+            print_warnings(&cfg);
             let kp = keys::load(&data_dir)?;
             let outcome = pack::build(&cfg, &kp, &data_dir)?;
             pack::print_summary(&outcome);
@@ -118,11 +119,13 @@ fn main() -> Result<()> {
         }
         Cmd::Serve => {
             let cfg = Config::load(&cli.config)?;
+            print_warnings(&cfg);
             let kp = keys::load(&data_dir)?;
             tokio::runtime::Runtime::new()?.block_on(serve::run(cfg, kp, data_dir))
         }
         Cmd::Export { dir, watch } => {
             let cfg = Config::load(&cli.config)?;
+            print_warnings(&cfg);
             let kp = keys::load(&data_dir)?;
             export_once(&cfg, &kp, &data_dir, &dir)?;
             println!(
@@ -248,6 +251,13 @@ fn cmd_init(config_path: &Path, data_dir: &Path, args: InitArgs) -> Result<()> {
         cfg.bind_addr()?.port()
     );
     print_invite(&cfg, &kp)
+}
+
+/// Print non-fatal configuration warnings, once, before publishing.
+fn print_warnings(cfg: &Config) {
+    for w in cfg.warnings() {
+        eprintln!("warning: {w}");
+    }
 }
 
 fn export_once(cfg: &Config, kp: &Keypair, data_dir: &Path, dir: &Path) -> Result<()> {

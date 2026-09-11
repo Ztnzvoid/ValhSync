@@ -61,15 +61,25 @@ executes a downloaded file; it asks Steam to start Valheim.
 | M5 egui window, Valheim palette, FR/EN | done |
 | M6 release workflow, docs | done; first tagged release pending |
 
-Known unknowns, to confirm on Ztnzvoid' server before calling v1 final:
+Remaining limitation: server-side TLS is not built in; put the server behind a
+reverse proxy if you want HTTPS. Integrity does not depend on it, the manifest
+is signed.
 
-- The exact launch arguments Valheim 1.0 accepts through Steam
-  (`-applaunch 892970 +connect host:port`; `+password` is not passed).
-- Server-side TLS is not built in; put the server behind a reverse proxy if
-  you want HTTPS. Integrity does not depend on it: the manifest is signed.
+Verified end to end on a real dedicated server (Valheim 1.0.7,
+BepInExPack_Valheim 5.4.2350): the launcher synced a vanilla install, started
+the game through `steam -applaunch 892970 +connect <host>:2456`, and the player
+joined with the server's mods loaded (`Network version check, their:39,
+mine:39`).
 
-Verified on a real dedicated server (Valheim 1.0.7, BepInExPack_Valheim
-5.4.2350): the pack drops `.doorstop_version`, `doorstop_config.ini`,
+**Crossplay servers take the public address, never a local one.** A server
+started with `-crossplay` relays everything through PlayFab: `+connect` with a
+`192.168.x` address fails with `Timed out attempting to connect` even on the
+same LAN, while the public address resolves the lobby and connects
+(`Connecting to server with PlayFab-backend`). Iron Gate's own manual says it:
+"it's not possible to connect using a local IP address or a loopback IP
+address". `valsync-server` warns when `game_address` is a local address.
+
+Also verified: the pack drops `.doorstop_version`, `doorstop_config.ini`,
 `winhttp.dll`, `doorstop_libs/`, `start_game_bepinex.sh`,
 `start_server_bepinex.sh`, `changelog.txt` and `BepInEx/` at the root, no
 `unstripped_corlib/`; the default include list covers what players need.

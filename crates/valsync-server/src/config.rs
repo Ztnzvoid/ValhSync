@@ -191,6 +191,30 @@ impl Config {
         Ok(())
     }
 
+    /// Things that are not errors but will bite the admin later. Printed by
+    /// every command that publishes.
+    pub fn warnings(&self) -> Vec<String> {
+        let mut out = Vec::new();
+        if valsync_core::manifest::is_private_host(self.server.game_address.trim()) {
+            out.push(format!(
+                "[server] game_address is {}, a local address.\n  \
+                 Players outside your network cannot use it, and a server started with \
+                 -crossplay refuses local addresses even on the LAN (Iron Gate: \"it's not \
+                 possible to connect using a local IP address\").\n  \
+                 Use your public IP or a DNS name here.",
+                self.server.game_address.trim()
+            ));
+        }
+        if self.server.public_url.is_none() {
+            out.push(
+                "[server] public_url is not set, so the invite code uses this machine's LAN \
+                 address and only works for players on your network."
+                    .to_string(),
+            );
+        }
+        out
+    }
+
     pub fn bind_addr(&self) -> Result<SocketAddr> {
         self.server
             .bind
@@ -316,6 +340,9 @@ bind = "0.0.0.0:{port}"
 # LAN address of this machine is used, which only works for LAN players.
 {public_url_line}
 # host:port the launcher hands to Valheim (the game server, UDP 2456).
+# Use your PUBLIC IP or a DNS name, not a local 192.168.x address: a server
+# started with -crossplay relays through PlayFab and refuses local addresses
+# even for players on the same network.
 game_address = {game_address}
 
 [pack]

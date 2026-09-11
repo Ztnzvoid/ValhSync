@@ -187,6 +187,23 @@ If you do run `serve` and your router already forwards 2456 as "TCP+UDP"
 Valheim only uses UDP on that port, so the two do not collide. Check the rule
 before relying on it. Static export (4a) remains the simpler answer.
 
+## 7c. Crossplay servers and `game_address`
+
+If your server runs with `-crossplay` (the PlayFab backend), players never
+reach it by local IP. Iron Gate's manual is explicit: *"You can connect to a
+Crossplay server using the public IP address and port number, a join code or
+via the server list, however it's not possible to connect using a local IP
+address or a loopback IP address."*
+
+So `game_address` must be your **public** IP or a DNS name, even for players
+sitting on the same LAN as the server. A `192.168.x` address produces
+`Timed out attempting to connect` in the client log, with nothing at all in the
+server log. `valsync-server` prints a warning when it sees a local address
+there.
+
+Without `-crossplay` (the Steam backend), the opposite is true for LAN play: a
+local address works, and internet players need UDP 2456-2457 forwarded.
+
 ## 8. Network and reverse proxies
 
 `valsync-server` speaks plain HTTP. Integrity does not depend on the transport
