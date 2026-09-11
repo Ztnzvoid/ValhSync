@@ -952,7 +952,7 @@ impl App {
                     Status::Error(failure) if failure.offline => th::GOLD.gamma_multiply(0.18),
                     _ => th::GOLD.gamma_multiply(0.40),
                 };
-                valhsync_ui::widgets::dot(ui, lamp);
+                valhsync_ui::widgets::lamp(ui, lamp, 26.0);
                 ui.label(
                     RichText::new(&server.name)
                         .font(th::display_font(19.0))

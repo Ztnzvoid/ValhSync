@@ -58,6 +58,13 @@ pub fn hint(ui: &mut egui::Ui, text: &str) {
     ui.label(RichText::new(text).small().color(th::BONE_DIM));
 }
 
+/// A lamp on the current row: `height` is the text it sits beside, so the two
+/// share a centre line.
+pub fn lamp(ui: &mut egui::Ui, colour: Color32, height: f32) {
+    let (rect, _) = ui.allocate_exact_size(egui::vec2(height, height), egui::Sense::hover());
+    th::lamp(ui.painter(), rect.center(), height * 0.20, colour);
+}
+
 /// A filled dot, painted rather than written: the bullet glyph is missing
 /// from egui's bundled font and would show up as an empty box.
 pub fn dot(ui: &mut egui::Ui, color: Color32) {
@@ -68,6 +75,19 @@ pub fn dot(ui: &mut egui::Ui, color: Color32) {
     );
     ui.painter()
         .circle_filled(rect.center(), size * 0.62, color);
+}
+
+/// A lamp followed by a carved label: the strongest form of the status row,
+/// for the one or two states a window is really about.
+pub fn status_dot_lit(ui: &mut egui::Ui, color: Color32, text: &str) {
+    ui.horizontal(|ui| {
+        lamp(ui, color, 22.0);
+        ui.label(
+            RichText::new(text)
+                .text_style(th::label_style())
+                .color(th::BONE),
+        );
+    });
 }
 
 /// A coloured dot followed by a label: the status vocabulary of both windows.

@@ -18,7 +18,6 @@ pub(super) enum Msg {
     Scanned {
         files: usize,
         bytes: u64,
-        pack_id: String,
         invite: String,
         skipped: Vec<(String, String)>,
     },
@@ -68,7 +67,6 @@ pub(super) fn scan(cfg: &Config, data_dir: &Path) -> Result<Msg> {
     Ok(Msg::Scanned {
         files: m.files.len(),
         bytes: m.total_bytes(),
-        pack_id: m.pack_id.clone(),
         invite: invite_code(cfg, &kp)?,
         skipped: outcome.scan.skipped.clone(),
     })

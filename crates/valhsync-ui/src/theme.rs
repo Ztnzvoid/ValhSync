@@ -35,19 +35,11 @@ pub fn label_style() -> TextStyle {
 /// imitate. The licence travels with the source in `assets/OFL-Cinzel.txt`.
 const CINZEL: &[u8] = include_bytes!("../assets/Cinzel.ttf");
 
-/// The machine's own interface font, for controls and body text. Cinzel is a
-/// display face: a whole form set in it would be unreadable.
-fn system_ui_font() -> Option<Vec<u8>> {
-    const CANDIDATES: &[&str] = &[
-        r"C:\Windows\Fonts\segoeui.ttf",
-        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-        "/usr/share/fonts/TTF/DejaVuSans.ttf",
-        "/System/Library/Fonts/Supplemental/Helvetica.ttc",
-    ];
-    CANDIDATES
-        .iter()
-        .find_map(|p| std::fs::read(p).ok().filter(|b| !b.is_empty()))
-}
+/// Source Serif 4, SIL Open Font License 1.1. The specification document is
+/// set in an old-style serif and reads better for it; the windows use the
+/// same voice instead of a system sans. Its licence ships with the source in
+/// `assets/OFL-SourceSerif.txt`.
+const SOURCE_SERIF: &[u8] = include_bytes!("../assets/SourceSerif.ttf");
 
 fn install_fonts(ctx: &egui::Context) {
     let mut fonts = egui::FontDefinitions::default();
@@ -66,14 +58,12 @@ fn install_fonts(ctx: &egui::Context) {
         .families
         .insert(FontFamily::Name(DISPLAY.into()), display);
 
-    if let Some(bytes) = system_ui_font() {
-        fonts.font_data.insert(
-            "ui".to_owned(),
-            std::sync::Arc::new(egui::FontData::from_owned(bytes)),
-        );
-        if let Some(family) = fonts.families.get_mut(&FontFamily::Proportional) {
-            family.insert(0, "ui".to_owned());
-        }
+    fonts.font_data.insert(
+        "text".to_owned(),
+        std::sync::Arc::new(egui::FontData::from_static(SOURCE_SERIF)),
+    );
+    if let Some(family) = fonts.families.get_mut(&FontFamily::Proportional) {
+        family.insert(0, "text".to_owned());
     }
     ctx.set_fonts(fonts);
 }
@@ -134,7 +124,7 @@ pub fn apply(ctx: &egui::Context) {
     w.open.fg_stroke = Stroke::new(1.0, BONE);
 
     style.spacing.button_padding = egui::vec2(14.0, 7.0);
-    style.spacing.item_spacing = egui::vec2(10.0, 8.0);
+    style.spacing.item_spacing = egui::vec2(10.0, 9.0);
     style.spacing.window_margin = egui::Margin::same(18);
 
     style
@@ -142,7 +132,7 @@ pub fn apply(ctx: &egui::Context) {
         .insert(TextStyle::Heading, display_font(26.0));
     style
         .text_styles
-        .insert(TextStyle::Body, FontId::new(15.0, FontFamily::Proportional));
+        .insert(TextStyle::Body, FontId::new(15.5, FontFamily::Proportional));
     // Buttons and short labels are carved like the title; only running text
     // and paths stay in the interface face, which is easier to read at length.
     style
@@ -153,7 +143,7 @@ pub fn apply(ctx: &egui::Context) {
         .insert(TextStyle::Name(LABEL.into()), display_font(13.5));
     style.text_styles.insert(
         TextStyle::Small,
-        FontId::new(12.5, FontFamily::Proportional),
+        FontId::new(13.0, FontFamily::Proportional),
     );
     style.text_styles.insert(
         TextStyle::Monospace,
@@ -366,6 +356,20 @@ fn radial_pool(painter: &egui::Painter, centre: egui::Pos2, radius: f32, colour:
         mesh.add_triangle(0, i as u32, i as u32 + 1);
     }
     painter.add(egui::Shape::mesh(mesh));
+}
+
+/// A point of light: a hot core inside a halo that falls away. Used where a
+/// flat dot would look like a bullet instead of a lamp.
+pub fn lamp(painter: &egui::Painter, centre: egui::Pos2, radius: f32, colour: Color32) {
+    radial_pool(painter, centre, radius * 4.2, colour.gamma_multiply(0.20));
+    radial_pool(painter, centre, radius * 2.1, colour.gamma_multiply(0.35));
+    painter.circle_filled(centre, radius, colour);
+    // The filament, a touch brighter than the glass.
+    painter.circle_filled(
+        centre,
+        radius * 0.45,
+        Color32::from_rgba_unmultiplied(255, 255, 255, 90),
+    );
 }
 
 /// A soft halo behind a heading, standing in for the document's text-shadow.

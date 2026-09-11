@@ -77,7 +77,6 @@ struct ModEntry {
 struct PackSummary {
     files: usize,
     bytes: u64,
-    pack_id: String,
     skipped: Vec<(String, String)>,
 }
 
@@ -112,6 +111,8 @@ pub(super) struct App {
     game_running: bool,
     game_checked: Instant,
 
+    /// Window title as last set, so it is only pushed when it changes.
+    title: String,
     busy: bool,
     rx: Option<Receiver<Msg>>,
     notice: Option<(String, Color32, Instant)>,
@@ -161,6 +162,7 @@ impl App {
             game_checked: Instant::now()
                 .checked_sub(POLL_GAME_SERVER)
                 .unwrap_or_else(Instant::now),
+            title: String::new(),
             busy: false,
             rx: None,
             notice: None,
@@ -204,6 +206,20 @@ impl App {
                 .join("client-extras"),
         );
         cfg
+    }
+
+    /// The taskbar should say which server this window configures.
+    fn update_title(&mut self, ctx: &egui::Context) {
+        let name = self.name.trim();
+        let wanted = if name.is_empty() {
+            "ValhSync · Serveur".to_string()
+        } else {
+            format!("ValhSync · {name}")
+        };
+        if wanted != self.title {
+            ctx.send_viewport_cmd(egui::ViewportCommand::Title(wanted.clone()));
+            self.title = wanted;
+        }
     }
 
     fn t(&self, fr: &'static str, en: &'static str) -> &'static str {
@@ -366,20 +382,17 @@ impl App {
                 Msg::Scanned {
                     files,
                     bytes,
-                    pack_id,
                     invite,
                     skipped,
                 } => {
                     self.invite = invite;
-                    let short = pack_id.get(..15).unwrap_or(&pack_id).to_string();
                     self.summary = Some(PackSummary {
                         files,
                         bytes,
-                        pack_id,
                         skipped,
                     });
                     let msg = format!(
-                        "{} {files} {} · {} · {short}",
+                        "{} {files} {} · {}",
                         self.t("Pack construit :", "Pack built:"),
                         self.t("fichiers", "files"),
                         human_bytes(bytes)
@@ -456,6 +469,7 @@ impl eframe::App for App {
         }
 
         chrome::handle_edge_resize(ctx);
+        self.update_title(ctx);
         self.top_bar(ctx);
         self.bottom_bar(ctx);
         egui::CentralPanel::default()
@@ -564,11 +578,19 @@ impl App {
                         if self.busy {
                             ui.add(egui::Spinner::new().color(th::GOLD));
                         }
+                        // Only the file name: the full path is long enough to
+                        // push everything else off the bar.
+                        let name = self
+                            .config_path
+                            .file_name()
+                            .map(|n| n.to_string_lossy().into_owned())
+                            .unwrap_or_default();
                         ui.label(
-                            RichText::new(self.config_path.display().to_string())
-                                .small()
+                            RichText::new(name)
+                                .text_style(th::label_style())
                                 .color(th::BONE_DIM),
-                        );
+                        )
+                        .on_hover_text(self.config_path.display().to_string());
                     });
                 });
             });
@@ -578,7 +600,7 @@ impl App {
     fn card_game_server(&mut self, ui: &mut egui::Ui) {
         th::card(ui, |ui| {
             ui.set_width(ui.available_width());
-            w::section(ui, self.t("1 · Serveur de jeu", "1 · Game server"));
+            w::section(ui, self.t("I · Serveur de jeu", "I · Game server"));
 
             let hint_text = self.t("Dossier du serveur dédié", "Dedicated server folder");
             ui.horizontal(|ui| {
@@ -690,7 +712,11 @@ impl App {
                     if a.has_password {
                         bits.push(self.t("mot de passe défini", "password set").to_string());
                     }
-                    ui.label(RichText::new(bits.join(" · ")).small().color(th::RUNE));
+                    ui.label(
+                        RichText::new(bits.join(" · "))
+                            .text_style(th::label_style())
+                            .color(th::RUNE),
+                    );
                 }
             }
 
@@ -752,7 +778,7 @@ impl App {
             ui.set_width(ui.available_width());
             w::section(
                 ui,
-                self.t("2 · Identité et adresse", "2 · Identity and address"),
+                self.t("II · Identité et adresse", "II · Identity and address"),
             );
 
             let width = (ui.available_width() - 24.0).max(200.0);
@@ -832,7 +858,7 @@ impl App {
     fn card_mods(&mut self, ui: &mut egui::Ui) {
         th::card(ui, |ui| {
             ui.set_width(ui.available_width());
-            w::section(ui, self.t("3 · Mods", "3 · Mods"));
+            w::section(ui, self.t("III · Mods", "III · Mods"));
             if self.mods.is_empty() {
                 w::hint(
                     ui,
@@ -949,7 +975,7 @@ impl App {
     fn card_publish(&mut self, ui: &mut egui::Ui) {
         th::card(ui, |ui| {
             ui.set_width(ui.available_width());
-            w::section(ui, self.t("4 · Publication", "4 · Publishing"));
+            w::section(ui, self.t("IV · Publication", "IV · Publishing"));
             let (label_export, label_live) = (
                 self.t("Fichiers statiques", "Static files"),
                 self.t("Serveur local", "Live server"),
@@ -1083,13 +1109,12 @@ impl App {
                 if let Some(s) = &self.summary {
                     ui.label(
                         RichText::new(format!(
-                            "{} {} · {} · {}",
+                            "{} {} · {}",
                             s.files,
                             self.t("fichiers", "files"),
-                            human_bytes(s.bytes),
-                            s.pack_id.get(..15).unwrap_or(&s.pack_id)
+                            human_bytes(s.bytes)
                         ))
-                        .small()
+                        .text_style(th::label_style())
                         .color(th::BONE_DIM),
                     );
                 }
@@ -1113,12 +1138,12 @@ impl App {
     fn card_invite(&mut self, ui: &mut egui::Ui) {
         th::card(ui, |ui| {
             ui.set_width(ui.available_width());
-            w::section(ui, self.t("5 · Code d'invitation", "5 · Invite code"));
+            w::section(ui, self.t("V · Code d'invitation", "V · Invite code"));
             w::hint(
                 ui,
                 self.t(
-                    "À donner aux joueurs, ou à placer dans un fichier valhsync-invite.txt à côté de valhsync.exe : le launcher l'importe tout seul.",
-                    "Hand it to players, or drop it in a valhsync-invite.txt next to valhsync.exe: the launcher imports it by itself.",
+                    "Envoyez-le à vos joueurs. Ils peuvent aussi ajouter le serveur par son adresse seule : dans ce cas, donnez-leur l'empreinte de clé ci-dessous pour qu'ils la vérifient.",
+                    "Send it to your players. They can also add the server by its address alone: give them the key fingerprint below so they can check it.",
                 ),
             );
             ui.add_space(4.0);
@@ -1132,7 +1157,20 @@ impl App {
                 );
                 return;
             }
-            w::code_block(ui, &self.invite);
+            th::callout(ui, th::GOLD, |ui| {
+                w::code_block(ui, &self.invite);
+                if let Ok(key) = crate::keys::load(&self.data_dir) {
+                    ui.label(
+                        RichText::new(format!(
+                            "{} {}",
+                            self.t("Empreinte de la clé :", "Key fingerprint:"),
+                            key.public().fingerprint()
+                        ))
+                        .text_style(th::label_style())
+                        .color(th::RUNE),
+                    );
+                }
+            });
             ui.horizontal(|ui| {
                 if ui.button(self.t("Copier", "Copy")).clicked() {
                     ui.ctx().copy_text(self.invite.clone());
