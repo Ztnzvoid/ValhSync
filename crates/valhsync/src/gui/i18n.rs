@@ -203,7 +203,8 @@ fn fr(key: Key) -> &'static str {
         Key::TrustLine => {
             "Fichiers signés par ce serveur et vérifiés un par un. ValhSync n'écrit que dans le dossier du jeu (BepInEx) et n'exécute rien lui-même : c'est Steam qui lance Valheim."
         }
-        Key::Installed => "installés",
+        // The count beside it is files, not mods: one mod is many files.
+        Key::Installed => "fichiers installés",
         Key::Nothing => "Rien à faire.",
         Key::ServerMods => "Mods du serveur",
         Key::ShowAll => "Tout afficher",
@@ -300,7 +301,8 @@ fn en(key: Key) -> &'static str {
         Key::TrustLine => {
             "Files are signed by this server and verified one by one. ValhSync only writes inside the game folder (BepInEx) and runs nothing itself: Steam starts Valheim."
         }
-        Key::Installed | Key::ModInstalled => "installed",
+        Key::Installed => "files installed",
+        Key::ModInstalled => "installed",
         Key::Nothing => "Nothing to do.",
         Key::ServerMods => "Server mods",
         Key::ShowAll => "Show all",

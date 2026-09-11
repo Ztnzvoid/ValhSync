@@ -12,6 +12,27 @@ Put `valhsync.exe` anywhere (your Desktop is
 fine). If your admin gave you a zip, keep `valhsync-invite.txt` next to the
 executable.
 
+### Windows will warn you, and here is why
+
+ValhSync is not signed with a paid certificate, so Windows shows **"Windows
+protected your PC"** the first time. Click **More info**, then **Run anyway**.
+
+That warning does not mean the file is dangerous; it means Windows has not
+been told who published it. What tells you the file is the one your admin
+meant to send is its fingerprint. Ask them for it, then check yours:
+
+```powershell
+Get-FileHash valhsync-launcher-0.1.0-x86_64-pc-windows-msvc.zip -Algorithm SHA256
+```
+
+The two lines must match, character for character. If they do not, do not run
+it, and tell your admin. A `.sha256` file next to the archive holds the same
+value.
+
+And whatever the launcher itself downloads is checked on top of that: every
+file the server sends is verified against a signature only your admin's server
+can produce. See `SECURITY.md`.
+
 ## First start
 
 1. Double-click `valhsync.exe`.
@@ -118,6 +139,29 @@ que dans le dossier de Valheim.
 
 Mets `valhsync.exe` où tu veux. Si ton admin t'a donné un
 zip, garde `valhsync-invite.txt` à côté de l'exécutable.
+
+#### Windows va râler, et voilà pourquoi
+
+ValhSync n'est pas signé avec un certificat payant : Windows affiche donc
+**« Windows a protégé votre ordinateur »** au premier lancement. Clique sur
+**Informations complémentaires**, puis **Exécuter quand même**.
+
+Cet avertissement ne dit pas que le fichier est dangereux : il dit que Windows
+ne sait pas qui l'a publié. Ce qui prouve que le fichier est bien celui que
+ton admin voulait t'envoyer, c'est son empreinte. Demande-la lui, puis
+vérifie la tienne :
+
+```powershell
+Get-FileHash valhsync-launcher-0.1.0-x86_64-pc-windows-msvc.zip -Algorithm SHA256
+```
+
+Les deux doivent correspondre, caractère pour caractère. Sinon, ne le lance
+pas et préviens ton admin. Un fichier `.sha256` à côté de l'archive contient
+la même valeur.
+
+Et tout ce que le launcher télécharge ensuite est vérifié par-dessus : chaque
+fichier envoyé par le serveur est contrôlé contre une signature que seul le
+serveur de ton admin peut produire.
 
 ### Premier lancement
 
