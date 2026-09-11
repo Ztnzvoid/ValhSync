@@ -650,7 +650,7 @@ mod tests {
         );
 
         // Never this machine's own address: it works for the admin alone.
-        for local in ["192.168.1.13:2456", "10.0.0.4:2456", "127.0.0.1:2456"] {
+        for local in ["192.168.0.50:2456", "10.0.0.4:2456", "127.0.0.1:2456"] {
             cfg.server.game_address = local.into();
             assert_eq!(cfg.public_url(), None, "{local}");
             assert!(cfg.public_url_problem().contains("local"));
