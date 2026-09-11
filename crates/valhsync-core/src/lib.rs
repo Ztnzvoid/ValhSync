@@ -16,6 +16,7 @@
 
 pub mod clock;
 pub mod error;
+pub mod gamelog;
 pub mod hash;
 pub mod invite;
 pub mod limits;

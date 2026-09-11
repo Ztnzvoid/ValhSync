@@ -62,6 +62,20 @@ fn write_atomic(path: &Path, contents: &[u8]) -> Result<()> {
 }
 
 /// Scan, sign and publish. Safe to call repeatedly; the store and the
+/// Which Valheim the server last started as, from its own log.
+///
+/// Published with the pack so a launcher can tell a player that their game and
+/// this server are on different network versions -- which Valheim refuses,
+/// whatever the mods say -- instead of letting them find out at the join
+/// screen.
+fn server_network_version(cfg: &Config) -> Option<u32> {
+    let root = cfg.pack.server_root.as_deref()?;
+    let mut tail =
+        crate::logs::Tail::new(crate::logs::find_sources(root, None).into_iter().next()?);
+    tail.poll();
+    valhsync_core::gamelog::network_version(&valhsync_core::gamelog::read_version(tail.lines())?)
+}
+
 /// published files are only rewritten when something changed.
 pub fn build(cfg: &Config, keypair: &Keypair, data_dir: &Path) -> Result<BuildOutcome> {
     let scan_cfg = cfg.scan_config()?;
@@ -71,7 +85,8 @@ pub fn build(cfg: &Config, keypair: &Keypair, data_dir: &Path) -> Result<BuildOu
         cfg.server.game_address.trim(),
         cfg.pack.managed_roots.clone(),
         scan.entries(),
-    );
+    )
+    .with_network_version(server_network_version(cfg));
     manifest
         .validate(&AllowedRoots::bepinex(), &cfg.limits())
         .context("the pack does not pass manifest validation")?;
@@ -82,6 +97,7 @@ pub fn build(cfg: &Config, keypair: &Keypair, data_dir: &Path) -> Result<BuildOu
             && p.server_name == manifest.server_name
             && p.game_address == manifest.game_address
             && p.managed_roots == manifest.managed_roots
+            && p.network_version == manifest.network_version
     });
 
     // Reuse the previous bytes when nothing changed, so `generated_at` and the

@@ -58,6 +58,14 @@ pub struct Manifest {
     /// Directories ValhSync owns: anything found there that is not in the
     /// manifest is an unmanaged file and gets quarantined.
     pub managed_roots: Vec<String>,
+    /// Valheim's network version on the server, when it could be read.
+    ///
+    /// Matching mods are not enough: the game refuses a client whose network
+    /// version differs, and the two Steam applications update separately, so a
+    /// server left behind rejects everyone. Absent on manifests from before
+    /// this field, and on servers whose log has not said yet.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub network_version: Option<u32>,
     pub files: Vec<FileEntry>,
 }
 
@@ -135,8 +143,17 @@ impl Manifest {
             generated_at: crate::clock::now_rfc3339(),
             pack_id,
             managed_roots,
+            // Filled in by the publisher, which is the side that can read it.
+            network_version: None,
             files,
         }
+    }
+
+    /// Note which Valheim this pack is meant for.
+    #[must_use]
+    pub fn with_network_version(mut self, version: Option<u32>) -> Self {
+        self.network_version = version;
+        self
     }
 
     /// Order-independent identity of the pack contents.

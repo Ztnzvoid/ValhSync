@@ -966,6 +966,14 @@ impl App {
             });
             ui.label(RichText::new(&server.url).small().color(th::BONE_DIM));
             ui.add_space(10.0);
+            if let Some((mine, theirs)) = self.prepared.as_ref().and_then(|p| p.version_gap) {
+                valhsync_ui::widgets::notice(
+                    ui,
+                    th::BLOOD_LIT,
+                    &format!("{} ({mine} / {theirs})", self.t(Key::VersionGap)),
+                );
+                ui.add_space(8.0);
+            }
             self.status_block(ui);
             let set_aside = self
                 .prepared

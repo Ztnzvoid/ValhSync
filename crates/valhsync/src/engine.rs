@@ -132,6 +132,11 @@ pub struct Prepared {
     /// Whether the Valheim dedicated server is up, when the publisher is in a
     /// position to know. `None` means nobody can say.
     pub game_server_up: Option<bool>,
+    /// `(this game, the server)` when the two run different Valheim network
+    /// versions. Valheim refuses the connection whatever the mods say, and the
+    /// game and the dedicated server are separate Steam applications, so one
+    /// updating without the other is the ordinary way this happens.
+    pub version_gap: Option<(u32, u32)>,
 }
 
 impl Prepared {
@@ -247,8 +252,18 @@ pub fn prepare(
     let plan = plan::compute_with(&manifest, &install.root, previous.as_ref(), ctx.repair)?;
     progress.on(Event::Planned(&plan));
     let needs_confirmation = previous.as_ref().is_none_or(|p| p.server_id != server.id);
+    // Both sides read it from their own BepInEx log, so it is only known
+    // once each has run at least once.
+    let version_gap = match (
+        valhsync_core::gamelog::network_version_of(&install.root),
+        manifest.network_version,
+    ) {
+        (Some(mine), Some(theirs)) if mine != theirs => Some((mine, theirs)),
+        _ => None,
+    };
     Ok(Prepared {
         game_server_up: ctx.client.fetch_game_server_state(&server.url),
+        version_gap,
         server: server.clone(),
         install,
         manifest,

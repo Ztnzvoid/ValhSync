@@ -136,6 +136,12 @@ pub(super) struct App {
     /// Follow the end of the file, until the admin scrolls up to read.
     log_follow: bool,
     session: logs::Session,
+    /// The Valheim the server runs, read from its log.
+    game_version: Option<String>,
+    /// Steam has an update waiting for the dedicated server: the game and the
+    /// server are separate Steam apps, and updating one leaves the other on an
+    /// older network version, which refuses every connection.
+    server_outdated: bool,
     /// When the world file was last written, so the panel can say how long ago.
     world_saved: Option<SystemTime>,
     /// Set when a stop was asked for, cleared when the process is gone.
@@ -213,6 +219,8 @@ impl App {
             log_checked: Instant::now(),
             log_follow: true,
             session: logs::Session::default(),
+            game_version: None,
+            server_outdated: false,
             world_saved: None,
             stop_requested: None,
             world_file: None,
@@ -336,6 +344,9 @@ impl App {
         self.mods = self.collect_mods();
         self.refresh_log_sources();
         self.fill_recipe_from_script();
+        self.server_outdated =
+            valhsync_core::steam::app_state(valhsync_core::steam::VALHEIM_SERVER_APP_ID, &[])
+                .is_some_and(|s| s.update_pending);
     }
 
     /// Which logs this installation writes, and where its world file is.
@@ -387,6 +398,7 @@ impl App {
             && tail.poll()
         {
             self.session = logs::read_session(tail.lines());
+            self.game_version = valhsync_core::gamelog::read_version(tail.lines());
         }
         self.world_saved = self.world_file.as_deref().and_then(logs::saved_at);
     }
@@ -832,6 +844,18 @@ impl App {
             ui.set_width(ui.available_width());
             w::section(ui, self.t("I · Serveur de jeu", "I · Game server"));
 
+            if self.server_outdated {
+                w::notice(
+                    ui,
+                    th::BLOOD_LIT,
+                    self.t(
+                        "Steam a une mise à jour en attente pour le serveur dédié. Tant qu'elle n'est pas faite, les joueurs dont Valheim est à jour seront refusés : « Version incompatible ». Steam → Bibliothèque → Outils → Valheim Dedicated Server.",
+                        "Steam has an update waiting for the dedicated server. Until it is applied, players whose Valheim is current will be refused with \"Version incompatible\". Steam → Library → Tools → Valheim Dedicated Server.",
+                    ),
+                );
+                ui.add_space(8.0);
+            }
+
             let stopping = self.stop_requested.is_some() && self.game_running;
             ui.horizontal(|ui| {
                 w::status_dot_lit(
@@ -859,44 +883,8 @@ impl App {
 
             if self.game_running {
                 ui.add_space(6.0);
-                let mut facts = Vec::new();
-                if let Some(n) = self.session.players {
-                    facts.push(format!(
-                        "{n} {}",
-                        if n == 1 {
-                            self.t("joueur connecté", "player online")
-                        } else {
-                            self.t("joueurs connectés", "players online")
-                        }
-                    ));
-                }
-                if let Some(code) = &self.session.join_code {
-                    facts.push(format!("{} {code}", self.t("code crossplay", "join code")));
-                }
-                if let Some(saved) = self.world_saved {
-                    facts.push(format!(
-                        "{} {}",
-                        self.t("sauvegardé il y a", "saved"),
-                        Self::ago(saved)
-                    ));
-                }
-                if facts.is_empty() {
-                    w::hint(
-                        ui,
-                        self.t(
-                            "En attente de la première ligne de session dans le journal.",
-                            "Waiting for the first session line in the log.",
-                        ),
-                    );
-                } else {
-                    ui.label(
-                        RichText::new(facts.join("   ·   "))
-                            .text_style(th::label_style())
-                            .color(th::RUNE),
-                    );
-                }
+                self.session_facts(ui);
             }
-
             ui.add_space(8.0);
             if self.scripts.is_empty() {
                 w::notice(
@@ -925,6 +913,50 @@ impl App {
                 ),
             );
         });
+    }
+
+    /// What the log says about the session: players, join code, which
+    /// Valheim, and when the world was last written.
+    fn session_facts(&mut self, ui: &mut egui::Ui) {
+        let mut facts = Vec::new();
+        if let Some(n) = self.session.players {
+            facts.push(format!(
+                "{n} {}",
+                if n == 1 {
+                    self.t("joueur connecté", "player online")
+                } else {
+                    self.t("joueurs connectés", "players online")
+                }
+            ));
+        }
+        if let Some(code) = &self.session.join_code {
+            facts.push(format!("{} {code}", self.t("code crossplay", "join code")));
+        }
+        if let Some(version) = &self.game_version {
+            facts.push(format!("Valheim {version}"));
+        }
+        if let Some(saved) = self.world_saved {
+            facts.push(format!(
+                "{} {}",
+                self.t("sauvegardé il y a", "saved"),
+                Self::ago(saved)
+            ));
+        }
+        if facts.is_empty() {
+            w::hint(
+                ui,
+                self.t(
+                    "En attente de la première ligne de session dans le journal.",
+                    "Waiting for the first session line in the log.",
+                ),
+            );
+        } else {
+            ui.label(
+                RichText::new(facts.join("   ·   "))
+                    .text_style(th::label_style())
+                    .color(th::RUNE),
+            );
+        }
     }
 
     /// Start and stop side by side, so the pair reads as one control.

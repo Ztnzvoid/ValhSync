@@ -70,6 +70,7 @@ pub enum Key {
     Close,
     InvitePrompt,
     InviteHint,
+    VersionGap,
     JoinCodeNotAnAddress,
     Checking2,
     ConfirmKeyTitle,
@@ -163,6 +164,9 @@ fn fr(key: Key) -> &'static str {
             "Code d'invitation, ou simplement l'adresse du serveur de jeu — la même que dans Valheim"
         }
         Key::InviteHint => "valhsync1:…  ou  monserveur.exemple.org:2456",
+        Key::VersionGap => {
+            "Votre Valheim et ce serveur ne tournent pas sur la même version du jeu. Valheim refusera la connexion, quels que soient les mods. Le jeu et le serveur dédié se mettent à jour séparément : prévenez votre administrateur."
+        }
         Key::JoinCodeNotAnAddress => {
             "Ça, c'est le code de connexion Valheim : il sert à rejoindre la partie, pas à récupérer les mods. Demandez à votre admin son code d'invitation ValhSync, ou l'adresse du serveur."
         }
@@ -256,6 +260,9 @@ fn en(key: Key) -> &'static str {
             "Invite code, or simply the game server's address — the same one you use in Valheim"
         }
         Key::InviteHint => "valhsync1:…  or  myserver.example.org:2456",
+        Key::VersionGap => {
+            "Your Valheim and this server are not on the same version of the game. Valheim will refuse the connection, whatever the mods say. The game and the dedicated server update separately: tell your admin."
+        }
         Key::JoinCodeNotAnAddress => {
             "That is Valheim's join code: it gets you into the game, not to the mods. Ask your admin for their ValhSync invite code, or the server's address."
         }

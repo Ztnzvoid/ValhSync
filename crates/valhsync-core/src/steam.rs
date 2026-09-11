@@ -172,6 +172,56 @@ pub fn acf_installdir(acf_text: &str) -> Option<String> {
     state.get("installdir")?.as_str().map(str::to_string)
 }
 
+/// What Steam records about an installed app.
+///
+/// Valheim and its dedicated server are two separate Steam applications, so
+/// updating the game leaves the server behind. Valheim then refuses the
+/// connection over a network-version mismatch, which players read as a broken
+/// mod pack. Steam knows: `StateFlags` carries an "update required" bit.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct AppState {
+    /// Steam has an update downloaded or waiting for this app.
+    pub update_pending: bool,
+    pub build_id: Option<String>,
+}
+
+/// The `StateFlags` bits that mean the installed build is not the current one:
+/// update required (2), update started (8), update running (16). Bit 4 is
+/// "fully installed" and says nothing about which build.
+const UPDATE_BITS: u32 = 2 | 8 | 16;
+
+/// Read `StateFlags` and `buildid` out of an `appmanifest_<id>.acf`.
+#[must_use]
+pub fn acf_state(acf_text: &str) -> Option<AppState> {
+    let root = parse_kv(acf_text)?;
+    let state = root.get("AppState").unwrap_or(&root);
+    let flags: u32 = state.get("StateFlags")?.as_str()?.trim().parse().ok()?;
+    Some(AppState {
+        update_pending: flags & UPDATE_BITS != 0,
+        build_id: state
+            .get("buildid")
+            .and_then(|v| v.as_str())
+            .map(str::to_string),
+    })
+}
+
+/// The same, for an app installed under one of `steam_roots` or the platform
+/// defaults. `None` when no manifest can be found or read.
+#[must_use]
+pub fn app_state(app_id: u32, steam_roots: &[PathBuf]) -> Option<AppState> {
+    steam_roots
+        .iter()
+        .cloned()
+        .chain(default_steam_roots())
+        .flat_map(|root| libraries_of(&root))
+        .find_map(|lib| {
+            let acf = lib
+                .join("steamapps")
+                .join(format!("appmanifest_{app_id}.acf"));
+            acf_state(&std::fs::read_to_string(acf).ok()?)
+        })
+}
+
 fn home_dir() -> Option<PathBuf> {
     std::env::var_os("HOME")
         .or_else(|| std::env::var_os("USERPROFILE"))
@@ -313,6 +363,28 @@ mod tests {
     fn parses_acf() {
         assert_eq!(acf_installdir(ACF).as_deref(), Some("Valheim"));
         assert_eq!(acf_installdir("\"AppState\" { }"), None);
+    }
+
+    #[test]
+    fn reads_whether_steam_owes_this_app_an_update() {
+        let manifest = |flags: &str| {
+            format!(
+                "\"AppState\" {{ \"appid\" \"896660\" \"StateFlags\" \"{flags}\" \
+                 \"installdir\" \"Valheim dedicated server\" \"buildid\" \"25185644\" }}"
+            )
+        };
+        // 4 is "fully installed" and nothing else.
+        let up_to_date = acf_state(&manifest("4")).unwrap();
+        assert!(!up_to_date.update_pending);
+        assert_eq!(up_to_date.build_id.as_deref(), Some("25185644"));
+
+        // 6 = installed + update required; 20 = installed + update running.
+        assert!(acf_state(&manifest("6")).unwrap().update_pending);
+        assert!(acf_state(&manifest("20")).unwrap().update_pending);
+        // 1 is uninstalled, which is not an update waiting.
+        assert!(!acf_state(&manifest("1")).unwrap().update_pending);
+
+        assert_eq!(acf_state("\"AppState\" { }"), None);
     }
 
     #[test]

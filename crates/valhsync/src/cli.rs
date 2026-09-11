@@ -266,6 +266,13 @@ fn prepare(ctx: &Context, selector: Option<&str>) -> Result<Prepared> {
 }
 
 fn print_plan(prepared: &Prepared) {
+    if let Some((mine, theirs)) = prepared.version_gap {
+        println!(
+            "Warning: your Valheim is on network version {mine}, this server on {theirs}. \
+             Valheim refuses the connection whatever the mods say; the game and the dedicated \
+             server update separately, so tell your admin."
+        );
+    }
     let plan = &prepared.plan;
     let c = plan.counts();
     println!(
