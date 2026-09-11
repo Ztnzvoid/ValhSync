@@ -30,10 +30,20 @@ The pack sent to players is:
   Files here override files of the same path coming from the server.
 
 The default include list covers `winhttp.dll`, `doorstop_config.ini`,
-`.doorstop_version`, `BepInEx/{core,plugins,patchers,config}/**` and
-`unstripped_corlib/**`. Logs and caches are excluded. Nothing outside
-`BepInEx/` and the doorstop files can ever be published: the launcher refuses
-any other path, whatever the manifest says.
+`.doorstop_version`, `doorstop_libs/**`, `unstripped_corlib/**` and the whole
+of `BepInEx/**` — not a list of its subfolders, because which ones exist
+depends on the BepInEx version (`monomod`, `unity-libs`, `interop`) and mods
+drop files wherever they like inside it. A mod that ships YAML tables, texture
+packs or season files under `BepInEx/config/` is published with them. Only
+logs, caches and `.bak`/`.old`/`.tmp` files are excluded.
+
+Nothing outside `BepInEx/` and the doorstop files can ever be published: the
+launcher refuses any other path, whatever the manifest says.
+
+Player preferences are not overwritten. `BepInEx/config/*.cfg` is *seeded* —
+sent once, then left alone — because those are the files BepInEx generates for
+keybinds and UI. Everything else under `config/` is data the admin curates and
+is kept in step with the server.
 
 ## 2. Install
 
@@ -147,6 +157,42 @@ monitoring. Internet players need TCP 2470 forwarded to this machine, or an
 outbound tunnel (Cloudflare Tunnel, ngrok) in front of it.
 
 Run it as a service: see [deploy/](deploy/).
+
+## 4b. The Server tab
+
+Double-clicked, `valhsync-server` opens a window with two tabs.
+
+**Server** is what is happening now: online or offline, how many players, the
+crossplay join code, how long ago the world was written to disk, and the
+server's log as it is written. The log is found on its own — the `-logFile`
+the start script asks for, else `BepInEx/LogOutput.log`, else Unity's
+`output_log.txt`.
+
+*Start* runs the start script in its own console window. *Stop and save* sends
+that console a Ctrl+C, which is exactly what an admin types into it: Valheim
+writes the world to disk and then exits. ValhSync never terminates the
+process, because a killed server loses everything since the last autosave.
+
+There is no way to force a save without stopping: Valheim's dedicated server
+takes no console commands. What you can set is how often it saves itself —
+`-saveinterval`, 1800 seconds by default — which the start-script wizard puts
+on the form.
+
+**Settings** holds everything that is written to a file: the server folder,
+the identity, which mods are server-only, how the pack is published, the
+invite code, and the wizard below.
+
+### The start-script wizard
+
+Steam overwrites `start_headless_server.bat` on every update, so the script
+you actually run has to be a copy. The wizard writes that copy, and checks the
+two rules Valheim enforces before it does: a password of at least five
+characters, and a server name that does not contain the password. Getting
+either wrong makes the server start and quit again with little explanation.
+
+It also sets `-saveinterval` and `-backups`, which the file Iron Gate ships
+leaves out. The password is written in plain text, as it is in that file;
+ValhSync never reads it back out of the script, stores it, or publishes it.
 
 ## 5. Distribute the launcher
 

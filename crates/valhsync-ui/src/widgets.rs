@@ -53,6 +53,57 @@ pub fn section(ui: &mut egui::Ui, text: &str) {
     ui.add_space(7.0);
 }
 
+/// The window's tabs, carved in the display face over a hairline: the open
+/// one lit and underlined, the others waiting in bone.
+///
+/// `items` is `(value, label)`; clicking one writes it into `current`.
+pub fn tabs<T: Copy + PartialEq>(ui: &mut egui::Ui, current: &mut T, items: &[(T, &str)]) {
+    const SIZE: f32 = 15.0;
+    const PAD: egui::Vec2 = egui::vec2(16.0, 8.0);
+
+    ui.horizontal(|ui| {
+        ui.spacing_mut().item_spacing.x = 4.0;
+        for (value, label) in items {
+            let open = *current == *value;
+            let galley = ui.painter().layout_no_wrap(
+                (*label).to_owned(),
+                th::display_font(SIZE),
+                th::BONE_DIM,
+            );
+            let (rect, response) =
+                ui.allocate_exact_size(galley.size() + PAD * 2.0, egui::Sense::click());
+            let hovered = response.hovered();
+            let ink = match (open, hovered) {
+                (true, _) => th::GOLD_LIT,
+                (false, true) => th::BONE,
+                (false, false) => th::BONE_DIM,
+            };
+            if open {
+                th::glow(ui.painter(), rect, th::GOLD.gamma_multiply(0.14));
+            }
+            ui.painter().galley(rect.min + PAD, galley, ink);
+
+            // The lit bar under the open tab, tapered at both ends so it reads
+            // as struck rather than drawn.
+            let base = rect.bottom() - 1.0;
+            let bar = egui::Rect::from_min_max(
+                egui::pos2(rect.left() + PAD.x * 0.5, base - 2.0),
+                egui::pos2(rect.right() - PAD.x * 0.5, base),
+            );
+            if open {
+                th::glow(ui.painter(), bar.expand(3.0), th::GOLD.gamma_multiply(0.30));
+                ui.painter().rect_filled(bar, 1.0, th::GOLD);
+            } else if hovered {
+                ui.painter().rect_filled(bar, 1.0, th::EDGE);
+            }
+            if response.clicked() {
+                *current = *value;
+            }
+        }
+    });
+    th::hairline(ui);
+}
+
 /// Dimmed explanatory line under a control.
 pub fn hint(ui: &mut egui::Ui, text: &str) {
     ui.label(RichText::new(text).small().color(th::BONE_DIM));

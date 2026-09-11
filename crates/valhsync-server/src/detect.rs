@@ -73,6 +73,14 @@ pub struct ServerArgs {
     /// A password was found. The value is deliberately not kept: ValhSync has
     /// no use for it and must never store or publish it.
     pub has_password: bool,
+    /// `-logFile`: where Unity writes the server's output.
+    pub log_file: Option<String>,
+    /// `-savedir`: where the worlds live, when it is not the default.
+    pub savedir: Option<String>,
+    /// `-saveinterval`, in seconds. Valheim's own default is 1800.
+    pub save_interval: Option<u32>,
+    /// `-backups`: how many automatic backups are kept.
+    pub backups: Option<u32>,
 }
 
 const STOCK_SCRIPTS: &[&str] = &[
@@ -130,13 +138,13 @@ pub fn parse_start_script(text: &str) -> ServerArgs {
             .strip_prefix("set ")
             .or_else(|| line.strip_prefix("SET "))
             .unwrap_or(line);
-        let rest = rest.trim().trim_matches('"');
+        let rest = rest.trim().trim_matches(QUOTES);
         if let Some((key, value)) = rest.split_once('=') {
-            let key = key.trim().trim_matches('"');
+            let key = key.trim().trim_matches(QUOTES);
             if !key.is_empty() && key.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
                 vars.insert(
                     key.to_uppercase(),
-                    value.trim().trim_matches('"').to_string(),
+                    value.trim().trim_matches(QUOTES).to_string(),
                 );
             }
         }
@@ -168,7 +176,7 @@ pub fn parse_start_script(text: &str) -> ServerArgs {
     }
 
     let expand = |token: &str| -> String {
-        let t = token.trim().trim_matches('"');
+        let t = token.trim().trim_matches(QUOTES);
         let key = t
             .strip_prefix('%')
             .and_then(|k| k.strip_suffix('%'))
@@ -199,6 +207,10 @@ pub fn parse_start_script(text: &str) -> ServerArgs {
                 args.has_password = true;
             }
             "-crossplay" => args.crossplay = true,
+            "-logFile" => args.log_file = next(&mut i),
+            "-savedir" => args.savedir = next(&mut i),
+            "-saveinterval" => args.save_interval = next(&mut i).and_then(|v| v.parse().ok()),
+            "-backups" => args.backups = next(&mut i).and_then(|v| v.parse().ok()),
             _ => {}
         }
         i += 1;
@@ -206,18 +218,28 @@ pub fn parse_start_script(text: &str) -> ServerArgs {
     args
 }
 
+/// The quoting a start script may use: double quotes in a `.bat`, either kind
+/// in a `.sh`.
+const QUOTES: [char; 2] = ['"', '\''];
+
 /// Split a command line on whitespace, keeping quoted runs together.
 fn split_args(line: &str) -> Vec<String> {
     let mut out = Vec::new();
     let mut cur = String::new();
-    let mut quoted = false;
+    let mut quoted = None;
     for c in line.chars() {
         match c {
-            '"' => {
-                quoted = !quoted;
+            c if QUOTES.contains(&c) => {
+                // Only the quote that opened a run can close it, so an
+                // apostrophe inside "Odin's hall" is just a letter.
+                match quoted {
+                    Some(open) if open == c => quoted = None,
+                    Some(_) => {}
+                    None => quoted = Some(c),
+                }
                 cur.push(c);
             }
-            c if c.is_whitespace() && !quoted => {
+            c if c.is_whitespace() && quoted.is_none() => {
                 if !cur.is_empty() {
                     out.push(std::mem::take(&mut cur));
                 }

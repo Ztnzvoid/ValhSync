@@ -6,7 +6,7 @@
 
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, Receiver};
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime};
 
 use eframe::egui::{self, Align, Color32, Layout, RichText};
 use valhsync_core::limits::human_bytes;
@@ -16,10 +16,21 @@ use valhsync_ui::widgets as w;
 
 use super::worker::{self, Msg, Reporter};
 use crate::config::{self, Config};
-use crate::{detect, gameserver};
+use crate::{detect, gameserver, logs, wizard};
 
 const POLL_GAME_SERVER: Duration = Duration::from_secs(2);
 const NOTICE_TTL: Duration = Duration::from_secs(12);
+/// How often the open log is re-read. Fast enough to watch a start-up, slow
+/// enough that the file is touched once a second and no more.
+const POLL_LOG: Duration = Duration::from_millis(900);
+
+/// The two halves of the window: what the server is doing, and how it is set
+/// up. Everything that changes minute to minute is on the first.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Tab {
+    Status,
+    Settings,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Lang {
@@ -116,6 +127,28 @@ pub(super) struct App {
     game_running: bool,
     game_checked: Instant,
 
+    tab: Tab,
+    /// Every log this installation writes, and which one is open.
+    log_sources: Vec<PathBuf>,
+    log_index: usize,
+    log: Option<logs::Tail>,
+    log_checked: Instant,
+    /// Follow the end of the file, until the admin scrolls up to read.
+    log_follow: bool,
+    session: logs::Session,
+    /// When the world file was last written, so the panel can say how long ago.
+    world_saved: Option<SystemTime>,
+    /// Set when a stop was asked for, cleared when the process is gone.
+    stop_requested: Option<Instant>,
+    /// The world file, when the start script says enough to find it.
+    world_file: Option<PathBuf>,
+
+    /// The start-script wizard, and the name it would write to.
+    recipe: wizard::Recipe,
+    recipe_file: String,
+    /// Second click confirms replacing a script that already exists.
+    recipe_replace: bool,
+
     /// Window title as last set, so it is only pushed when it changes.
     title: String,
     busy: bool,
@@ -168,6 +201,19 @@ impl App {
             game_checked: Instant::now()
                 .checked_sub(POLL_GAME_SERVER)
                 .unwrap_or_else(Instant::now),
+            tab: Tab::Status,
+            log_sources: Vec::new(),
+            log_index: 0,
+            log: None,
+            log_checked: Instant::now(),
+            log_follow: true,
+            session: logs::Session::default(),
+            world_saved: None,
+            stop_requested: None,
+            world_file: None,
+            recipe: wizard::Recipe::default(),
+            recipe_file: String::from("start_valheim_server.bat"),
+            recipe_replace: false,
             title: String::new(),
             busy: false,
             rx: None,
@@ -281,6 +327,101 @@ impl App {
             .and_then(|p| self.scripts.iter().position(|s| &s.path == p))
             .unwrap_or(0);
         self.mods = self.collect_mods();
+        self.refresh_log_sources();
+        self.fill_recipe_from_script();
+    }
+
+    /// Which logs this installation writes, and where its world file is.
+    /// Both come from the server folder and the start script, never from a
+    /// setting the admin has to fill in.
+    fn refresh_log_sources(&mut self) {
+        let root = self.cfg.pack.server_root.clone();
+        let args = self.scripts.get(self.script_index).map(|s| s.args.clone());
+        let Some(root) = root else {
+            self.log_sources.clear();
+            self.log = None;
+            self.world_file = None;
+            return;
+        };
+        self.world_file = args.as_ref().and_then(|a| logs::world_save(&root, a));
+
+        let sources = logs::find_sources(&root, args.as_ref());
+        if sources == self.log_sources {
+            return;
+        }
+        // Stay on the same file across a refresh when it is still there.
+        let open = self.log.as_ref().map(|t| t.path().to_path_buf());
+        self.log_sources = sources;
+        self.log_index = open
+            .and_then(|p| self.log_sources.iter().position(|s| *s == p))
+            .unwrap_or(0);
+        self.open_log();
+    }
+
+    fn open_log(&mut self) {
+        self.log = self
+            .log_sources
+            .get(self.log_index)
+            .cloned()
+            .map(logs::Tail::new);
+        self.log_follow = true;
+        self.log_checked = Instant::now()
+            .checked_sub(POLL_LOG)
+            .unwrap_or_else(Instant::now);
+    }
+
+    /// Re-read the open log, and with it what the session line says.
+    fn poll_log(&mut self) {
+        if self.log_checked.elapsed() < POLL_LOG {
+            return;
+        }
+        self.log_checked = Instant::now();
+        if let Some(tail) = &mut self.log
+            && tail.poll()
+        {
+            self.session = logs::read_session(tail.lines());
+        }
+        self.world_saved = self.world_file.as_deref().and_then(logs::saved_at);
+    }
+
+    /// A duration in the plainest words: "3 min", "2 h 10". Only ever used
+    /// for something that happened, so it is always in the past.
+    fn ago(when: SystemTime) -> String {
+        let secs = when.elapsed().map(|d| d.as_secs()).unwrap_or_default();
+        match secs {
+            0..=59 => format!("{secs} s"),
+            60..=3599 => format!("{} min", secs / 60),
+            _ => format!("{} h {:02}", secs / 3600, (secs % 3600) / 60),
+        }
+    }
+
+    /// Start the wizard from whatever the selected script already says, so
+    /// editing an existing server is a matter of changing one field.
+    fn fill_recipe_from_script(&mut self) {
+        let Some(script) = self.scripts.get(self.script_index) else {
+            return;
+        };
+        let a = &script.args;
+        let default = wizard::Recipe::default();
+        self.recipe = wizard::Recipe {
+            name: a.name.clone().unwrap_or_default(),
+            world: a.world.clone().unwrap_or_default(),
+            // The password is never read out of a script, so it is always
+            // typed again here.
+            password: std::mem::take(&mut self.recipe.password),
+            port: a.port.unwrap_or(default.port),
+            public: a.public.unwrap_or(default.public),
+            crossplay: a.crossplay,
+            save_interval: a.save_interval.unwrap_or(default.save_interval),
+            backups: a.backups.unwrap_or(default.backups),
+            log_file: a.log_file.is_some() || default.log_file,
+        };
+        // Never offer to overwrite the file Steam owns.
+        if !script.is_stock
+            && let Some(name) = script.path.file_name().and_then(|n| n.to_str())
+        {
+            self.recipe_file = name.to_string();
+        }
     }
 
     fn collect_mods(&self) -> Vec<ModEntry> {
@@ -482,10 +623,22 @@ impl eframe::App for App {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         self.drain();
         if self.game_checked.elapsed() >= POLL_GAME_SERVER {
+            let was = self.game_running;
             self.game_running = gameserver::is_running();
             self.game_checked = Instant::now();
+            // A server that has just started writes a log that did not exist.
+            if was != self.game_running {
+                self.refresh_log_sources();
+                if !self.game_running {
+                    self.session = logs::Session::default();
+                    self.stop_requested = None;
+                }
+            }
         }
-        if self.busy || self.serving_at.is_some() {
+        if self.tab == Tab::Status {
+            self.poll_log();
+        }
+        if self.busy || self.serving_at.is_some() || self.tab == Tab::Status {
             ctx.request_repaint_after(Duration::from_millis(200));
         } else {
             ctx.request_repaint_after(POLL_GAME_SERVER);
@@ -504,17 +657,38 @@ impl eframe::App for App {
             .frame(egui::Frame::new().inner_margin(egui::Margin::same(18)))
             .show(ctx, |ui| {
                 th::backdrop(ui.ctx(), ui.painter(), ui.max_rect().expand(18.0));
-                egui::ScrollArea::vertical().show(ui, |ui| {
-                    self.card_game_server(ui);
-                    ui.add_space(12.0);
-                    self.card_identity(ui);
-                    ui.add_space(12.0);
-                    self.card_mods(ui);
-                    ui.add_space(12.0);
-                    self.card_publish(ui);
-                    ui.add_space(12.0);
-                    self.card_invite(ui);
-                });
+                let (status, settings) = (
+                    self.t("État du serveur", "Server"),
+                    self.t("Paramètres", "Settings"),
+                );
+                w::tabs(
+                    ui,
+                    &mut self.tab,
+                    &[(Tab::Status, status), (Tab::Settings, settings)],
+                );
+                ui.add_space(12.0);
+                egui::ScrollArea::vertical()
+                    .auto_shrink([false, false])
+                    .show(ui, |ui| match self.tab {
+                        Tab::Status => {
+                            self.card_status(ui);
+                            ui.add_space(12.0);
+                            self.card_logs(ui);
+                        }
+                        Tab::Settings => {
+                            self.card_server_folder(ui);
+                            ui.add_space(12.0);
+                            self.card_identity(ui);
+                            ui.add_space(12.0);
+                            self.card_mods(ui);
+                            ui.add_space(12.0);
+                            self.card_publish(ui);
+                            ui.add_space(12.0);
+                            self.card_invite(ui);
+                            ui.add_space(12.0);
+                            self.card_wizard(ui);
+                        }
+                    });
             });
         chrome::draw_border(ctx);
     }
@@ -624,11 +798,174 @@ impl App {
             });
     }
 
-    #[allow(clippy::too_many_lines)] // one card, read top to bottom
-    fn card_game_server(&mut self, ui: &mut egui::Ui) {
+    /// What the server is doing right now. Everything here changes on its
+    /// own; nothing here is a setting.
+    fn card_status(&mut self, ui: &mut egui::Ui) {
         th::card(ui, |ui| {
             ui.set_width(ui.available_width());
             w::section(ui, self.t("I · Serveur de jeu", "I · Game server"));
+
+            let stopping = self.stop_requested.is_some() && self.game_running;
+            ui.horizontal(|ui| {
+                w::status_dot_lit(
+                    ui,
+                    if self.game_running {
+                        th::MOSS
+                    } else {
+                        th::GOLD.gamma_multiply(0.25)
+                    },
+                    if stopping {
+                        self.t(
+                            "Arrêt en cours, sauvegarde du monde",
+                            "Stopping, saving the world",
+                        )
+                    } else if self.game_running {
+                        self.t("En ligne", "Online")
+                    } else {
+                        self.t("Hors ligne", "Offline")
+                    },
+                );
+                ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                    self.server_buttons(ui, stopping);
+                });
+            });
+
+            if self.game_running {
+                ui.add_space(6.0);
+                let mut facts = Vec::new();
+                if let Some(n) = self.session.players {
+                    facts.push(format!(
+                        "{n} {}",
+                        if n == 1 {
+                            self.t("joueur connecté", "player online")
+                        } else {
+                            self.t("joueurs connectés", "players online")
+                        }
+                    ));
+                }
+                if let Some(code) = &self.session.join_code {
+                    facts.push(format!("{} {code}", self.t("code crossplay", "join code")));
+                }
+                if let Some(saved) = self.world_saved {
+                    facts.push(format!(
+                        "{} {}",
+                        self.t("sauvegardé il y a", "saved"),
+                        Self::ago(saved)
+                    ));
+                }
+                if facts.is_empty() {
+                    w::hint(
+                        ui,
+                        self.t(
+                            "En attente de la première ligne de session dans le journal.",
+                            "Waiting for the first session line in the log.",
+                        ),
+                    );
+                } else {
+                    ui.label(
+                        RichText::new(facts.join("   ·   "))
+                            .text_style(th::label_style())
+                            .color(th::RUNE),
+                    );
+                }
+            }
+
+            ui.add_space(8.0);
+            if self.scripts.is_empty() {
+                w::notice(
+                    ui,
+                    th::GOLD,
+                    self.t(
+                        "Aucun script de démarrage. Créez-en un dans Paramètres.",
+                        "No start script yet. Write one from the Settings tab.",
+                    ),
+                );
+            } else if let Some(s) = self.scripts.get(self.script_index) {
+                w::hint(
+                    ui,
+                    &format!(
+                        "{} {}",
+                        self.t("Lancé par", "Started by"),
+                        s.path.file_name().unwrap_or_default().to_string_lossy()
+                    ),
+                );
+            }
+            w::hint(
+                ui,
+                self.t(
+                    "Arrêter, c'est envoyer Ctrl+C à sa fenêtre : Valheim écrit le monde sur le disque avant de quitter. ValhSync ne tue jamais le processus.",
+                    "Stopping sends Ctrl+C to its window: Valheim writes the world to disk before it quits. ValhSync never kills the process.",
+                ),
+            );
+        });
+    }
+
+    /// Start and stop side by side, so the pair reads as one control.
+    fn server_buttons(&mut self, ui: &mut egui::Ui, stopping: bool) {
+        let can_stop = self.game_running && !stopping;
+        if ui
+            .add_enabled(
+                can_stop,
+                egui::Button::new(
+                    RichText::new(self.t("Arrêter et sauvegarder", "Stop and save"))
+                        .color(if can_stop { th::BONE } else { th::BONE_DIM }),
+                ),
+            )
+            .clicked()
+        {
+            match gameserver::stop() {
+                Ok(()) => {
+                    self.stop_requested = Some(Instant::now());
+                    let msg = self
+                        .t(
+                            "Ctrl+C envoyé. Valheim sauvegarde le monde puis quitte.",
+                            "Ctrl+C sent. Valheim saves the world, then quits.",
+                        )
+                        .to_string();
+                    self.notify(msg, th::MOSS);
+                }
+                Err(e) => self.notify(format!("{e:#}"), th::BLOOD_LIT),
+            }
+        }
+        let can_start = !self.game_running && !self.scripts.is_empty();
+        if ui
+            .add_enabled(
+                can_start,
+                egui::Button::new(
+                    RichText::new(self.t("Démarrer", "Start"))
+                        .strong()
+                        .color(if can_start { th::NIGHT } else { th::BONE_DIM }),
+                )
+                .fill(if can_start { th::GOLD } else { th::LEATHER }),
+            )
+            .clicked()
+            && let Some(s) = self.scripts.get(self.script_index)
+        {
+            let launch = gameserver::Launch(s.path.clone());
+            match gameserver::start(&launch) {
+                Ok(()) => {
+                    self.game_running = true;
+                    self.game_checked = Instant::now();
+                    self.stop_requested = None;
+                    let msg = self
+                        .t(
+                            "Serveur de jeu lancé dans sa propre fenêtre.",
+                            "Game server started in its own window.",
+                        )
+                        .to_string();
+                    self.notify(msg, th::MOSS);
+                }
+                Err(e) => self.notify(format!("{e:#}"), th::BLOOD_LIT),
+            }
+        }
+    }
+
+    /// Where the dedicated server lives and which script starts it.
+    #[allow(clippy::too_many_lines)] // one card, read top to bottom
+    fn card_server_folder(&mut self, ui: &mut egui::Ui) {
+        th::card(ui, |ui| {
+            ui.set_width(ui.available_width());
+            w::section(ui, self.t("I · Serveur dédié", "I · Dedicated server"));
 
             let hint_text = self.t("Dossier du serveur dédié", "Dedicated server folder");
             ui.horizontal(|ui| {
@@ -705,6 +1042,7 @@ impl App {
                         .file_name()
                         .map(|n| n.to_string_lossy().to_string())
                         .unwrap_or_default();
+                    let mut picked = self.script_index;
                     egui::ComboBox::from_id_salt("script")
                         .selected_text(current)
                         .width(280.0)
@@ -715,14 +1053,16 @@ impl App {
                                     s.path.file_name().unwrap_or_default().to_string_lossy(),
                                     if s.is_stock { "  (Steam)" } else { "" }
                                 );
-                                if ui
-                                    .selectable_value(&mut self.script_index, i, label)
-                                    .clicked()
-                                {
-                                    self.script_chosen = true;
-                                }
+                                ui.selectable_value(&mut picked, i, label);
                             }
                         });
+                    if picked != self.script_index {
+                        self.script_index = picked;
+                        self.script_chosen = true;
+                        // Another script can mean another log and another world.
+                        self.refresh_log_sources();
+                        self.fill_recipe_from_script();
+                    }
                 });
                 if let Some(s) = self.scripts.get(self.script_index) {
                     let a = &s.args;
@@ -751,57 +1091,6 @@ impl App {
                     );
                 }
             }
-
-            ui.add_space(8.0);
-            ui.horizontal(|ui| {
-                w::status_dot(
-                    ui,
-                    if self.game_running {
-                        th::MOSS
-                    } else {
-                        th::BONE_DIM
-                    },
-                    if self.game_running {
-                        self.t("Serveur de jeu en ligne", "Game server online")
-                    } else {
-                        self.t("Serveur de jeu arrêté", "Game server stopped")
-                    },
-                );
-                ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                    let can_start = !self.game_running && !self.scripts.is_empty();
-                    if ui
-                        .add_enabled(
-                            can_start,
-                            egui::Button::new(self.t("Démarrer le serveur", "Start the server")),
-                        )
-                        .clicked()
-                        && let Some(s) = self.scripts.get(self.script_index)
-                    {
-                        let launch = gameserver::Launch(s.path.clone());
-                        match gameserver::start(&launch) {
-                            Ok(()) => {
-                                self.game_running = true;
-                                self.game_checked = Instant::now();
-                                let msg = self
-                                    .t(
-                                        "Serveur de jeu lancé dans sa propre fenêtre.",
-                                        "Game server started in its own window.",
-                                    )
-                                    .to_string();
-                                self.notify(msg, th::MOSS);
-                            }
-                            Err(e) => self.notify(format!("{e:#}"), th::BLOOD_LIT),
-                        }
-                    }
-                });
-            });
-            w::hint(
-                ui,
-                self.t(
-                    "ValhSync ne l'arrête jamais : Ctrl+C dans sa fenêtre, c'est ce qui sauvegarde le monde.",
-                    "ValhSync never stops it: Ctrl+C in its window is what saves the world.",
-                ),
-            );
         });
     }
 
@@ -1241,6 +1530,304 @@ impl App {
 impl App {
     /// Build the folder an admin zips and sends: the launcher plus the invite
     /// code, so the player only has to double-click.
+    /// The server's own log, followed as it is written.
+    fn card_logs(&mut self, ui: &mut egui::Ui) {
+        th::card(ui, |ui| {
+            ui.set_width(ui.available_width());
+            w::section(ui, self.t("II · Journal", "II · Log"));
+
+            if self.log_sources.is_empty() {
+                w::hint(
+                    ui,
+                    self.t(
+                        "Aucun journal trouvé. BepInEx en écrit un ; sinon, l'assistant de script peut en ajouter un dans Paramètres.",
+                        "No log found. BepInEx writes one; failing that, the script wizard can add one from the Settings tab.",
+                    ),
+                );
+                return;
+            }
+
+            ui.horizontal(|ui| {
+                if self.log_sources.len() > 1 {
+                    let current = self.log_sources[self.log_index]
+                        .file_name()
+                        .map(|n| n.to_string_lossy().to_string())
+                        .unwrap_or_default();
+                    let mut picked = self.log_index;
+                    egui::ComboBox::from_id_salt("log-source")
+                        .selected_text(current)
+                        .width(240.0)
+                        .show_ui(ui, |ui| {
+                            for (i, path) in self.log_sources.iter().enumerate() {
+                                let label = path.file_name().unwrap_or_default().to_string_lossy();
+                                ui.selectable_value(&mut picked, i, label);
+                            }
+                        });
+                    if picked != self.log_index {
+                        self.log_index = picked;
+                        self.open_log();
+                    }
+                } else if let Some(path) = self.log_sources.first() {
+                    ui.label(
+                        RichText::new(path.file_name().unwrap_or_default().to_string_lossy())
+                            .text_style(th::label_style())
+                            .color(th::BONE_DIM),
+                    );
+                }
+                ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                    if ui
+                        .button(self.t("Ouvrir le fichier", "Open the file"))
+                        .clicked()
+                        && let Some(path) = self.log_sources.get(self.log_index)
+                    {
+                        open_path(path);
+                    }
+                    let follow = self.t("Suivre", "Follow");
+                    ui.checkbox(&mut self.log_follow, follow);
+                });
+            });
+            ui.add_space(6.0);
+
+            let error = self.log.as_ref().and_then(|t| t.error().map(str::to_owned));
+            if let Some(error) = error {
+                w::notice(ui, th::BLOOD_LIT, &error);
+                return;
+            }
+            egui::Frame::new()
+                .fill(th::NIGHT)
+                .stroke(egui::Stroke::new(1.0, th::EDGE_SOFT))
+                .inner_margin(egui::Margin::symmetric(10, 8))
+                .show(ui, |ui| {
+                    egui::ScrollArea::vertical()
+                        .max_height(260.0)
+                        .auto_shrink([false, false])
+                        .stick_to_bottom(self.log_follow)
+                        .show(ui, |ui| {
+                            let Some(tail) = &self.log else { return };
+                            if tail.lines().len() == 0 {
+                                w::hint(ui, self.t("(vide)", "(empty)"));
+                                return;
+                            }
+                            for line in tail.lines() {
+                                ui.label(
+                                    RichText::new(line)
+                                        .monospace()
+                                        .size(11.0)
+                                        .color(log_colour(line)),
+                                );
+                            }
+                        });
+                });
+        });
+    }
+
+    /// Writes the start script Steam will not overwrite, with the two rules
+    /// Valheim enforces checked before anything is written.
+    #[allow(clippy::too_many_lines)] // one card, read top to bottom
+    fn card_wizard(&mut self, ui: &mut egui::Ui) {
+        th::card(ui, |ui| {
+            ui.set_width(ui.available_width());
+            w::section(ui, self.t("VI · Script de démarrage", "VI · Start script"));
+            w::hint(
+                ui,
+                self.t(
+                    "Steam remplace start_headless_server.bat à chaque mise à jour. ValhSync écrit une copie à vous, qu'il ne touchera jamais.",
+                    "Steam replaces start_headless_server.bat on every update. ValhSync writes a copy of your own, which it will never touch.",
+                ),
+            );
+            ui.add_space(8.0);
+
+            let full = ui.available_width();
+            ui.horizontal(|ui| {
+                ui.vertical(|ui| {
+                    w::field(
+                        ui,
+                        self.t("Nom du serveur", "Server name"),
+                        &mut self.recipe.name,
+                        full * 0.45,
+                    );
+                });
+                ui.vertical(|ui| {
+                    w::field(
+                        ui,
+                        self.t("Monde", "World"),
+                        &mut self.recipe.world,
+                        full * 0.45,
+                    );
+                });
+            });
+            ui.add_space(6.0);
+            ui.horizontal(|ui| {
+                ui.vertical(|ui| {
+                    ui.label(
+                        RichText::new(self.t("Mot de passe", "Password"))
+                            .small()
+                            .color(th::BONE_DIM),
+                    );
+                    ui.add(
+                        egui::TextEdit::singleline(&mut self.recipe.password)
+                            .desired_width(full * 0.45)
+                            .password(true)
+                            .font(egui::TextStyle::Monospace),
+                    );
+                });
+                ui.vertical(|ui| {
+                    ui.label(
+                        RichText::new(self.t("Port", "Port"))
+                            .small()
+                            .color(th::BONE_DIM),
+                    );
+                    ui.add(egui::DragValue::new(&mut self.recipe.port).range(1024..=65_533));
+                });
+            });
+            ui.add_space(8.0);
+            let (crossplay, public, journal) = (
+                self.t("Crossplay", "Crossplay"),
+                self.t("Listé publiquement", "Listed publicly"),
+                self.t("Écrire un journal", "Write a log file"),
+            );
+            ui.horizontal_wrapped(|ui| {
+                ui.checkbox(&mut self.recipe.crossplay, crossplay);
+                ui.checkbox(&mut self.recipe.public, public);
+                ui.checkbox(&mut self.recipe.log_file, journal)
+                    .on_hover_text(self.t(
+                        "Pour un serveur sans BepInEx. La sortie part alors dans le fichier au lieu de la console.",
+                        "For a server with no BepInEx. Its output then goes to the file instead of the console.",
+                    ));
+            });
+            ui.add_space(8.0);
+            ui.horizontal(|ui| {
+                ui.label(
+                    RichText::new(self.t("Sauvegarde auto toutes les", "Autosave every"))
+                        .small()
+                        .color(th::BONE_DIM),
+                );
+                ui.add(
+                    egui::DragValue::new(&mut self.recipe.save_interval)
+                        .range(60..=7200)
+                        .speed(30)
+                        .suffix(" s"),
+                );
+                ui.add_space(12.0);
+                ui.label(
+                    RichText::new(self.t("Sauvegardes conservées", "Backups kept"))
+                        .small()
+                        .color(th::BONE_DIM),
+                );
+                ui.add(egui::DragValue::new(&mut self.recipe.backups).range(0..=32));
+            });
+
+            let issues = self.recipe.issues();
+            if !issues.is_empty() {
+                ui.add_space(8.0);
+                for issue in &issues {
+                    w::notice(ui, th::GOLD, self.wizard_issue(*issue));
+                }
+            }
+
+            ui.add_space(10.0);
+            th::hairline(ui);
+            ui.add_space(10.0);
+            let root = PathBuf::from(self.server_root.trim());
+            let can_write = issues.is_empty() && detect::looks_like_server_root(&root);
+            ui.horizontal(|ui| {
+                ui.add(
+                    egui::TextEdit::singleline(&mut self.recipe_file)
+                        .desired_width(260.0)
+                        .font(egui::TextStyle::Monospace),
+                );
+                let exists = root.join(self.recipe_file.trim()).exists();
+                let label = if exists && !self.recipe_replace {
+                    self.t("Remplacer ?", "Replace?")
+                } else {
+                    self.t("Écrire le script", "Write the script")
+                };
+                if ui
+                    .add_enabled(
+                        can_write,
+                        egui::Button::new(RichText::new(label).strong().color(if can_write {
+                            th::NIGHT
+                        } else {
+                            th::BONE_DIM
+                        }))
+                        .fill(if can_write {
+                            th::GOLD
+                        } else {
+                            th::LEATHER
+                        }),
+                    )
+                    .clicked()
+                {
+                    if exists && !self.recipe_replace {
+                        self.recipe_replace = true;
+                    } else {
+                        self.write_script(&root);
+                    }
+                }
+            });
+            if self.recipe_replace {
+                w::hint(
+                    ui,
+                    self.t(
+                        "Ce fichier existe déjà. Cliquez une seconde fois pour l'écraser.",
+                        "That file already exists. Click once more to overwrite it.",
+                    ),
+                );
+            }
+        });
+    }
+
+    /// Write it, then re-detect so the new script is the one the panel uses.
+    fn write_script(&mut self, root: &Path) {
+        let name = self.recipe_file.trim().to_string();
+        match wizard::write(root, &name, &self.recipe, self.recipe_replace) {
+            Ok(path) => {
+                self.recipe_replace = false;
+                self.refresh_detection();
+                if let Some(i) = self.scripts.iter().position(|s| s.path == path) {
+                    self.script_index = i;
+                    self.script_chosen = true;
+                }
+                let msg = format!("{} {}", self.t("Script écrit :", "Script written:"), name);
+                self.notify(msg, th::MOSS);
+            }
+            Err(e) => self.notify(format!("{e:#}"), th::BLOOD_LIT),
+        }
+    }
+
+    /// What a wizard complaint means, in the window's two languages.
+    fn wizard_issue(&self, issue: wizard::Issue) -> &'static str {
+        use wizard::{Field, Issue};
+        match issue {
+            Issue::NameEmpty => self.t("Donnez un nom au serveur.", "Give the server a name."),
+            Issue::WorldEmpty => self.t("Donnez un nom au monde.", "Give the world a name."),
+            Issue::PasswordTooShort => self.t(
+                "Valheim exige un mot de passe d'au moins 5 caractères.",
+                "Valheim requires a password of at least 5 characters.",
+            ),
+            Issue::PasswordInName => self.t(
+                "Valheim refuse de démarrer si le nom du serveur contient le mot de passe.",
+                "Valheim refuses to start when the server name contains the password.",
+            ),
+            Issue::BadCharacters(Field::Name) => self.t(
+                "Le nom contient un guillemet ou une apostrophe : le script ne les supporte pas.",
+                "The name holds a quote, which the script cannot carry.",
+            ),
+            Issue::BadCharacters(Field::World) => self.t(
+                "Le nom du monde contient un guillemet ou une apostrophe.",
+                "The world name holds a quote.",
+            ),
+            Issue::BadCharacters(Field::Password) => self.t(
+                "Le mot de passe contient un guillemet ou une apostrophe.",
+                "The password holds a quote.",
+            ),
+            Issue::PortOutOfRange => self.t(
+                "Choisissez un port entre 1024 et 65533 : le serveur utilise aussi le suivant.",
+                "Pick a port between 1024 and 65533: the server also uses the next one.",
+            ),
+        }
+    }
+
     fn prepare_player_folder(&self) -> anyhow::Result<PathBuf> {
         use anyhow::Context as _;
 
@@ -1290,6 +1877,19 @@ impl App {
 }
 
 /// Show a file or folder in the system file manager. Best effort.
+/// Errors in blood, warnings in brass, the rest in bone. The words come from
+/// BepInEx's own level tags and from Unity's, which both spell them out.
+fn log_colour(line: &str) -> Color32 {
+    let head: String = line.chars().take(40).collect::<String>().to_lowercase();
+    if head.contains("error") || head.contains("fatal") || head.contains("exception") {
+        th::BLOOD_LIT
+    } else if head.contains("warning") {
+        th::GOLD
+    } else {
+        th::BONE_DIM
+    }
+}
+
 fn open_path(path: &Path) {
     let cmd = if cfg!(windows) {
         "explorer"

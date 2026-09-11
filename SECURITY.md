@@ -42,6 +42,8 @@ file, and ValhSync's own bugs.
 | A server joined by address rather than by invite code | The launcher fetches the key the server publishes, checks it really signs the manifest, then shows its fingerprint and refuses to pin anything until the player confirms it against what the admin announced | `engine::discover`, add-server dialog |
 | An address that is not an address | Rejected before any request: no credentials, no second scheme, no whitespace or control characters | `invite::address_to_url` |
 | Starting the game server from the window | Only a `.bat`, `.cmd` or `.sh` the admin named in the configuration, passed to the shell as one argument, and refused outright if its name holds shell punctuation | `gameserver::start` |
+| Stopping the game server from the window | A Ctrl+C to its console, the same event the admin would type, so Valheim saves the world and exits on its own. The process is never terminated | `gameserver::stop` |
+| A start script written by the wizard | Written only inside the server folder, only under a file name (no path), never over one of Steam's own scripts, and never over an existing file without a second confirmation. Values holding a quote or a control character are refused rather than escaped | `wizard::write` |
 | Supply chain | `Cargo.lock` committed, `cargo deny` (advisories, licenses, sources) in CI, rustls with bundled roots, no default features on `reqwest`/`axum` | `deny.toml`, CI |
 
 ## Known limitations
@@ -73,6 +75,14 @@ file, and ValhSync's own bugs.
 - **Detecting the public IP** in the admin window calls `api.ipify.org`. It
   happens only when the admin presses that button, and the service is named on
   the button itself.
+- **A start script holds its password in plain text**, exactly as the file
+  Iron Gate ships does. ValhSync writes it once, to the file the admin names;
+  it never reads a password back out of a script (`detect` records only that
+  one is set), never stores it and never publishes it. Start scripts are not
+  part of the pack.
+- **The server's log is shown as it is written.** It is the admin's own
+  window and their own machine, but the log holds the server's public address
+  and its crossplay join code: it is not something to screen-share.
 - **The server's signing key** is a plain file (`valhsync-server-data/keys/server.key`,
   mode 0600 on Unix). Back it up; treat it like a password.
 
