@@ -190,6 +190,26 @@ tests live), `crates/valhsync-server`, `crates/valhsync` (CLI + window in one
 executable). Dependencies are permissive-licensed only; `cargo deny` refuses
 copyleft, which also enforces the "no code from GPL tools" rule.
 
+### Release archives
+
+```powershell
+pwsh scripts/package.ps1        # dist/*.zip and dist/*.zip.sha256
+```
+
+Two archives, because two different people receive them:
+
+| Archive | For | Holds |
+| --- | --- | --- |
+| `valhsync-<version>-<target>` | the admin | both programs, both guides, the threat model |
+| `valhsync-launcher-<version>-<target>` | players | the launcher, the player guide, the licences |
+
+An admin forwards the second one and nothing else. Both are built from a
+scratch folder holding only what the script copies in, so no configuration, no
+signing key and no server address ever travels with them — and the build
+remaps its source paths, so the binaries do not carry the name of whoever
+built them. Tagging `v*` makes CI produce the same four files, plus the Linux
+tarballs and a combined `SHA256SUMS`.
+
 ## Redistributing mods
 
 Serving DLLs from your own server is common between friends, but some mod

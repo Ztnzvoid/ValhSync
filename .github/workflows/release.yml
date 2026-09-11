@@ -34,28 +34,57 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y libxkbcommon-dev libwayland-dev libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libgl1-mesa-dev
-      - run: cargo build --workspace --release --locked --target ${{ matrix.target }}
+      # Rust bakes each source file's path into its panic messages, which for
+      # dependencies means the runner's Cargo home. Remap both roots so the
+      # binaries name no machine and two builds agree.
+      - name: Build
+        shell: bash
+        run: |
+          set -euo pipefail
+          export RUSTFLAGS="--remap-path-prefix=${CARGO_HOME:-$HOME/.cargo}=/cargo --remap-path-prefix=$PWD=/valhsync"
+          cargo build --workspace --release --locked --target ${{ matrix.target }}
       - name: Package
         shell: bash
         run: |
           set -euo pipefail
           version="${GITHUB_REF_NAME#v}"
-          name="valhsync-${version}-${{ matrix.target }}"
-          mkdir -p "dist/$name"
-          cp "target/${{ matrix.target }}/release/valhsync${{ matrix.ext }}" "dist/$name/"
-          cp "target/${{ matrix.target }}/release/valhsync-server${{ matrix.ext }}" "dist/$name/"
-          cp README.md SECURITY.md LICENSE-MIT LICENSE-APACHE "dist/$name/"
-          cp crates/valhsync-ui/assets/OFL-Cinzel.txt "dist/$name/LICENSE-Cinzel.txt"
-          cp -r docs/admin-guide.md docs/player-guide.md docs/deploy "dist/$name/"
+          bin="target/${{ matrix.target }}/release"
+          ext="${{ matrix.ext }}"
+
+          # Two archives, because two different people receive them: the admin
+          # needs both programs and every guide, the player needs the launcher
+          # and nothing else. An admin forwards one file, not the publisher and
+          # the deployment notes with it.
+          licences() {
+            cp README.md LICENSE-MIT LICENSE-APACHE "$1/"
+            cp crates/valhsync-ui/assets/OFL-Cinzel.txt "$1/LICENSE-Cinzel.txt"
+            cp crates/valhsync-ui/assets/OFL-SourceSerif.txt "$1/LICENSE-SourceSerif.txt"
+          }
+
+          full="valhsync-${version}-${{ matrix.target }}"
+          mkdir -p "dist/$full/docs"
+          cp "$bin/valhsync$ext" "$bin/valhsync-server$ext" "dist/$full/"
+          licences "dist/$full"
+          cp SECURITY.md "dist/$full/"
+          cp -r docs/admin-guide.md docs/player-guide.md docs/deploy "dist/$full/docs/"
+
+          player="valhsync-launcher-${version}-${{ matrix.target }}"
+          mkdir -p "dist/$player"
+          cp "$bin/valhsync$ext" "dist/$player/"
+          licences "dist/$player"
+          cp docs/player-guide.md "dist/$player/README.md"
+
           cd dist
-          if [ "${{ matrix.archive }}" = "zip" ]; then
-            7z a -tzip "$name.zip" "$name" > /dev/null
-            sha256sum "$name.zip" > "$name.zip.sha256"
-          else
-            tar czf "$name.tar.gz" "$name"
-            sha256sum "$name.tar.gz" > "$name.tar.gz.sha256"
-          fi
-          rm -rf "$name"
+          for name in "$full" "$player"; do
+            if [ "${{ matrix.archive }}" = "zip" ]; then
+              7z a -tzip "$name.zip" "$name" > /dev/null
+              sha256sum "$name.zip" > "$name.zip.sha256"
+            else
+              tar czf "$name.tar.gz" "$name"
+              sha256sum "$name.tar.gz" > "$name.tar.gz.sha256"
+            fi
+            rm -rf "$name"
+          done
       - uses: actions/upload-artifact@v4
         with:
           name: dist-${{ matrix.target }}
