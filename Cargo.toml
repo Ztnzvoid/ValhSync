@@ -2,6 +2,7 @@
 resolver = "3"
 members = [
   "crates/valsync-core",
+  "crates/valsync-ui",
   "crates/valsync-server",
   "crates/valsync",
 ]
@@ -17,6 +18,7 @@ publish = false
 
 [workspace.dependencies]
 valsync-core = { path = "crates/valsync-core" }
+valsync-ui = { path = "crates/valsync-ui" }
 
 # serialization
 serde = { version = "1", features = ["derive"] }

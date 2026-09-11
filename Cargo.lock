@@ -3671,7 +3671,7 @@ dependencies = [
  "tracing-subscriber",
  "valsync-core",
  "valsync-server",
- "windows-sys 0.59.0",
+ "valsync-ui",
  "winreg",
 ]
 
@@ -3700,9 +3700,13 @@ dependencies = [
  "axum",
  "bytes",
  "clap",
+ "eframe",
  "notify",
+ "reqwest",
  "serde",
  "serde_json",
+ "sys-locale",
+ "sysinfo",
  "tempfile",
  "time",
  "tokio",
@@ -3711,6 +3715,15 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "valsync-core",
+ "valsync-ui",
+]
+
+[[package]]
+name = "valsync-ui"
+version = "0.1.0"
+dependencies = [
+ "eframe",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]

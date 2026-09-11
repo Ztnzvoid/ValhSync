@@ -1,5 +1,10 @@
 //! `valsync-server`: scans a Valheim mod pack, publishes a signed manifest and
 //! serves the files to ValSync launchers.
+//!
+//! Double-clicked it opens the admin window; given a subcommand it is a
+//! command-line tool. Both faces work on the same configuration file.
+
+#![cfg_attr(windows, windows_subsystem = "windows")]
 
 use std::path::{Path, PathBuf};
 
@@ -8,7 +13,7 @@ use clap::{Parser, Subcommand};
 use tracing_subscriber::EnvFilter;
 use valsync_core::{Invite, Keypair};
 use valsync_server::config::{Config, TemplateOptions};
-use valsync_server::{config, detect, keys, net, pack, serve};
+use valsync_server::{config, detect, gui, keys, net, pack, serve};
 
 #[derive(Parser, Debug)]
 #[command(
@@ -17,9 +22,10 @@ use valsync_server::{config, detect, keys, net, pack, serve};
     about = "Publishes a signed Valheim mod pack for ValSync launchers"
 )]
 struct Cli {
-    /// Configuration file.
-    #[arg(long, global = true, default_value = "valsync-server.toml")]
-    config: PathBuf,
+    /// Configuration file. Defaults to `valsync-server.toml` next to this
+    /// executable, so the folder can be copied anywhere and still work.
+    #[arg(long, global = true)]
+    config: Option<PathBuf>,
 
     /// Where keys, the content store and the published manifest live.
     /// Defaults to `valsync-server-data` next to the configuration file.
@@ -27,7 +33,7 @@ struct Cli {
     data_dir: Option<PathBuf>,
 
     #[command(subcommand)]
-    cmd: Cmd,
+    cmd: Option<Cmd>,
 }
 
 #[derive(Subcommand, Debug)]
@@ -75,6 +81,10 @@ enum Cmd {
 }
 
 fn main() -> Result<()> {
+    let cli = Cli::parse();
+    if cli.cmd.is_some() {
+        valsync_ui::console::attach_parent();
+    }
     tracing_subscriber::fmt()
         .with_env_filter(
             EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")),
@@ -82,16 +92,20 @@ fn main() -> Result<()> {
         .with_target(false)
         .init();
 
-    let cli = Cli::parse();
+    let config_path = cli.config.clone().unwrap_or_else(default_config_path);
     let data_dir = cli.data_dir.clone().unwrap_or_else(|| {
-        cli.config
+        config_path
             .parent()
             .filter(|p| !p.as_os_str().is_empty())
             .map_or_else(|| PathBuf::from("."), Path::to_path_buf)
             .join("valsync-server-data")
     });
 
-    match cli.cmd {
+    let Some(cmd) = cli.cmd else {
+        return gui::run(config_path.clone(), data_dir);
+    };
+
+    match cmd {
         Cmd::Init {
             server_root,
             name,
@@ -99,7 +113,7 @@ fn main() -> Result<()> {
             public_url,
             force,
         } => cmd_init(
-            &cli.config,
+            &config_path,
             &data_dir,
             InitArgs {
                 server_root,
@@ -110,7 +124,7 @@ fn main() -> Result<()> {
             },
         ),
         Cmd::Scan => {
-            let cfg = Config::load(&cli.config)?;
+            let cfg = Config::load(&config_path)?;
             print_warnings(&cfg);
             let kp = keys::load(&data_dir)?;
             let outcome = pack::build(&cfg, &kp, &data_dir)?;
@@ -118,13 +132,13 @@ fn main() -> Result<()> {
             Ok(())
         }
         Cmd::Serve => {
-            let cfg = Config::load(&cli.config)?;
+            let cfg = Config::load(&config_path)?;
             print_warnings(&cfg);
             let kp = keys::load(&data_dir)?;
             tokio::runtime::Runtime::new()?.block_on(serve::run(cfg, kp, data_dir))
         }
         Cmd::Export { dir, watch } => {
-            let cfg = Config::load(&cli.config)?;
+            let cfg = Config::load(&config_path)?;
             print_warnings(&cfg);
             let kp = keys::load(&data_dir)?;
             export_once(&cfg, &kp, &data_dir, &dir)?;
@@ -138,12 +152,12 @@ fn main() -> Result<()> {
             Ok(())
         }
         Cmd::Invite => {
-            let cfg = Config::load(&cli.config)?;
+            let cfg = Config::load(&config_path)?;
             let kp = keys::load(&data_dir)?;
             print_invite(&cfg, &kp)
         }
         Cmd::RotateKey { yes } => {
-            let cfg = Config::load(&cli.config)?;
+            let cfg = Config::load(&config_path)?;
             if !yes {
                 bail!(
                     "rotating the key invalidates every player's pinned key: they will all \
@@ -202,6 +216,14 @@ fn cmd_init(config_path: &Path, data_dir: &Path, args: InitArgs) -> Result<()> {
     }
 
     let lan = net::lan_ip().map_or_else(|| "your.public.address".to_string(), |ip| ip.to_string());
+    let start_script = server_root
+        .as_deref()
+        .map(detect::find_start_scripts)
+        .and_then(|scripts| scripts.into_iter().next())
+        .map(|s| s.path);
+    if let Some(script) = &start_script {
+        println!("Start script found: {}", script.display());
+    }
     let opts = TemplateOptions {
         name: args.name.unwrap_or_else(|| "My Valheim server".into()),
         game_address: args.game_address.unwrap_or_else(|| format!("{lan}:2456")),
@@ -211,6 +233,7 @@ fn cmd_init(config_path: &Path, data_dir: &Path, args: InitArgs) -> Result<()> {
             .parent()
             .map_or_else(|| PathBuf::from("."), Path::to_path_buf)
             .join("client-extras"),
+        start_script,
     };
     std::fs::create_dir_all(&opts.client_extras)
         .with_context(|| format!("cannot create {}", opts.client_extras.display()))?;
@@ -251,6 +274,16 @@ fn cmd_init(config_path: &Path, data_dir: &Path, args: InitArgs) -> Result<()> {
         cfg.bind_addr()?.port()
     );
     print_invite(&cfg, &kp)
+}
+
+/// Where the configuration lives when `--config` is not given: next to the
+/// executable, not in whatever directory the shortcut happened to start in.
+fn default_config_path() -> PathBuf {
+    std::env::current_exe()
+        .ok()
+        .and_then(|exe| exe.parent().map(Path::to_path_buf))
+        .unwrap_or_else(|| PathBuf::from("."))
+        .join("valsync-server.toml")
 }
 
 /// Print non-fatal configuration warnings, once, before publishing.

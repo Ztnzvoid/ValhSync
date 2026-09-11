@@ -6,7 +6,6 @@
 
 pub mod backup;
 pub mod cli;
-pub mod console;
 pub mod engine;
 pub mod error;
 pub mod game;

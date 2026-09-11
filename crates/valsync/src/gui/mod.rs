@@ -3,7 +3,8 @@
 
 mod app;
 pub mod i18n;
-pub mod theme;
+
+pub use valsync_ui::theme;
 
 use anyhow::{Context as _, Result};
 use eframe::egui;

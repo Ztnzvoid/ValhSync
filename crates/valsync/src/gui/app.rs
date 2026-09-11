@@ -11,12 +11,12 @@ use valsync_core::limits::human_bytes;
 use valsync_core::{Action, Invite};
 
 use super::i18n::{Key, Lang, text};
-use super::theme as th;
 use crate::engine::{self, Applied, Context, Event, Prepared, Progress};
 use crate::paths::AppPaths;
 use crate::servers::{KnownServer, ServerBook};
 use crate::settings::Settings;
 use crate::{game, invite_file, vanilla};
+use valsync_ui::theme as th;
 
 const NOTICE_TTL: Duration = Duration::from_secs(7);
 
@@ -509,7 +509,7 @@ impl App {
             )
             .show(ctx, |ui| {
                 ui.horizontal(|ui| {
-                    ui.label(RichText::new("●").color(color));
+                    valsync_ui::widgets::dot(ui, color);
                     ui.label(RichText::new(message).color(th::BONE));
                     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                         if ui.small_button("✕").clicked() {
@@ -733,7 +733,7 @@ impl App {
                 let c = p.plan.counts();
                 if p.is_up_to_date() {
                     ui.horizontal(|ui| {
-                        ui.label(RichText::new("●").color(th::MOSS));
+                        valsync_ui::widgets::dot(ui, th::MOSS);
                         ui.label(
                             RichText::new(format!(
                                 "{} · {} {}",
@@ -752,7 +752,7 @@ impl App {
                         self.t(Key::Pending)
                     };
                     ui.horizontal(|ui| {
-                        ui.label(RichText::new("●").color(th::GOLD));
+                        valsync_ui::widgets::dot(ui, th::GOLD);
                         ui.label(RichText::new(title).strong().color(th::BONE));
                     });
                     let mut parts = Vec::new();

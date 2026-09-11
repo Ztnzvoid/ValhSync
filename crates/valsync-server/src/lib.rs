@@ -3,6 +3,8 @@
 
 pub mod config;
 pub mod detect;
+pub mod gameserver;
+pub mod gui;
 pub mod keys;
 pub mod net;
 pub mod pack;

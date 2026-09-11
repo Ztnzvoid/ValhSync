@@ -10,16 +10,26 @@ use valsync_core::{AllowedRoots, Limits, Policy};
 
 pub const DEFAULT_PORT: u16 = 2470;
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Config {
     pub server: ServerSection,
     pub pack: PackSection,
     pub policy: PolicySection,
     pub limits: LimitsSection,
+    pub game_server: GameServerSection,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+/// How ValSync may start the Valheim dedicated server. Optional: leave it out
+/// and ValSync never touches the game server at all.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct GameServerSection {
+    /// The admin's own start script (`.bat` / `.sh`).
+    pub start_script: Option<PathBuf>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct ServerSection {
     /// Shown to players in the launcher.
@@ -32,7 +42,7 @@ pub struct ServerSection {
     pub game_address: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct PackSection {
     /// Game root of the dedicated server, or any folder laid out like one.
@@ -47,7 +57,7 @@ pub struct PackSection {
     pub managed_roots: Vec<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct PolicySection {
     pub default: String,
@@ -55,7 +65,7 @@ pub struct PolicySection {
     pub enforce: Vec<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 #[allow(clippy::struct_field_names)] // mirrors the TOML keys
 pub struct LimitsSection {
@@ -288,7 +298,7 @@ impl Config {
     }
 }
 
-/// Values `init` fills into the template.
+/// Values `init` fills into a fresh configuration.
 #[derive(Debug, Clone)]
 pub struct TemplateOptions {
     pub name: String,
@@ -296,6 +306,20 @@ pub struct TemplateOptions {
     pub public_url: Option<String>,
     pub server_root: Option<PathBuf>,
     pub client_extras: PathBuf,
+    pub start_script: Option<PathBuf>,
+}
+
+impl From<&TemplateOptions> for Config {
+    fn from(o: &TemplateOptions) -> Self {
+        let mut cfg = Self::default();
+        cfg.server.name.clone_from(&o.name);
+        cfg.server.game_address.clone_from(&o.game_address);
+        cfg.server.public_url.clone_from(&o.public_url);
+        cfg.pack.server_root.clone_from(&o.server_root);
+        cfg.pack.client_extras = Some(o.client_extras.clone());
+        cfg.game_server.start_script.clone_from(&o.start_script);
+        cfg
+    }
 }
 
 fn toml_str(s: &str) -> String {
@@ -314,32 +338,34 @@ fn toml_list(items: &[String], indent: &str) -> String {
         .join("\n")
 }
 
-/// A commented configuration file. Written once by `init`, then edited by hand.
-pub fn template(opts: &TemplateOptions) -> String {
-    let server_root_line = match &opts.server_root {
-        Some(p) => format!("server_root = {}", toml_str(&p.display().to_string())),
-        None => "# server_root = 'C:\\Program Files (x86)\\Steam\\steamapps\\common\\Valheim dedicated server'".to_string(),
-    };
-    let public_url_line = match &opts.public_url {
-        Some(u) => format!("public_url = {}", toml_str(u)),
-        None => "# public_url = \"http://your.public.address:2470\"".to_string(),
-    };
-    let defaults = Config::default();
+fn toml_opt_path(key: &str, value: Option<&PathBuf>, example: &str) -> String {
+    match value {
+        Some(p) => format!("{key} = {}", toml_str(&p.display().to_string())),
+        None => format!("# {key} = {example}"),
+    }
+}
+
+/// Render a configuration as commented TOML.
+///
+/// The window and `init` both write configurations through this, so a file
+/// edited in the GUI keeps its explanations instead of decaying into bare
+/// key/value pairs.
+pub fn to_commented_toml(cfg: &Config) -> String {
     format!(
         r#"# ValSync server configuration.
-# Edit, then run `valsync-server scan` to check the result and
-# `valsync-server serve` to publish. `serve` reloads the pack automatically
-# whenever a file changes; restart it after editing this file.
+# Edit here or in the ValSync window, then `valsync-server scan` to check the
+# result. Publish with `export` (static files, nothing to open on the router)
+# or `serve` (live server on the port below).
 
 [server]
 # Name shown to players in the launcher.
 name = {name}
-# TCP address to listen on. Open this port in the firewall / router.
-bind = "0.0.0.0:{port}"
-# URL players reach this server at. Goes into the invite code. If unset, the
-# LAN address of this machine is used, which only works for LAN players.
-{public_url_line}
-# host:port the launcher hands to Valheim (the game server, UDP 2456).
+# TCP address to listen on, for `serve` only. `export` needs no port at all.
+bind = {bind}
+# URL players reach the pack at. Goes into the invite code: the folder holding
+# manifest.json for a static export, or http://your.address:2470 for `serve`.
+{public_url}
+# host:port the launcher hands to Valheim.
 # Use your PUBLIC IP or a DNS name, not a local 192.168.x address: a server
 # started with -crossplay relays through PlayFab and refuses local addresses
 # even for players on the same network.
@@ -349,22 +375,20 @@ game_address = {game_address}
 # Game root of the dedicated server. Everything matching `include` (minus
 # `exclude`) is published. Leave it out for a hosted server: put a copy of the
 # pack in `client_extras` instead.
-{server_root_line}
+{server_root}
 include = [
 {include}
 ]
 exclude = [
 {exclude}
-  # Server-only mods, never sent to players. Add yours:
-  # 'BepInEx/plugins/DiscordConnector/**',
 ]
 # Client-only files (mods that must not run on the server, e.g. Unshamed,
 # ConfigManager), laid out exactly like the game root:
 #   client-extras/BepInEx/plugins/Unshamed/Unshamed.dll
 # Files here override files of the same path from server_root.
-client_extras = {client_extras}
+{client_extras}
 # Folders ValSync owns on the player's side. Unknown .dll files found there
-# (leftovers of other mods) are moved to BepInEx/_valsync_quarantine/.
+# (leftovers of other mod packs) are moved to BepInEx/_valsync_quarantine/.
 managed_roots = [
 {managed_roots}
 ]
@@ -372,7 +396,7 @@ managed_roots = [
 [policy]
 # "enforce": always replaced when different. "seed": installed only if absent,
 # then never touched (player preferences).
-default = "enforce"
+default = {policy_default}
 seed = [
 {seed}
 ]
@@ -384,25 +408,118 @@ enforce = [
 max_file_mb = {max_file_mb}
 max_pack_mb = {max_pack_mb}
 max_files = {max_files}
+
+[game_server]
+# Optional: your own start script. ValSync can launch it for you, in its own
+# console window. It never stops it: Valheim only saves the world when it gets
+# Ctrl+C in that window.
+{start_script}
 "#,
-        name = toml_str(&opts.name),
-        port = DEFAULT_PORT,
-        game_address = toml_str(&opts.game_address),
-        include = toml_list(&defaults.pack.include, "  "),
-        exclude = toml_list(&defaults.pack.exclude, "  "),
-        client_extras = toml_str(&opts.client_extras.display().to_string()),
-        managed_roots = toml_list(&defaults.pack.managed_roots, "  "),
-        seed = toml_list(&defaults.policy.seed, "  "),
-        enforce = toml_list(&defaults.policy.enforce, "  "),
-        max_file_mb = defaults.limits.max_file_mb,
-        max_pack_mb = defaults.limits.max_pack_mb,
-        max_files = defaults.limits.max_files,
+        name = toml_str(cfg.server.name.trim()),
+        bind = toml_str(&cfg.server.bind),
+        public_url = match &cfg.server.public_url {
+            Some(u) => format!("public_url = {}", toml_str(u)),
+            None => "# public_url = \"http://your.public.address:2470\"".to_string(),
+        },
+        game_address = toml_str(cfg.server.game_address.trim()),
+        server_root = toml_opt_path(
+            "server_root",
+            cfg.pack.server_root.as_ref(),
+            "'C:\\Program Files (x86)\\Steam\\steamapps\\common\\Valheim dedicated server'"
+        ),
+        include = toml_list(&cfg.pack.include, "  "),
+        exclude = toml_list(&cfg.pack.exclude, "  "),
+        client_extras = toml_opt_path(
+            "client_extras",
+            cfg.pack.client_extras.as_ref(),
+            "'C:\\valsync\\client-extras'"
+        ),
+        managed_roots = toml_list(&cfg.pack.managed_roots, "  "),
+        policy_default = toml_str(&cfg.policy.default),
+        seed = toml_list(&cfg.policy.seed, "  "),
+        enforce = toml_list(&cfg.policy.enforce, "  "),
+        max_file_mb = cfg.limits.max_file_mb,
+        max_pack_mb = cfg.limits.max_pack_mb,
+        max_files = cfg.limits.max_files,
+        start_script = toml_opt_path(
+            "start_script",
+            cfg.game_server.start_script.as_ref(),
+            "'C:\\...\\start_valheim_server.bat'"
+        ),
     )
+}
+
+/// Write a configuration to disk through a temp file and a rename.
+pub fn save(cfg: &Config, path: &Path) -> Result<()> {
+    let text = to_commented_toml(cfg);
+    // Never write something we could not read back.
+    let _: Config = toml::from_str(&text)
+        .context("internal error: the generated configuration is not valid TOML")?;
+    let tmp = path.with_extension("toml.tmp");
+    std::fs::write(&tmp, text).with_context(|| format!("cannot write {}", tmp.display()))?;
+    std::fs::rename(&tmp, path).with_context(|| format!("cannot replace {}", path.display()))?;
+    Ok(())
+}
+
+/// A fresh, commented configuration for `init`.
+pub fn template(opts: &TemplateOptions) -> String {
+    to_commented_toml(&Config::from(opts))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn commented_toml_round_trips() {
+        let tmp = tempfile::tempdir().unwrap();
+        let extras = tmp.path().join("client-extras");
+        std::fs::create_dir_all(&extras).unwrap();
+        let mut cfg = Config::default();
+        cfg.server.name = "Ztnzvoid' server".into();
+        cfg.server.game_address = "203.0.113.10:2456".into();
+        cfg.server.public_url = Some("https://you.github.io/pack".into());
+        cfg.pack.server_root = Some(tmp.path().to_path_buf());
+        cfg.pack.client_extras = Some(extras.clone());
+        cfg.pack
+            .exclude
+            .push("BepInEx/plugins/DiscordConnector/**".into());
+        cfg.game_server.start_script = Some(tmp.path().join("start_valheim_server.bat"));
+        cfg.validate().unwrap();
+
+        let text = to_commented_toml(&cfg);
+        assert!(
+            text.contains("# ValSync server configuration."),
+            "comments kept"
+        );
+        let back: Config = toml::from_str(&text).unwrap();
+        assert_eq!(back.server.name, cfg.server.name);
+        assert_eq!(back.server.game_address, cfg.server.game_address);
+        assert_eq!(back.server.public_url, cfg.server.public_url);
+        assert_eq!(back.pack.server_root, cfg.pack.server_root);
+        assert_eq!(back.pack.client_extras, cfg.pack.client_extras);
+        assert_eq!(back.pack.exclude, cfg.pack.exclude);
+        assert_eq!(back.pack.managed_roots, cfg.pack.managed_roots);
+        assert_eq!(back.policy.seed, cfg.policy.seed);
+        assert_eq!(back.limits.max_files, cfg.limits.max_files);
+        assert_eq!(back.game_server.start_script, cfg.game_server.start_script);
+
+        // A second pass must be byte-identical: editing in the window twice
+        // may not drift the file.
+        assert_eq!(to_commented_toml(&back), text);
+    }
+
+    #[test]
+    fn save_writes_readable_config() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("valsync-server.toml");
+        let mut cfg = Config::default();
+        cfg.pack.server_root = Some(tmp.path().to_path_buf());
+        cfg.server.name = "A \"quoted\" name".into();
+        save(&cfg, &path).unwrap();
+        let back = Config::load(&path).unwrap();
+        assert_eq!(back.server.name, cfg.server.name);
+    }
 
     #[test]
     fn template_parses_back_to_defaults() {
@@ -415,6 +532,7 @@ mod tests {
             public_url: None,
             server_root: Some(tmp.path().to_path_buf()),
             client_extras: extras.clone(),
+            start_script: None,
         });
         let cfg: Config = toml::from_str(&text).unwrap();
         cfg.validate().unwrap();
