@@ -207,13 +207,13 @@ impl Config {
         {
             bail!("[pack] server_root {} is not a directory", root.display());
         }
-        if let Some(extras) = &self.pack.client_extras
-            && !extras.is_dir()
+        // `client_extras` is for the handful of mods that run on players
+        // only. Most servers have none, so a missing folder means "nothing to
+        // add", not an error: the pack is the server's BepInEx tree either way.
+        if self.pack.server_root.is_none()
+            && self.pack.client_extras.as_ref().is_none_or(|d| !d.is_dir())
         {
-            bail!(
-                "[pack] client_extras {} is not a directory (create it, even empty)",
-                extras.display()
-            );
+            bail!("[pack] server_root is not set, and there is no client_extras folder either");
         }
         self.policy_rules()?;
         for root in &self.pack.managed_roots {
@@ -291,7 +291,8 @@ impl Config {
                 exclude: self.pack.exclude.clone(),
             });
         }
-        if let Some(extras) = &self.pack.client_extras {
+        // Skipped when the folder is not there: see `validate`.
+        if let Some(extras) = self.pack.client_extras.as_ref().filter(|d| d.is_dir()) {
             sources.push(ScanSource {
                 root: extras.clone(),
                 include: Vec::new(),
@@ -635,6 +636,29 @@ mod tests {
         // to players, and says so instead of building a code around it.
         assert_eq!(cfg.public_url(), None);
         assert!(cfg.public_url_problem().contains("example"));
+    }
+
+    #[test]
+    fn a_missing_client_extras_folder_stops_nothing() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut cfg = Config::default();
+        cfg.server.game_address = "203.0.113.10:2456".into();
+        cfg.pack.server_root = Some(tmp.path().to_path_buf());
+        // Most servers run every mod on both sides and never create it.
+        cfg.pack.client_extras = Some(tmp.path().join("client-extras"));
+
+        cfg.validate().unwrap();
+        assert_eq!(cfg.sources().len(), 1, "only the server's own tree");
+
+        // Once it exists it is scanned, without anything else changing.
+        std::fs::create_dir_all(tmp.path().join("client-extras")).unwrap();
+        cfg.validate().unwrap();
+        assert_eq!(cfg.sources().len(), 2);
+
+        // What is still refused: nothing to scan at all.
+        cfg.pack.server_root = None;
+        cfg.pack.client_extras = Some(tmp.path().join("nowhere"));
+        assert!(cfg.validate().is_err());
     }
 
     #[test]

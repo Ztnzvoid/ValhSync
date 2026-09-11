@@ -521,18 +521,8 @@ impl App {
         std::thread::spawn(move || job(rep));
     }
 
-    /// `client-extras` is ours; make it rather than ask for it.
-    fn ensure_client_extras(&self) {
-        if let Some(dir) = &self.cfg.pack.client_extras
-            && !dir.is_dir()
-        {
-            let _ = std::fs::create_dir_all(dir);
-        }
-    }
-
     fn save(&mut self) -> bool {
         self.pull_fields();
-        self.ensure_client_extras();
         if let Err(e) = self.cfg.validate() {
             self.notify(format!("{e:#}"), th::BLOOD_LIT);
             return false;
