@@ -22,6 +22,13 @@ pub const MOSS: Color32 = Color32::from_rgb(0x7E, 0x91, 0x55);
 
 /// Font family used for headings.
 pub const DISPLAY: &str = "cinzel";
+/// Text style for short carved labels: statuses, counts, tags.
+pub const LABEL: &str = "label";
+
+/// The carved style for a short label.
+pub fn label_style() -> TextStyle {
+    TextStyle::Name(LABEL.into())
+}
 
 /// Cinzel, SIL Open Font License 1.1. A Roman inscriptional face: the closest
 /// thing to letters carved in stone, which is what the document's headings
@@ -105,13 +112,13 @@ pub fn apply(ctx: &egui::Context) {
 
     w.inactive.bg_fill = LEATHER;
     w.inactive.weak_bg_fill = LEATHER;
-    w.inactive.bg_stroke = Stroke::new(1.0, EDGE_SOFT);
+    w.inactive.bg_stroke = Stroke::new(1.0, EDGE);
     w.inactive.fg_stroke = Stroke::new(1.0, BONE);
     w.inactive.corner_radius = 3.into();
 
     w.hovered.bg_fill = EDGE_SOFT;
     w.hovered.weak_bg_fill = EDGE_SOFT;
-    w.hovered.bg_stroke = Stroke::new(1.0, GOLD);
+    w.hovered.bg_stroke = Stroke::new(1.2, GOLD);
     w.hovered.fg_stroke = Stroke::new(1.5, GOLD_LIT);
     w.hovered.corner_radius = 3.into();
 
@@ -136,10 +143,14 @@ pub fn apply(ctx: &egui::Context) {
     style
         .text_styles
         .insert(TextStyle::Body, FontId::new(15.0, FontFamily::Proportional));
-    style.text_styles.insert(
-        TextStyle::Button,
-        FontId::new(14.5, FontFamily::Proportional),
-    );
+    // Buttons and short labels are carved like the title; only running text
+    // and paths stay in the interface face, which is easier to read at length.
+    style
+        .text_styles
+        .insert(TextStyle::Button, display_font(14.5));
+    style
+        .text_styles
+        .insert(TextStyle::Name(LABEL.into()), display_font(13.5));
     style.text_styles.insert(
         TextStyle::Small,
         FontId::new(12.5, FontFamily::Proportional),
@@ -152,13 +163,16 @@ pub fn apply(ctx: &egui::Context) {
     ctx.set_style(style);
 }
 
-/// A carved-plate frame for cards.
-pub fn card() -> egui::Frame {
-    egui::Frame::new()
+/// A carved plate: panel ground, a thin edge, and iron at the corners.
+pub fn card<R>(ui: &mut egui::Ui, add_contents: impl FnOnce(&mut egui::Ui) -> R) -> R {
+    let inner = egui::Frame::new()
         .fill(PANEL)
         .stroke(Stroke::new(1.0, EDGE_SOFT))
         .inner_margin(egui::Margin::same(16))
-        .corner_radius(4)
+        .corner_radius(3)
+        .show(ui, add_contents);
+    brackets(ui.painter(), inner.response.rect.shrink(3.0), EDGE);
+    inner.inner
 }
 
 /// A leather plate with a thick coloured rule down its left edge, exactly

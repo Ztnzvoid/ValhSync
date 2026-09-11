@@ -74,7 +74,11 @@ pub fn dot(ui: &mut egui::Ui, color: Color32) {
 pub fn status_dot(ui: &mut egui::Ui, color: Color32, text: &str) {
     ui.horizontal(|ui| {
         dot(ui, color);
-        ui.label(RichText::new(text).strong().color(th::BONE));
+        ui.label(
+            RichText::new(text)
+                .text_style(th::label_style())
+                .color(th::BONE),
+        );
     });
 }
 

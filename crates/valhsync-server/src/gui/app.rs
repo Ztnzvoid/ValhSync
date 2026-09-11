@@ -576,7 +576,7 @@ impl App {
 
     #[allow(clippy::too_many_lines)] // one card, read top to bottom
     fn card_game_server(&mut self, ui: &mut egui::Ui) {
-        th::card().show(ui, |ui| {
+        th::card(ui, |ui| {
             ui.set_width(ui.available_width());
             w::section(ui, self.t("1 · Serveur de jeu", "1 · Game server"));
 
@@ -619,7 +619,10 @@ impl App {
                         ui,
                         if bep { th::MOSS } else { th::GOLD },
                         if bep {
-                            self.t("Serveur dédié avec BepInEx", "Dedicated server with BepInEx")
+                            self.t(
+                                "Serveur dédié avec BepInEx",
+                                "Dedicated server with BepInEx",
+                            )
                         } else {
                             self.t(
                                 "Serveur dédié trouvé, mais sans BepInEx : installez BepInExPack_Valheim d'abord",
@@ -685,10 +688,7 @@ impl App {
                         None => {}
                     }
                     if a.has_password {
-                        bits.push(
-                            self.t("mot de passe défini", "password set")
-                                .to_string(),
-                        );
+                        bits.push(self.t("mot de passe défini", "password set").to_string());
                     }
                     ui.label(RichText::new(bits.join(" · ")).small().color(th::RUNE));
                 }
@@ -698,7 +698,11 @@ impl App {
             ui.horizontal(|ui| {
                 w::status_dot(
                     ui,
-                    if self.game_running { th::MOSS } else { th::BONE_DIM },
+                    if self.game_running {
+                        th::MOSS
+                    } else {
+                        th::BONE_DIM
+                    },
                     if self.game_running {
                         self.t("Serveur de jeu en ligne", "Game server online")
                     } else {
@@ -720,10 +724,12 @@ impl App {
                             Ok(()) => {
                                 self.game_running = true;
                                 self.game_checked = Instant::now();
-                                let msg = self.t(
-                                    "Serveur de jeu lancé dans sa propre fenêtre.",
-                                    "Game server started in its own window.",
-                                ).to_string();
+                                let msg = self
+                                    .t(
+                                        "Serveur de jeu lancé dans sa propre fenêtre.",
+                                        "Game server started in its own window.",
+                                    )
+                                    .to_string();
                                 self.notify(msg, th::MOSS);
                             }
                             Err(e) => self.notify(format!("{e:#}"), th::BLOOD_LIT),
@@ -742,9 +748,12 @@ impl App {
     }
 
     fn card_identity(&mut self, ui: &mut egui::Ui) {
-        th::card().show(ui, |ui| {
+        th::card(ui, |ui| {
             ui.set_width(ui.available_width());
-            w::section(ui, self.t("2 · Identité et adresse", "2 · Identity and address"));
+            w::section(
+                ui,
+                self.t("2 · Identité et adresse", "2 · Identity and address"),
+            );
 
             let width = (ui.available_width() - 24.0).max(200.0);
             w::field(
@@ -772,7 +781,9 @@ impl App {
                 if ui
                     .add_enabled(
                         !self.busy,
-                        egui::Button::new(self.t("Détecter mon IP publique", "Detect my public IP")),
+                        egui::Button::new(
+                            self.t("Détecter mon IP publique", "Detect my public IP"),
+                        ),
                     )
                     .on_hover_text(worker::IP_ECHO_SERVICE)
                     .clicked()
@@ -819,7 +830,7 @@ impl App {
 
     #[allow(clippy::too_many_lines)] // one card, read top to bottom
     fn card_mods(&mut self, ui: &mut egui::Ui) {
-        th::card().show(ui, |ui| {
+        th::card(ui, |ui| {
             ui.set_width(ui.available_width());
             w::section(ui, self.t("3 · Mods", "3 · Mods"));
             if self.mods.is_empty() {
@@ -936,7 +947,7 @@ impl App {
 
     #[allow(clippy::too_many_lines)] // one card, read top to bottom
     fn card_publish(&mut self, ui: &mut egui::Ui) {
-        th::card().show(ui, |ui| {
+        th::card(ui, |ui| {
             ui.set_width(ui.available_width());
             w::section(ui, self.t("4 · Publication", "4 · Publishing"));
             let (label_export, label_live) = (
@@ -965,7 +976,10 @@ impl App {
                                 .font(egui::TextStyle::Monospace),
                         );
                         if ui
-                            .add_enabled(!self.busy, egui::Button::new(self.t("Exporter", "Export")))
+                            .add_enabled(
+                                !self.busy,
+                                egui::Button::new(self.t("Exporter", "Export")),
+                            )
                             .clicked()
                         {
                             self.pull_fields();
@@ -1055,7 +1069,10 @@ impl App {
             ui.add_space(8.0);
             ui.horizontal(|ui| {
                 if ui
-                    .add_enabled(!self.busy, egui::Button::new(self.t("Analyser le pack", "Scan the pack")))
+                    .add_enabled(
+                        !self.busy,
+                        egui::Button::new(self.t("Analyser le pack", "Scan the pack")),
+                    )
                     .clicked()
                 {
                     self.pull_fields();
@@ -1094,7 +1111,7 @@ impl App {
     }
 
     fn card_invite(&mut self, ui: &mut egui::Ui) {
-        th::card().show(ui, |ui| {
+        th::card(ui, |ui| {
             ui.set_width(ui.available_width());
             w::section(ui, self.t("5 · Code d'invitation", "5 · Invite code"));
             w::hint(

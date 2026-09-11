@@ -241,7 +241,11 @@ fn mod_row(ui: &mut egui::Ui, row: &ModRow, lang: Lang) {
         valhsync_ui::widgets::dot(ui, colour);
         ui.label(RichText::new(&row.name).color(th::BONE));
         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-            ui.label(RichText::new(label).small().color(colour));
+            ui.label(
+                RichText::new(label)
+                    .text_style(th::label_style())
+                    .color(colour),
+            );
         });
     });
 }
@@ -904,7 +908,7 @@ impl App {
     }
 
     fn empty_state(&mut self, ui: &mut egui::Ui) {
-        th::card().show(ui, |ui| {
+        th::card(ui, |ui| {
             ui.set_width(ui.available_width());
             ui.add_space(20.0);
             ui.vertical_centered(|ui| {
@@ -935,7 +939,7 @@ impl App {
         let Some(server) = self.selected_server() else {
             return;
         };
-        th::card().show(ui, |ui| {
+        th::card(ui, |ui| {
             ui.set_width(ui.available_width());
             ui.horizontal(|ui| {
                 // A lamp beside the name: lit brass when the pack answers,
@@ -951,22 +955,12 @@ impl App {
                 valhsync_ui::widgets::dot(ui, lamp);
                 ui.label(
                     RichText::new(&server.name)
-                        .size(20.0)
+                        .font(th::display_font(19.0))
                         .strong()
                         .color(th::GOLD_LIT),
                 );
             });
             ui.label(RichText::new(&server.url).small().color(th::BONE_DIM));
-            if let Some(up) = self.prepared.as_ref().and_then(|p| p.game_server_up) {
-                let (colour, label) = if up {
-                    (th::MOSS, self.t(Key::GameUp))
-                } else {
-                    (th::BLOOD_LIT, self.t(Key::GameDown))
-                };
-                ui.add_space(4.0);
-                valhsync_ui::widgets::status_dot(ui, colour, label);
-            }
-
             ui.add_space(10.0);
             self.status_block(ui);
             let set_aside = self
@@ -1009,7 +1003,7 @@ impl App {
     /// One row per mod, with what the next sync will do to it. Long packs
     /// are cut off: a launcher with forty mods must not become a wall.
     fn mods_card(&mut self, ui: &mut egui::Ui) {
-        th::card().show(ui, |ui| {
+        th::card(ui, |ui| {
             ui.set_width(ui.available_width());
             valhsync_ui::widgets::section(
                 ui,
@@ -1124,7 +1118,7 @@ impl App {
                                 c.keep + c.seed_kept,
                                 self.t(Key::Installed)
                             ))
-                            .strong()
+                            .text_style(th::label_style())
                             .color(th::BONE),
                         );
                     });
@@ -1136,7 +1130,11 @@ impl App {
                     };
                     ui.horizontal(|ui| {
                         valhsync_ui::widgets::dot(ui, th::GOLD);
-                        ui.label(RichText::new(title).strong().color(th::BONE));
+                        ui.label(
+                            RichText::new(title)
+                                .text_style(th::label_style())
+                                .color(th::BONE),
+                        );
                     });
                     let mut parts = Vec::new();
                     if c.add > 0 {
@@ -1156,7 +1154,11 @@ impl App {
                         human_bytes(p.plan.download_bytes),
                         self.t(Key::PlanDownload)
                     ));
-                    ui.label(RichText::new(parts.join(" · ")).color(th::BONE_DIM));
+                    ui.label(
+                        RichText::new(parts.join(" · "))
+                            .text_style(th::label_style())
+                            .color(th::BONE_DIM),
+                    );
                 }
             }
         }
