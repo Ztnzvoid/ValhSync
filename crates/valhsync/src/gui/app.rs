@@ -663,8 +663,12 @@ impl eframe::App for App {
             })
             .inner;
         // The window is as tall as what it draws: the content, the notice bar
-        // and one margin.
+        // and one margin. A dialog floats above all that and needs its own
+        // room, or its buttons end up past the bottom edge.
         self.wanted_height = panel + 20.0 + self.notice_height;
+        if self.add_dialog.is_some() || self.confirm_open || self.settings_open || self.mods_open {
+            self.wanted_height = self.wanted_height.max(600.0);
+        }
 
         self.update_title(ctx);
         chrome::fit_to_content(
@@ -1038,7 +1042,7 @@ impl App {
             .default_width(520.0)
             .show(ctx, |ui| {
                 egui::ScrollArea::vertical()
-                    .max_height(420.0)
+                    .max_height(valhsync_ui::widgets::dialog_room(ui, 230.0))
                     .show(ui, |ui| {
                         for row in &self.mods {
                             mod_row(ui, row, self.lang);
@@ -1179,45 +1183,46 @@ impl App {
             .anchor(egui::Align2::CENTER_CENTER, egui::vec2(0.0, 0.0))
             .default_width(480.0)
             .show(ctx, |ui| {
-                ui.label(RichText::new(self.t(Key::InvitePrompt)).color(th::BONE_DIM));
-                ui.add_enabled(
-                    dialog.pending.is_none() && !dialog.asking,
-                    egui::TextEdit::multiline(&mut dialog.input)
-                        .desired_rows(3)
-                        .desired_width(f32::INFINITY)
-                        .font(egui::TextStyle::Monospace)
-                        .hint_text(self.t(Key::InviteHint)),
-                );
-
-                if dialog.asking {
-                    ui.horizontal(|ui| {
-                        ui.add(egui::Spinner::new().color(th::GOLD));
-                        ui.label(RichText::new(self.t(Key::Checking2)).color(th::BONE_DIM));
-                    });
-                }
-                if let Some(found) = &dialog.pending {
-                    ui.add_space(8.0);
-                    valhsync_ui::widgets::section(ui, self.t(Key::ConfirmKeyTitle));
-                    ui.label(RichText::new(&found.invite.name).strong().color(th::BONE));
-                    ui.label(
-                        RichText::new(&found.invite.url)
-                            .monospace()
-                            .small()
-                            .color(th::BONE_DIM),
+                valhsync_ui::widgets::dialog_body(ui, |ui| {
+                    ui.label(RichText::new(self.t(Key::InvitePrompt)).color(th::BONE_DIM));
+                    ui.add_enabled(
+                        dialog.pending.is_none() && !dialog.asking,
+                        egui::TextEdit::multiline(&mut dialog.input)
+                            .desired_rows(3)
+                            .desired_width(f32::INFINITY)
+                            .font(egui::TextStyle::Monospace)
+                            .hint_text(self.t(Key::InviteHint)),
                     );
-                    ui.add_space(6.0);
-                    ui.label(
-                        RichText::new(&found.fingerprint)
-                            .font(th::display_font(20.0))
-                            .color(th::GOLD_LIT),
-                    );
-                    ui.add_space(6.0);
-                    valhsync_ui::widgets::notice(ui, th::GOLD, self.t(Key::ConfirmKeyBody));
-                }
-                if let Some(e) = &dialog.error {
-                    valhsync_ui::widgets::notice(ui, th::BLOOD_LIT, e);
-                }
 
+                    if dialog.asking {
+                        ui.horizontal(|ui| {
+                            ui.add(egui::Spinner::new().color(th::GOLD));
+                            ui.label(RichText::new(self.t(Key::Checking2)).color(th::BONE_DIM));
+                        });
+                    }
+                    if let Some(found) = &dialog.pending {
+                        ui.add_space(8.0);
+                        valhsync_ui::widgets::section(ui, self.t(Key::ConfirmKeyTitle));
+                        ui.label(RichText::new(&found.invite.name).strong().color(th::BONE));
+                        ui.label(
+                            RichText::new(&found.invite.url)
+                                .monospace()
+                                .small()
+                                .color(th::BONE_DIM),
+                        );
+                        ui.add_space(6.0);
+                        ui.label(
+                            RichText::new(&found.fingerprint)
+                                .font(th::display_font(20.0))
+                                .color(th::GOLD_LIT),
+                        );
+                        ui.add_space(6.0);
+                        valhsync_ui::widgets::notice(ui, th::GOLD, self.t(Key::ConfirmKeyBody));
+                    }
+                    if let Some(e) = &dialog.error {
+                        valhsync_ui::widgets::notice(ui, th::BLOOD_LIT, e);
+                    }
+                });
                 ui.add_space(8.0);
                 ui.horizontal(|ui| {
                     let label = if dialog.pending.is_some() {
@@ -1337,7 +1342,7 @@ impl App {
                 );
                 ui.add_space(8.0);
                 egui::ScrollArea::vertical()
-                    .max_height(220.0)
+                    .max_height(valhsync_ui::widgets::dialog_room(ui, 300.0))
                     .show(ui, |ui| {
                         for (key, action) in [
                             (Key::PlanInstall, Action::Add),
@@ -1412,104 +1417,105 @@ impl App {
             .anchor(egui::Align2::CENTER_CENTER, egui::vec2(0.0, 0.0))
             .default_width(540.0)
             .show(ctx, |ui| {
-                // --- where Valheim is -------------------------------------
-                valhsync_ui::widgets::section(ui, self.t(Key::GameFolder));
-                match &install {
-                    Some(i) => {
-                        ui.horizontal_wrapped(|ui| {
-                            ui.label(
-                                RichText::new(format!("{} :", self.t(Key::GameFolderInUse)))
-                                    .small()
-                                    .color(th::BONE_DIM),
-                            );
-                            ui.label(
-                                RichText::new(i.root.display().to_string())
-                                    .monospace()
-                                    .small()
-                                    .color(th::BONE),
-                            );
-                        });
-                        if self.settings.game_root.is_none() {
-                            ui.label(
-                                RichText::new(self.t(Key::GameFolderAuto))
-                                    .small()
-                                    .color(th::RUNE),
+                valhsync_ui::widgets::dialog_body(ui, |ui| {
+                    // --- where Valheim is -------------------------------------
+                    valhsync_ui::widgets::section(ui, self.t(Key::GameFolder));
+                    match &install {
+                        Some(i) => {
+                            ui.horizontal_wrapped(|ui| {
+                                ui.label(
+                                    RichText::new(format!("{} :", self.t(Key::GameFolderInUse)))
+                                        .small()
+                                        .color(th::BONE_DIM),
+                                );
+                                ui.label(
+                                    RichText::new(i.root.display().to_string())
+                                        .monospace()
+                                        .small()
+                                        .color(th::BONE),
+                                );
+                            });
+                            if self.settings.game_root.is_none() {
+                                ui.label(
+                                    RichText::new(self.t(Key::GameFolderAuto))
+                                        .small()
+                                        .color(th::RUNE),
+                                );
+                            }
+                        }
+                        None => {
+                            valhsync_ui::widgets::notice(
+                                ui,
+                                th::BLOOD_LIT,
+                                &crate::SyncError::GameNotFound.to_string(),
                             );
                         }
                     }
-                    None => {
-                        valhsync_ui::widgets::notice(
-                            ui,
-                            th::BLOOD_LIT,
-                            &crate::SyncError::GameNotFound.to_string(),
-                        );
-                    }
-                }
-                ui.add_space(6.0);
-                valhsync_ui::widgets::hint(ui, self.t(Key::GameFolderHint));
-                ui.horizontal(|ui| {
-                    ui.add(
-                        egui::TextEdit::singleline(&mut self.game_root_input)
-                            .desired_width(340.0)
-                            .font(egui::TextStyle::Monospace)
-                            .hint_text("…/steamapps/common/Valheim"),
-                    );
-                    if ui.button(self.t(Key::Apply)).clicked() {
-                        apply_root = true;
-                    }
-                });
-
-                // --- the selected server ----------------------------------
-                if let Some(s) = &server {
-                    ui.add_space(14.0);
-                    valhsync_ui::widgets::section(ui, self.t(Key::ThisServer));
-                    ui.label(RichText::new(&s.name).strong().color(th::BONE));
-                    ui.label(
-                        RichText::new(&s.url)
-                            .monospace()
-                            .small()
-                            .color(th::BONE_DIM),
-                    );
-                    ui.label(
-                        RichText::new(format!(
-                            "{} : {}",
-                            self.t(Key::KeyFingerprint),
-                            s.fingerprint()
-                        ))
-                        .small()
-                        .color(th::RUNE),
-                    );
                     ui.add_space(6.0);
-                    if ui.button(self.t(Key::Forget)).clicked() {
-                        forget = true;
-                    }
-                }
+                    valhsync_ui::widgets::hint(ui, self.t(Key::GameFolderHint));
+                    ui.horizontal(|ui| {
+                        ui.add(
+                            egui::TextEdit::singleline(&mut self.game_root_input)
+                                .desired_width(340.0)
+                                .font(egui::TextStyle::Monospace)
+                                .hint_text("…/steamapps/common/Valheim"),
+                        );
+                        if ui.button(self.t(Key::Apply)).clicked() {
+                            apply_root = true;
+                        }
+                    });
 
-                // --- ValhSync itself ---------------------------------------
-                ui.add_space(14.0);
-                valhsync_ui::widgets::section(ui, self.t(Key::AboutValhSync));
-                ui.label(
-                    RichText::new(format!("Version {}", env!("CARGO_PKG_VERSION")))
-                        .small()
-                        .color(th::BONE_DIM),
-                );
-                ui.horizontal(|ui| {
+                    // --- the selected server ----------------------------------
+                    if let Some(s) = &server {
+                        ui.add_space(14.0);
+                        valhsync_ui::widgets::section(ui, self.t(Key::ThisServer));
+                        ui.label(RichText::new(&s.name).strong().color(th::BONE));
+                        ui.label(
+                            RichText::new(&s.url)
+                                .monospace()
+                                .small()
+                                .color(th::BONE_DIM),
+                        );
+                        ui.label(
+                            RichText::new(format!(
+                                "{} : {}",
+                                self.t(Key::KeyFingerprint),
+                                s.fingerprint()
+                            ))
+                            .small()
+                            .color(th::RUNE),
+                        );
+                        ui.add_space(6.0);
+                        if ui.button(self.t(Key::Forget)).clicked() {
+                            forget = true;
+                        }
+                    }
+
+                    // --- ValhSync itself ---------------------------------------
+                    ui.add_space(14.0);
+                    valhsync_ui::widgets::section(ui, self.t(Key::AboutValhSync));
                     ui.label(
-                        RichText::new(self.paths.config_dir.display().to_string())
-                            .monospace()
+                        RichText::new(format!("Version {}", env!("CARGO_PKG_VERSION")))
                             .small()
                             .color(th::BONE_DIM),
                     );
-                    if ui.small_button(self.t(Key::OpenFolder)).clicked() {
-                        open_folder(&self.paths.config_dir);
+                    ui.horizontal(|ui| {
+                        ui.label(
+                            RichText::new(self.paths.config_dir.display().to_string())
+                                .monospace()
+                                .small()
+                                .color(th::BONE_DIM),
+                        );
+                        if ui.small_button(self.t(Key::OpenFolder)).clicked() {
+                            open_folder(&self.paths.config_dir);
+                        }
+                    });
+                    ui.add_space(6.0);
+                    valhsync_ui::widgets::hint(ui, self.t(Key::ResetAllHint));
+                    if ui.button(self.t(Key::ResetAll)).clicked() {
+                        reset = true;
                     }
                 });
-                ui.add_space(6.0);
-                valhsync_ui::widgets::hint(ui, self.t(Key::ResetAllHint));
-                if ui.button(self.t(Key::ResetAll)).clicked() {
-                    reset = true;
-                }
-
                 ui.add_space(14.0);
                 if ui.button(self.t(Key::Close)).clicked() {
                     close = true;

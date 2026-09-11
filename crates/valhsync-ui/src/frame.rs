@@ -35,15 +35,35 @@ pub fn fit_to_content(ctx: &egui::Context, wanted_height: f32, min: egui::Vec2, 
     if ctx.input(|i| i.viewport().maximized.unwrap_or(false)) {
         return;
     }
+    let have = ctx.screen_rect().size();
+    let id = egui::Id::new("valhsync-fit");
+    let asked: Option<egui::Vec2> = ctx.memory(|m| m.data.get_temp(id));
+
+    // A size we did not ask for means the person dragged an edge. From then on
+    // the window is theirs: measuring the content is a first guess, not a rule
+    // to enforce every frame -- enforcing it fought the drag and snapped the
+    // window back, which is what made resizing look broken.
+    if let Some(asked) = asked
+        && (asked - have).abs().max_elem() > 24.0
+    {
+        ctx.memory_mut(|m| m.data.insert_temp(id, MANUAL));
+    }
+    if asked == Some(MANUAL) {
+        return;
+    }
+
     let want = egui::vec2(
-        ctx.screen_rect().width().clamp(min.x, max.x),
+        have.x.clamp(min.x, max.x),
         wanted_height.clamp(min.y, max.y),
     );
-    let have = ctx.screen_rect().size();
-    if (want.y - have.y).abs() > 8.0 || (want.x - have.x).abs() > 8.0 {
+    if (want - have).abs().max_elem() > 8.0 {
         ctx.send_viewport_cmd(ViewportCommand::InnerSize(want));
     }
+    ctx.memory_mut(|m| m.data.insert_temp(id, want));
 }
+
+/// Stands in for "the person resized this window"; no real size is negative.
+const MANUAL: egui::Vec2 = egui::vec2(-1.0, -1.0);
 
 /// Draw the window's own edge, on top of everything: with the system frame
 /// gone, this hairline is what separates the window from the desktop.

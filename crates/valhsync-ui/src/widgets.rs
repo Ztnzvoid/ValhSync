@@ -104,6 +104,27 @@ pub fn tabs<T: Copy + PartialEq>(ui: &mut egui::Ui, current: &mut T, items: &[(T
     th::hairline(ui);
 }
 
+/// A modal panel: the body scrolls if it has to, so whatever the caller draws
+/// after it -- the buttons that dismiss it -- is always on screen.
+///
+/// Windows can be small, and a fingerprint to confirm is a lot of text; pushing
+/// Trust and Cancel past the bottom edge leaves no way out of the dialog.
+pub fn dialog_body<R>(ui: &mut egui::Ui, add_contents: impl FnOnce(&mut egui::Ui) -> R) -> R {
+    egui::ScrollArea::vertical()
+        .max_height(dialog_room(ui, 190.0))
+        .auto_shrink([false, true])
+        .show(ui, add_contents)
+        .inner
+}
+
+/// How tall a dialog's scrolling part may be: the window, less `reserve` for
+/// the title bar, the buttons and the margins. A height fixed in pixels looks
+/// right on the window it was written for and overflows every smaller one.
+#[must_use]
+pub fn dialog_room(ui: &egui::Ui, reserve: f32) -> f32 {
+    (ui.ctx().screen_rect().height() - reserve).max(120.0)
+}
+
 /// Dimmed explanatory line under a control.
 pub fn hint(ui: &mut egui::Ui, text: &str) {
     ui.label(RichText::new(text).small().color(th::BONE_DIM));
