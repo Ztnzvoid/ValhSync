@@ -43,6 +43,11 @@ enum Msg {
     Prepared(Result<Box<Prepared>, Failure>),
     Discovered(Result<Box<engine::Discovered>, String>),
     Applied(Result<(Applied, Option<String>), String>),
+    /// What the server offers as a newer launcher, if anything. Checked on
+    /// the same trip as the manifest: it is the same key and the same server.
+    Offered(Option<Box<valhsync_core::UpdateOffer>>),
+    /// The new launcher is in place; the path is what to start.
+    Updated(Result<std::path::PathBuf, String>),
     /// A job failed in a way it had no plan for. The window says so rather
     /// than closing, which is what the process did before.
     Crashed(String),
@@ -54,6 +59,7 @@ enum Job {
     Check,
     Discover,
     Sync,
+    SelfUpdate,
 }
 
 /// Worker-side handle: sends messages and wakes the UI.
@@ -289,6 +295,10 @@ pub(super) struct App {
     job: Option<(Job, Receiver<Msg>)>,
     progress: Option<ProgressView>,
     notice: Option<(String, Color32, Instant)>,
+    /// A build this server offers that is worth taking.
+    update: Option<valhsync_core::UpdateOffer>,
+    /// The new launcher is running; this one has nothing left to do.
+    quit_after_update: bool,
     add_dialog: Option<AddDialog>,
     confirm_open: bool,
     settings_open: bool,
@@ -309,6 +319,10 @@ pub(super) struct App {
 
 impl App {
     pub(super) fn new(egui_ctx: &egui::Context) -> Self {
+        // The launcher this one replaced is still on disk: Windows only lets
+        // go of it once the process that was running it has exited, which by
+        // now it has.
+        crate::selfupdate::clean_stale();
         let (paths, settings, book, fatal) = match AppPaths::discover() {
             Ok(paths) => {
                 let settings = Settings::load(&paths).unwrap_or_default();
@@ -343,6 +357,8 @@ impl App {
             job: None,
             progress: None,
             notice: None,
+            update: None,
+            quit_after_update: false,
             add_dialog: None,
             confirm_open: false,
             settings_open: false,
@@ -430,7 +446,57 @@ impl App {
                 .map(Box::new)
                 .map_err(Failure::from);
             rep.send(Msg::Prepared(result));
+            // Same server, same pinned key, same trip. A server that offers
+            // nothing is the normal case and says nothing about the sync.
+            let offered = server.public_key().ok().and_then(|key| {
+                crate::http::Client::new()
+                    .ok()?
+                    .fetch_update_offer(&server.url, &key)
+                    .ok()
+                    .flatten()
+            });
+            rep.send(Msg::Offered(offered.map(Box::new)));
         });
+    }
+
+    /// Take the build on offer: download it beside the running launcher,
+    /// verify it, put it in place. Nothing is started here -- the window
+    /// decides when to hand over.
+    fn start_self_update(&mut self) {
+        let (Some(server), Some(offer)) = (self.selected_server(), self.update.clone()) else {
+            return;
+        };
+        if self.busy() {
+            return;
+        }
+        self.start_job(Job::SelfUpdate, move |rep| {
+            let result = (|| {
+                let staged = crate::selfupdate::staging_path()?;
+                let client = crate::http::Client::new()?;
+                let mut seen = 0u64;
+                client.download_update(&server.url, &offer, &staged, &mut |done| {
+                    if done != seen {
+                        seen = done;
+                        rep.send(Msg::Progress {
+                            done,
+                            total: offer.size,
+                            phase: Phase::Downloading { index: 1, count: 1 },
+                            detail: offer.exe.clone(),
+                        });
+                    }
+                })?;
+                crate::selfupdate::install(&staged)
+            })();
+            rep.send(Msg::Updated(result.map_err(|e| e.to_string())));
+        });
+    }
+
+    /// Is this offer worth putting in front of the player? `wanted` answers
+    /// for the build; this also refuses one already installed, which is what
+    /// a server whose document overstates its file would otherwise loop on.
+    fn worth_offering(&self, offer: &valhsync_core::UpdateOffer) -> bool {
+        crate::selfupdate::wanted(offer)
+            && self.settings.installed_build.as_deref() != Some(offer.blake3.as_str())
     }
 
     fn start_sync(&mut self, launch: bool) {
@@ -505,6 +571,7 @@ impl App {
         }
     }
 
+    #[allow(clippy::too_many_lines)] // one arm per message, read top to bottom
     fn drain_messages(&mut self) {
         let Some((job, rx)) = &self.job else {
             return;
@@ -578,6 +645,26 @@ impl App {
                     }
                 }
                 Msg::Applied(Err(e)) => self.notify(e, th::BLOOD_LIT),
+                Msg::Offered(offer) => {
+                    self.update = offer.map(|o| *o).filter(|o| self.worth_offering(o));
+                }
+                Msg::Updated(Ok(exe)) => {
+                    // Remember what went in, so an offer that does not
+                    // actually make the launcher newer is not taken twice.
+                    if let Some(offer) = &self.update {
+                        self.settings.installed_build = Some(offer.blake3.clone());
+                        self.save_settings();
+                    }
+                    self.update = None;
+                    match crate::selfupdate::relaunch(&exe) {
+                        Ok(()) => self.quit_after_update = true,
+                        Err(e) => self.notify(e.to_string(), th::BLOOD_LIT),
+                    }
+                }
+                Msg::Updated(Err(e)) => {
+                    let what = self.t(Key::UpdateFailed).to_string();
+                    self.notify(format!("{what}: {e}"), th::BLOOD_LIT);
+                }
                 Msg::Crashed(what) => {
                     let where_ = valhsync_core::crash::log_path()
                         .map(|p| format!("\n{}", p.display()))
@@ -627,6 +714,37 @@ impl App {
         }
     }
 
+    /// The offer, and the one button that takes it.
+    fn update_bar(&mut self, ui: &mut egui::Ui) {
+        let Some(offer) = self.update.clone() else {
+            return;
+        };
+        let busy = self.busy();
+        th::callout(ui, th::GOLD, |ui| {
+            ui.horizontal(|ui| {
+                ui.colored_label(
+                    th::GOLD_LIT,
+                    format!("{} — {}", self.t(Key::UpdateReady), offer.version),
+                );
+                ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                    if ui
+                        .add_enabled(
+                            !busy,
+                            egui::Button::new(
+                                RichText::new(self.t(Key::UpdateInstall)).color(th::NIGHT),
+                            )
+                            .fill(th::GOLD),
+                        )
+                        .clicked()
+                    {
+                        self.start_self_update();
+                    }
+                });
+            });
+        });
+        ui.add_space(12.0);
+    }
+
     fn save_settings(&mut self) {
         if let Err(e) = self.settings.save(&self.paths) {
             self.notify(e.to_string(), th::BLOOD_LIT);
@@ -637,6 +755,12 @@ impl App {
 impl eframe::App for App {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         self.drain_messages();
+        if self.quit_after_update {
+            // The replacement is already running. Two launchers on one game
+            // folder is exactly the race the backup journal cannot help with.
+            ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+            return;
+        }
         self.track_game();
         self.auto_refresh(ctx);
         if self.busy() {
@@ -667,6 +791,7 @@ impl eframe::App for App {
                     });
                     return ui.cursor().top();
                 }
+                self.update_bar(ui);
                 self.action_bar(ui);
                 ui.add_space(12.0);
                 if self.book.servers.is_empty() {

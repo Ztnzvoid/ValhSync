@@ -1,8 +1,10 @@
 //! HTTP server and folder watcher.
 //!
-//! Four read-only routes, no listing, no auth: the content is not secret and
+//! Nine read-only routes, no listing, no auth: the content is not secret and
 //! its integrity is guaranteed by the signature. `/files/{hash}` only ever
-//! opens `store/<hash>` for a hash the current or previous manifest names.
+//! opens `store/<hash>` for a hash the current or previous manifest names, and
+//! the update routes serve one signed document plus the single build whose
+//! digest that document names, so neither can be talked into another path.
 
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex, RwLock};
@@ -22,6 +24,8 @@ use valhsync_core::{Invite, Keypair};
 use crate::config::Config;
 use crate::pack::{self, Published};
 use crate::store::Store;
+use crate::update::{self, Offered};
+use valhsync_core::update as update_api;
 
 /// How long the pack must stay quiet before it is rebuilt.
 const SETTLE: Duration = Duration::from_secs(2);
@@ -36,6 +40,8 @@ struct AppState {
     /// True when this process runs beside the dedicated server, and can
     /// therefore say whether the game is up.
     colocated: bool,
+    /// The launcher build found beside this publisher, signed once at startup.
+    update: Option<Offered>,
 }
 
 impl AppState {
@@ -76,6 +82,16 @@ pub fn prepare(cfg: &Config, keypair: Keypair, data_dir: PathBuf, watch: bool) -
         // `/key`, and the admin sees the warning `print_warnings` prints.
         None => String::new(),
     };
+    // Signed here, while the keypair is still ours: the watcher takes it next.
+    let update = update::find(&keypair);
+    if let Some(up) = &update {
+        tracing::info!(
+            "offering ValhSync {} to launchers ({} bytes)",
+            env!("CARGO_PKG_VERSION"),
+            up.size
+        );
+    }
+
     let state = Arc::new(AppState {
         current: RwLock::new(Arc::clone(&outcome.published)),
         store: Store::open(&data_dir)?,
@@ -85,6 +101,7 @@ pub fn prepare(cfg: &Config, keypair: Keypair, data_dir: PathBuf, watch: bool) -
         // Only a publisher sitting next to the game server can see it. One
         // publishing a copy of the pack from elsewhere must not guess.
         colocated: cfg.is_colocated(),
+        update,
     });
 
     let watcher = if watch {
@@ -99,6 +116,12 @@ pub fn prepare(cfg: &Config, keypair: Keypair, data_dir: PathBuf, watch: bool) -
         .route("/manifest.sig", get(signature))
         .route("/key", get(public_key))
         .route("/files/{hash}", get(file))
+        .route(update_api::OFFER_PATH, get(update_offer))
+        .route(update_api::SIGNATURE_PATH, get(update_signature))
+        .route(
+            &format!("{}{{hash}}", update_api::BUILD_PREFIX),
+            get(update_build),
+        )
         .route("/health", get(health))
         .with_state(state);
 
@@ -356,6 +379,68 @@ async fn file(State(st): State<Arc<AppState>>, Path(hash): Path<String>) -> Resp
     resp
 }
 
+/// The signed offer. A publisher with no launcher beside it has nothing to
+/// say here, and says so rather than serving an empty document.
+async fn update_offer(State(st): State<Arc<AppState>>) -> Response {
+    let Some(up) = st.update.as_ref() else {
+        return (StatusCode::NOT_FOUND, "no update on offer").into_response();
+    };
+    (
+        [
+            (
+                header::CONTENT_TYPE,
+                HeaderValue::from_static("application/json"),
+            ),
+            (header::CACHE_CONTROL, HeaderValue::from_static("no-cache")),
+        ],
+        up.doc.clone(),
+    )
+        .into_response()
+}
+
+async fn update_signature(State(st): State<Arc<AppState>>) -> Response {
+    let Some(up) = st.update.as_ref() else {
+        return (StatusCode::NOT_FOUND, "no update on offer").into_response();
+    };
+    (
+        [
+            (header::CONTENT_TYPE, HeaderValue::from_static("text/plain")),
+            (header::CACHE_CONTROL, HeaderValue::from_static("no-cache")),
+        ],
+        format!("{}\n", up.sig),
+    )
+        .into_response()
+}
+
+/// The offered build's bytes. The hash in the URL is not a lookup key but a
+/// check: the only path ever opened is the one the signed offer names.
+async fn update_build(State(st): State<Arc<AppState>>, Path(hash): Path<String>) -> Response {
+    let Some(up) = st.update.as_ref().filter(|up| up.blake3 == hash) else {
+        return (StatusCode::NOT_FOUND, "unknown build").into_response();
+    };
+    let Ok(f) = tokio::fs::File::open(&up.path).await else {
+        tracing::warn!("the launcher beside this publisher has gone; restart to offer again");
+        return (StatusCode::NOT_FOUND, "build not available").into_response();
+    };
+    let len = f.metadata().await.map(|m| m.len()).ok();
+    let mut resp = Body::from_stream(ReaderStream::new(f)).into_response();
+    let headers = resp.headers_mut();
+    headers.insert(
+        header::CONTENT_TYPE,
+        HeaderValue::from_static("application/octet-stream"),
+    );
+    headers.insert(
+        header::CACHE_CONTROL,
+        HeaderValue::from_static("public, max-age=31536000, immutable"),
+    );
+    if let Some(len) = len
+        && let Ok(v) = HeaderValue::from_str(&len.to_string())
+    {
+        headers.insert(header::CONTENT_LENGTH, v);
+    }
+    resp
+}
+
 async fn health(State(st): State<Arc<AppState>>) -> Response {
     let cur = st.current();
     let game_server = if st.colocated {
@@ -377,4 +462,116 @@ async fn health(State(st): State<Arc<AppState>>) -> Response {
         "version": env!("CARGO_PKG_VERSION"),
     });
     axum::Json(body).into_response()
+}
+
+#[cfg(test)]
+mod tests {
+    use std::net::SocketAddr;
+
+    use tokio::sync::oneshot;
+    use valhsync_core::{UpdateOffer, hash};
+
+    use super::*;
+
+    /// Smallest pack `pack::build` accepts, in a temporary folder.
+    fn config(server_root: &std::path::Path) -> Config {
+        let mut cfg = Config::default();
+        cfg.server.name = "Test publisher".into();
+        // RFC 5737 documentation address: never a real server.
+        cfg.server.game_address = "203.0.113.10:2456".into();
+        cfg.pack.server_root = Some(server_root.to_path_buf());
+        cfg
+    }
+
+    struct Running {
+        addr: SocketAddr,
+        stop: Option<oneshot::Sender<()>>,
+        task: tokio::task::JoinHandle<()>,
+    }
+
+    impl Running {
+        async fn start(kp: &Keypair, server_root: &std::path::Path, data_dir: PathBuf) -> Self {
+            let server = prepare(&config(server_root), kp.clone(), data_dir, false).unwrap();
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let addr = listener.local_addr().unwrap();
+            let (stop, rx) = oneshot::channel();
+            let task = tokio::spawn(async move {
+                serve_until(listener, server, async {
+                    let _ = rx.await;
+                })
+                .await
+                .unwrap();
+            });
+            Self {
+                addr,
+                stop: Some(stop),
+                task,
+            }
+        }
+
+        async fn get(&self, path: &str) -> reqwest::Response {
+            reqwest::get(format!("http://{}{path}", self.addr))
+                .await
+                .unwrap()
+        }
+
+        async fn stop(mut self) {
+            let _ = self.stop.take().unwrap().send(());
+            self.task.await.unwrap();
+        }
+    }
+
+    /// The two documents are one offer in two pieces: either both are there
+    /// and the signature covers the bytes, or neither is.
+    ///
+    /// Which of the two it is depends on whether a launcher happens to sit
+    /// beside the test binary, so the test asserts the agreement, not the
+    /// presence.
+    #[tokio::test]
+    async fn the_update_document_and_its_signature_agree() {
+        let root = tempfile::tempdir().unwrap();
+        std::fs::write(root.path().join("winhttp.dll"), b"doorstop").unwrap();
+        let data = tempfile::tempdir().unwrap();
+        let kp = Keypair::generate();
+        let srv = Running::start(&kp, root.path(), data.path().to_path_buf()).await;
+
+        let doc = srv.get("/update.json").await;
+        let sig = srv.get("/update.sig").await;
+        let offered = doc.status().as_u16();
+        assert_eq!(offered, sig.status().as_u16(), "one offer, two routes");
+        assert!(offered == 200 || offered == 404, "status {offered}");
+
+        if offered == 200 {
+            let bytes = doc.bytes().await.unwrap();
+            let sig_text = sig.text().await.unwrap();
+            let offer = UpdateOffer::parse_verified(&bytes, sig_text.trim(), &kp.public())
+                .expect("the offer verifies against the key this server publishes");
+
+            let build = srv.get(&format!("/update/{}", offer.blake3)).await;
+            assert_eq!(build.status().as_u16(), 200);
+            let body = build.bytes().await.unwrap();
+            assert_eq!(body.len() as u64, offer.size);
+            assert_eq!(hash::to_hex(&hash::hash_bytes(&body)), offer.blake3);
+        }
+        srv.stop().await;
+    }
+
+    #[tokio::test]
+    async fn only_the_offered_digest_serves_bytes() {
+        let root = tempfile::tempdir().unwrap();
+        std::fs::write(root.path().join("winhttp.dll"), b"doorstop").unwrap();
+        let data = tempfile::tempdir().unwrap();
+        let srv =
+            Running::start(&Keypair::generate(), root.path(), data.path().to_path_buf()).await;
+
+        for path in [
+            format!("/update/{}", "b".repeat(64)),
+            "/update/not-a-digest".to_string(),
+            format!("/update/{}", hash::to_hex(&hash::hash_bytes(b"doorstop"))),
+        ] {
+            let r = srv.get(&path).await;
+            assert_eq!(r.status().as_u16(), 404, "{path} must not serve bytes");
+        }
+        srv.stop().await;
+    }
 }

@@ -8,6 +8,8 @@ license.workspace = true
 repository.workspace = true
 authors.workspace = true
 publish.workspace = true
+# Records the build's target triple; see build.rs.
+build = "build.rs"
 
 [[bin]]
 name = "valhsync-server"

@@ -5,13 +5,22 @@ use std::io::{Read, Write};
 use std::path::Path;
 use std::time::Duration;
 
-use valhsync_core::{AllowedRoots, FileEntry, Limits, Manifest, PublicKey, hash};
+use valhsync_core::{AllowedRoots, FileEntry, Limits, Manifest, PublicKey, UpdateOffer, hash};
 
 use crate::error::{Result, SyncError};
 
 /// A manifest bigger than this is refused before parsing.
 pub const MANIFEST_MAX_BYTES: u64 = 8 * 1024 * 1024;
 const CHUNK: usize = 64 * 1024;
+
+/// An offer is six short fields. Anything larger is not one, and refusing it
+/// early keeps a hostile server from spending our memory before the signature
+/// has had a chance to say no.
+const UPDATE_OFFER_MAX_BYTES: u64 = 8 * 1024;
+
+/// A base64 Ed25519 signature is under a hundred bytes; the rest is slack for
+/// line breaks and trailing whitespace.
+const SIGNATURE_MAX_BYTES: u64 = 4 * 1024;
 
 /// Long enough for a slow handshake, short enough that a server which has gone
 /// away is reported as away rather than waited on.
@@ -107,6 +116,17 @@ impl Client {
         Ok(out)
     }
 
+    /// Like `get_limited`, but a 404 means the route is simply not there and
+    /// the caller gets `Ok(None)`. Used for what a server may legitimately not
+    /// have, so "nothing on offer" never reads as a broken server.
+    fn get_optional(&self, url: &str, what: &str, max: u64) -> Result<Option<Vec<u8>>> {
+        match self.get_limited(url, what, max) {
+            Ok(bytes) => Ok(Some(bytes)),
+            Err(SyncError::HttpStatus { status: 404, .. }) => Ok(None),
+            Err(e) => Err(e),
+        }
+    }
+
     /// The public key a server publishes at `/key`. Fetching it is not proof
     /// of identity: the player still has to compare the fingerprint with what
     /// the admin told them. It only lets us verify the manifest afterwards.
@@ -161,6 +181,44 @@ impl Client {
         Ok((manifest, bytes))
     }
 
+    /// What newer launcher build this server offers, if any.
+    ///
+    /// Most servers offer nothing, and a server too old to know the route
+    /// answers 404 as well: both are `Ok(None)`, because "no update" is not a
+    /// problem the player should be told about. Everything else is an error.
+    ///
+    /// The document is verified against the key already pinned for this server
+    /// before a single field of it is read: an update channel decides what runs
+    /// on the player's machine, so unsigned bytes get no say in it.
+    pub fn fetch_update_offer(
+        &self,
+        base_url: &str,
+        key: &PublicKey,
+    ) -> Result<Option<UpdateOffer>> {
+        let base = base_url.trim_end_matches('/');
+        let Some(bytes) = self.get_optional(
+            &format!("{base}{}", valhsync_core::update::OFFER_PATH),
+            "the update offer",
+            UPDATE_OFFER_MAX_BYTES,
+        )?
+        else {
+            return Ok(None);
+        };
+        let Some(sig) = self.get_optional(
+            &format!("{base}{}", valhsync_core::update::SIGNATURE_PATH),
+            "the update signature",
+            SIGNATURE_MAX_BYTES,
+        )?
+        else {
+            // An offer without its signature is not an offer. A server halfway
+            // through publishing one looks exactly like this, so it is worth
+            // nothing more than waiting for the next check.
+            return Ok(None);
+        };
+        let sig = String::from_utf8_lossy(&sig).trim().to_string();
+        Ok(Some(UpdateOffer::parse_verified(&bytes, &sig, key)?))
+    }
+
     /// Download one file to `dest`, refusing to read past the announced size,
     /// then verify its digest. `on_progress` receives bytes received so far.
     pub fn download(
@@ -171,18 +229,68 @@ impl Client {
         on_progress: &mut dyn FnMut(u64),
     ) -> Result<()> {
         let base = base_url.trim_end_matches('/');
-        let url = format!("{base}/files/{}", entry.blake3);
+        self.download_verified(
+            &format!("{base}/files/{}", entry.blake3),
+            &entry.path,
+            entry.size,
+            &entry.blake3,
+            dest,
+            on_progress,
+        )
+    }
+
+    /// Download the build an offer names, to `dest`.
+    ///
+    /// Held to the same rules as a pack file -- the announced size, no reading
+    /// past it, the digest checked before the bytes are anything more than a
+    /// temporary file -- because unlike a pack file this one gets executed.
+    pub fn download_update(
+        &self,
+        base_url: &str,
+        offer: &UpdateOffer,
+        dest: &Path,
+        on_progress: &mut dyn FnMut(u64),
+    ) -> Result<()> {
+        let base = base_url.trim_end_matches('/');
+        self.download_verified(
+            &format!(
+                "{base}{}{}",
+                valhsync_core::update::BUILD_PREFIX,
+                offer.blake3
+            ),
+            &offer.exe,
+            offer.size,
+            &offer.blake3,
+            dest,
+            on_progress,
+        )
+    }
+
+    /// Stream `url` into `dest` under an announced size, then check the digest.
+    /// Any failure that leaves unverified bytes on disk takes the file with it,
+    /// so a retry starts clean and nothing half-received is ever used.
+    ///
+    /// `label` is what the file is called in the errors a player reads: a
+    /// pack-relative path for a mod, the executable name for a launcher build.
+    fn download_verified(
+        &self,
+        url: &str,
+        label: &str,
+        size: u64,
+        blake3: &str,
+        dest: &Path,
+        on_progress: &mut dyn FnMut(u64),
+    ) -> Result<()> {
         let fail = |reason: String| SyncError::Download {
-            path: entry.path.clone(),
+            path: label.to_string(),
             reason,
         };
 
-        let mut resp = Self::get(&self.inner, &url, &entry.path)?;
-        if resp.content_length().is_some_and(|len| len != entry.size) {
+        let mut resp = Self::get(&self.inner, url, label)?;
+        if resp.content_length().is_some_and(|len| len != size) {
             return Err(fail(format!(
-                "server announces {} bytes, manifest says {}",
+                "server announces {} bytes, the signed document says {size}",
                 resp.content_length().unwrap_or(0),
-                entry.size
             )));
         }
 
@@ -200,12 +308,10 @@ impl Client {
                 break;
             }
             received += n as u64;
-            if received > entry.size {
+            if received > size {
                 drop(file);
                 let _ = std::fs::remove_file(dest);
-                return Err(fail(
-                    "server sent more bytes than the manifest announced".into(),
-                ));
+                return Err(fail("server sent more bytes than it announced".into()));
             }
             file.write_all(&buf[..n])
                 .map_err(|e| SyncError::io(format!("writing {}", dest.display()), e))?;
@@ -215,14 +321,11 @@ impl Client {
             .map_err(|e| SyncError::io(format!("flushing {}", dest.display()), e))?;
         drop(file);
 
-        if received != entry.size {
+        if received != size {
             let _ = std::fs::remove_file(dest);
-            return Err(fail(format!(
-                "incomplete: {received} of {} bytes",
-                entry.size
-            )));
+            return Err(fail(format!("incomplete: {received} of {size} bytes")));
         }
-        if let Err(e) = hash::verify_file(dest, &entry.blake3, &entry.path) {
+        if let Err(e) = hash::verify_file(dest, blake3, label) {
             let _ = std::fs::remove_file(dest);
             return Err(fail(format!(
                 "content does not match its digest ({e}); the file was corrupted in transit or on the server"

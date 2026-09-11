@@ -28,6 +28,7 @@ pub mod scan;
 pub mod sign;
 pub mod state;
 pub mod steam;
+pub mod update;
 
 pub use error::{CoreError, Result};
 pub use invite::Invite;
@@ -37,6 +38,7 @@ pub use path::AllowedRoots;
 pub use plan::{Action, SyncPlan};
 pub use sign::{Keypair, PublicKey};
 pub use state::InstalledState;
+pub use update::UpdateOffer;
 
 /// Manifest format version understood by this build.
 pub const MANIFEST_FORMAT: u32 = 1;

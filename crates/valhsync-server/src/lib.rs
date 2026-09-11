@@ -11,4 +11,5 @@ pub mod net;
 pub mod pack;
 pub mod serve;
 pub mod store;
+pub mod update;
 pub mod wizard;

@@ -13,6 +13,7 @@ pub mod gui;
 pub mod http;
 pub mod invite_file;
 pub mod paths;
+pub mod selfupdate;
 pub mod servers;
 pub mod settings;
 pub mod vanilla;

@@ -21,6 +21,11 @@ pub struct Settings {
     pub extra_allowed_dirs: Vec<String>,
     /// UI language (`fr`, `en`); system locale when unset.
     pub language: Option<String>,
+    /// BLAKE3 of the last build installed from a server's update channel.
+    /// A server whose offer names a version its file does not actually carry
+    /// would otherwise be accepted, restart no newer, and be accepted again
+    /// for as long as the player kept the window open.
+    pub installed_build: Option<String>,
 }
 
 impl Default for Settings {
@@ -30,6 +35,7 @@ impl Default for Settings {
             keep_backups: DEFAULT_KEEP_BACKUPS,
             extra_allowed_dirs: Vec::new(),
             language: None,
+            installed_build: None,
         }
     }
 }
