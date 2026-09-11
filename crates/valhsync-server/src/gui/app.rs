@@ -138,6 +138,9 @@ pub(super) struct App {
     stop_serving: Option<tokio::sync::oneshot::Sender<()>>,
 
     game_running: bool,
+    /// The process the poll matched. Shown on the panel: "cannot start, one is
+    /// already running" is a dead end unless it says which one.
+    game_pid: Option<u32>,
     game_checked: Instant,
 
     tab: Tab,
@@ -235,6 +238,7 @@ impl App {
             ip_checked: None,
             ip_rx: None,
             game_running: false,
+            game_pid: None,
             // Force a process check on the very first frame.
             game_checked: Instant::now()
                 .checked_sub(POLL_GAME_SERVER)
@@ -815,7 +819,8 @@ impl eframe::App for App {
         }
         if self.game_checked.elapsed() >= POLL_GAME_SERVER {
             let was = self.game_running;
-            self.game_running = gameserver::is_running();
+            self.game_pid = gameserver::pid();
+            self.game_running = self.game_pid.is_some();
             self.game_checked = Instant::now();
             // A server that has just started writes a log that did not exist.
             if was != self.game_running {
@@ -1096,6 +1101,9 @@ impl App {
         if let Some(ip) = &self.public_ip {
             facts.push(format!("{} {ip}", self.t("IP publique", "public IP")));
         }
+        if let Some(pid) = self.game_pid {
+            facts.push(format!("{} {pid}", self.t("processus", "process")));
+        }
         if let Some(saved) = self.world_saved {
             facts.push(format!(
                 "{} {}",
@@ -1166,6 +1174,10 @@ impl App {
                 )
                 .fill(if can_start { th::GOLD } else { th::LEATHER }),
             )
+            .on_disabled_hover_text(self.t(
+                "Aucun script de démarrage : onglet Paramètres, carte « Dossier du serveur ».",
+                "No start script: Settings tab, \"Server folder\" card.",
+            ))
             .clicked()
             && let Some(s) = self.scripts.get(self.script_index)
         {
@@ -1174,6 +1186,7 @@ impl App {
                 Ok(()) => {
                     self.game_running = true;
                     self.game_checked = Instant::now();
+                    self.game_pid = None;
                     self.stop_requested = None;
                     let msg = self
                         .t(
