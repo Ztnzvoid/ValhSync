@@ -191,40 +191,48 @@ pub fn callout<R>(
 /// vignette pulling the corners into shadow.
 pub fn backdrop(ctx: &egui::Context, painter: &egui::Painter, rect: Rect) {
     painter.rect_filled(rect, 0.0, NIGHT);
-    wood(ctx, painter, rect);
-    // Torchlight falls from the top of the window onto the plank.
+    // Torchlight from the top of the window: the effect the eye actually
+    // reads. Everything else is beneath it.
     radial_pool(
         painter,
         egui::pos2(rect.center().x, rect.min.y),
         rect.width().max(rect.height()) * 0.85,
-        Color32::from_rgba_unmultiplied(0x3A, 0x2E, 0x1E, 150),
+        Color32::from_rgba_unmultiplied(0x3A, 0x2E, 0x1E, 170),
     );
+    radial_pool(
+        painter,
+        egui::pos2(rect.center().x, rect.max.y),
+        rect.width() * 0.6,
+        Color32::from_rgba_unmultiplied(0x22, 0x1C, 0x14, 120),
+    );
+    dust(ctx, painter, rect);
     vignette(painter, rect);
 }
 
-/// Lay the wood over `rect`. The tile repeats, so a window of any size is
-/// one continuous plank.
-fn wood(ctx: &egui::Context, painter: &egui::Painter, rect: Rect) {
-    let texture = wood_texture(ctx);
+/// A fine dust over the ground, so the surface is a material rather than a
+/// flat colour. Deliberately almost invisible: it should read as depth, never
+/// as a pattern.
+fn dust(ctx: &egui::Context, painter: &egui::Painter, rect: Rect) {
+    let texture = dust_texture(ctx);
     let mut mesh = egui::Mesh::with_texture(texture.id());
-    let scale = 1.0 / WOOD_TILE;
+    let scale = 1.0 / DUST_TILE;
     mesh.add_rect_with_uv(
         rect,
         Rect::from_min_size(
             egui::pos2(0.0, 0.0),
             egui::vec2(rect.width() * scale, rect.height() * scale),
         ),
-        Color32::WHITE,
+        Color32::from_white_alpha(12),
     );
     painter.add(egui::Shape::mesh(mesh));
 }
 
-const WOOD_TILE: f32 = 256.0;
+const DUST_TILE: f32 = 96.0;
 
-/// Deterministic value noise: the same plank on every machine, and no
+/// Deterministic value noise: the same grain on every machine, and no
 /// dependency to draw it.
-fn hash_noise(x: i32, y: i32, seed: u32) -> f32 {
-    #[allow(clippy::cast_sign_loss)]
+fn hash_noise(x: usize, y: usize, seed: u32) -> f32 {
+    #[allow(clippy::cast_possible_truncation)]
     let mut h = (x as u32)
         .wrapping_mul(0x27d4_eb2d)
         .wrapping_add((y as u32).wrapping_mul(0x1656_67b1))
@@ -238,57 +246,22 @@ fn hash_noise(x: i32, y: i32, seed: u32) -> f32 {
     }
 }
 
-/// Smoothed noise at a point, wrapping on the tile so the texture repeats
-/// without a seam.
-fn smooth_noise(x: f32, y: f32, period: i32, seed: u32) -> f32 {
-    #[allow(clippy::cast_possible_truncation)]
-    let (xi, yi) = (x.floor() as i32, y.floor() as i32);
-    let (xf, yf) = (x - x.floor(), y - y.floor());
-    // Smoothstep, so the bands curve instead of creasing.
-    let (u, v) = (xf * xf * (3.0 - 2.0 * xf), yf * yf * (3.0 - 2.0 * yf));
-    let at = |dx: i32, dy: i32| {
-        hash_noise(
-            (xi + dx).rem_euclid(period),
-            (yi + dy).rem_euclid(period),
-            seed,
-        )
-    };
-    let top = at(0, 0) * (1.0 - u) + at(1, 0) * u;
-    let bottom = at(0, 1) * (1.0 - u) + at(1, 1) * u;
-    top * (1.0 - v) + bottom * v
-}
-
-/// A plank: long grain along x, knots and darker rings from layered noise.
-/// Kept very low in contrast; it is a ground for text, not a wallpaper.
 #[allow(
     clippy::cast_precision_loss,
     clippy::cast_possible_truncation,
     clippy::cast_sign_loss
 )]
-fn wood_texture(ctx: &egui::Context) -> egui::TextureHandle {
-    let id = egui::Id::new("valhsync-wood");
+fn dust_texture(ctx: &egui::Context) -> egui::TextureHandle {
+    let id = egui::Id::new("valhsync-dust");
     if let Some(handle) = ctx.data(|d| d.get_temp::<egui::TextureHandle>(id)) {
         return handle;
     }
-    let side = WOOD_TILE as usize;
+    let side = DUST_TILE as usize;
     let mut pixels = Vec::with_capacity(side * side);
     for y in 0..side {
         for x in 0..side {
-            let (fx, fy) = (x as f32, y as f32);
-            // Grain runs along x: stretch the noise horizontally.
-            let warp = smooth_noise(fx / 48.0, fy / 12.0, 8, 1) * 2.2
-                + smooth_noise(fx / 16.0, fy / 5.0, 24, 2) * 0.7;
-            let rings = ((fy / 9.0 + warp) * std::f32::consts::TAU).sin() * 0.5 + 0.5;
-            let fibre = smooth_noise(fx / 2.0, fy / 1.2, 128, 3);
-            let knots = smooth_noise(fx / 70.0, fy / 70.0, 4, 4);
-
-            // Two browns, far apart in the source and brought close here.
-            let t = (rings * 0.55 + fibre * 0.25 + knots * 0.20).clamp(0.0, 1.0);
-            let lift = 0.55 + t * 0.45;
-            let r = (0x2A as f32 * lift) as u8;
-            let g = (0x22 as f32 * lift) as u8;
-            let b = (0x18 as f32 * lift) as u8;
-            pixels.push(Color32::from_rgba_unmultiplied(r, g, b, 235));
+            let n = hash_noise(x, y, 7);
+            pixels.push(Color32::from_white_alpha((n * 42.0) as u8));
         }
     }
     let image = egui::ColorImage {
@@ -297,7 +270,7 @@ fn wood_texture(ctx: &egui::Context) -> egui::TextureHandle {
         source_size: egui::vec2(side as f32, side as f32),
     };
     let handle = ctx.load_texture(
-        "valhsync-wood",
+        "valhsync-dust",
         image,
         egui::TextureOptions {
             wrap_mode: TextureWrapMode::Repeat,
@@ -400,42 +373,25 @@ pub fn hairline(ui: &mut egui::Ui) {
 
 // ---- Norse marks ----------------------------------------------------------
 
-/// The three triangles of a valknut, as points. Shared by the painter and the
-/// icon rasteriser so the mark is identical everywhere.
-fn valknut_triangles(centre: [f32; 2], radius: f32) -> Vec<[[f32; 2]; 3]> {
-    let mut out = Vec::with_capacity(3);
-    for k in 0..3 {
-        #[allow(clippy::cast_precision_loss)]
-        let spin = k as f32 * std::f32::consts::TAU / 3.0 - std::f32::consts::FRAC_PI_2;
-        // Offset and size stay close: further apart the triangles stop
-        // touching, closer together they read as a single shape.
-        let hub = [
-            centre[0] + spin.cos() * radius * 0.48,
-            centre[1] + spin.sin() * radius * 0.48,
-        ];
-        let mut points = [[0.0; 2]; 3];
-        for (corner, point) in points.iter_mut().enumerate() {
-            #[allow(clippy::cast_precision_loss)]
-            let angle = -std::f32::consts::FRAC_PI_2 + corner as f32 * std::f32::consts::TAU / 3.0;
-            *point = [
-                hub[0] + angle.cos() * radius * 0.54,
-                hub[1] + angle.sin() * radius * 0.54,
-            ];
-        }
-        out.push(points);
-    }
-    out
+/// Mannaz, the rune of man: two staves bound by a crossing. It is what the
+/// launcher does, hold a group of players to one shape. Four strokes, so it
+/// stays itself at sixteen pixels.
+fn mannaz_strokes(centre: [f32; 2], radius: f32) -> [([f32; 2], [f32; 2]); 4] {
+    let at = |x: f32, y: f32| [centre[0] + x * radius, centre[1] + y * radius];
+    let (left, right) = (-0.60_f32, 0.60_f32);
+    let (top, bottom, waist) = (-0.95_f32, 0.95_f32, 0.18_f32);
+    [
+        (at(left, top), at(left, bottom)),
+        (at(right, top), at(right, bottom)),
+        (at(left, top), at(right, waist)),
+        (at(right, top), at(left, waist)),
+    ]
 }
 
-/// The valknut: three interlocking triangles, the knot of the slain. Drawn
-/// from line segments, so it stays crisp at any size and ships as no asset.
-pub fn valknut(painter: &egui::Painter, centre: egui::Pos2, radius: f32, stroke: Stroke) {
-    for triangle in valknut_triangles([centre.x, centre.y], radius) {
-        for i in 0..3 {
-            let a = triangle[i];
-            let b = triangle[(i + 1) % 3];
-            painter.line_segment([egui::pos2(a[0], a[1]), egui::pos2(b[0], b[1])], stroke);
-        }
+/// Draw Mannaz centred on `centre`.
+pub fn rune(painter: &egui::Painter, centre: egui::Pos2, radius: f32, stroke: Stroke) {
+    for (a, b) in mannaz_strokes([centre.x, centre.y], radius) {
+        painter.line_segment([egui::pos2(a[0], a[1]), egui::pos2(b[0], b[1])], stroke);
     }
 }
 
@@ -468,17 +424,12 @@ pub fn brackets(painter: &egui::Painter, rect: Rect, colour: Color32) {
     }
 }
 
-/// 64x64 window icon: the valknut in brass on burnt wood.
+/// 64x64 window icon: Mannaz in brass on burnt wood.
 #[allow(clippy::cast_precision_loss, clippy::cast_possible_truncation)]
 pub fn icon() -> egui::IconData {
     const S: i32 = 64;
     let centre = (S as f32 - 1.0) / 2.0;
-    let radius = S as f32 * 0.40;
-
-    let segments: Vec<([f32; 2], [f32; 2])> = valknut_triangles([centre, centre], radius)
-        .into_iter()
-        .flat_map(|t| [(t[0], t[1]), (t[1], t[2]), (t[2], t[0])])
-        .collect();
+    let strokes = mannaz_strokes([centre, centre], S as f32 * 0.34);
 
     let distance_to_segment = |p: [f32; 2], a: [f32; 2], b: [f32; 2]| -> f32 {
         let (vx, vy) = (b[0] - a[0], b[1] - a[1]);
@@ -500,21 +451,21 @@ pub fn icon() -> egui::IconData {
             let dx = p[0] - centre;
             let dy = p[1] - centre;
             let r = dx.mul_add(dx, dy * dy).sqrt();
-            let ink = segments
+            let ink = strokes
                 .iter()
                 .map(|(a, b)| distance_to_segment(p, *a, *b))
                 .fold(f32::MAX, f32::min);
 
-            let pixel = if ink < 1.5 {
-                [0xE8, 0xCD, 0x8B, 255] // brass, lit
-            } else if ink < 2.3 {
-                [0xC7, 0xA4, 0x55, 255] // brass
+            let pixel = if ink < 2.0 {
+                [0xE8, 0xCD, 0x8B, 255]
+            } else if ink < 2.8 {
+                [0xC7, 0xA4, 0x55, 255]
             } else if r > S as f32 * 0.49 {
-                [0, 0, 0, 0] // outside the disc
+                [0, 0, 0, 0]
             } else if r > S as f32 * 0.45 {
-                [0x4A, 0x3C, 0x27, 255] // rim
+                [0x4A, 0x3C, 0x27, 255]
             } else {
-                [0x17, 0x14, 0x0F, 255] // burnt wood
+                [0x17, 0x14, 0x0F, 255]
             };
             rgba.extend_from_slice(&pixel);
         }
@@ -526,53 +477,89 @@ pub fn icon() -> egui::IconData {
     }
 }
 
-/// A stylised anvil, drawn from three blocks: the face with its horn, the
-/// waist, and the base. Used for the repair action.
+/// A stylised anvil: a heavy face drawn out into a horn, a short waist and a
+/// wide foot. Proportions are exaggerated so it still reads at 20 pixels.
 pub fn anvil(painter: &egui::Painter, rect: Rect, colour: Color32) {
     let (w, h) = (rect.width(), rect.height());
     let x = |t: f32| rect.min.x + w * t;
     let y = |t: f32| rect.min.y + h * t;
+    let block = |points: Vec<egui::Pos2>| {
+        painter.add(egui::Shape::convex_polygon(points, colour, Stroke::NONE));
+    };
 
-    // Face, with the horn drawn out to the left.
-    painter.add(egui::Shape::convex_polygon(
-        vec![
-            egui::pos2(x(0.16), y(0.30)),
-            egui::pos2(x(0.92), y(0.30)),
-            egui::pos2(x(0.92), y(0.46)),
-            egui::pos2(x(0.16), y(0.46)),
-        ],
-        colour,
-        Stroke::NONE,
-    ));
-    painter.add(egui::Shape::convex_polygon(
-        vec![
-            egui::pos2(x(0.16), y(0.30)),
-            egui::pos2(x(0.16), y(0.46)),
-            egui::pos2(x(0.02), y(0.40)),
-        ],
-        colour,
-        Stroke::NONE,
-    ));
+    // Face: a thick slab, tapering into the horn on the left.
+    block(vec![
+        egui::pos2(x(0.22), y(0.18)),
+        egui::pos2(x(1.00), y(0.18)),
+        egui::pos2(x(1.00), y(0.42)),
+        egui::pos2(x(0.22), y(0.42)),
+    ]);
+    block(vec![
+        egui::pos2(x(0.22), y(0.20)),
+        egui::pos2(x(0.22), y(0.42)),
+        egui::pos2(x(0.00), y(0.34)),
+    ]);
     // Waist.
-    painter.add(egui::Shape::convex_polygon(
-        vec![
-            egui::pos2(x(0.42), y(0.46)),
-            egui::pos2(x(0.70), y(0.46)),
-            egui::pos2(x(0.62), y(0.74)),
-            egui::pos2(x(0.50), y(0.74)),
-        ],
-        colour,
-        Stroke::NONE,
-    ));
-    // Base.
-    painter.add(egui::Shape::convex_polygon(
-        vec![
-            egui::pos2(x(0.30), y(0.86)),
-            egui::pos2(x(0.82), y(0.86)),
-            egui::pos2(x(0.78), y(0.74)),
-            egui::pos2(x(0.34), y(0.74)),
-        ],
-        colour,
-        Stroke::NONE,
-    ));
+    block(vec![
+        egui::pos2(x(0.46), y(0.42)),
+        egui::pos2(x(0.76), y(0.42)),
+        egui::pos2(x(0.68), y(0.68)),
+        egui::pos2(x(0.54), y(0.68)),
+    ]);
+    // Foot.
+    block(vec![
+        egui::pos2(x(0.28), y(1.00)),
+        egui::pos2(x(0.94), y(1.00)),
+        egui::pos2(x(0.86), y(0.68)),
+        egui::pos2(x(0.36), y(0.68)),
+    ]);
+}
+
+/// A waste bin: lid, body and two slots. Drawn, because the glyphs for this
+/// are not in the bundled font.
+pub fn trash(painter: &egui::Painter, rect: Rect, colour: Color32) {
+    let (w, h) = (rect.width(), rect.height());
+    let x = |t: f32| rect.min.x + w * t;
+    let y = |t: f32| rect.min.y + h * t;
+    let stroke = Stroke::new(1.3, colour);
+
+    // Lid, with the little handle above it.
+    painter.line_segment(
+        [egui::pos2(x(0.05), y(0.22)), egui::pos2(x(0.95), y(0.22))],
+        stroke,
+    );
+    painter.line_segment(
+        [egui::pos2(x(0.36), y(0.22)), egui::pos2(x(0.40), y(0.08))],
+        stroke,
+    );
+    painter.line_segment(
+        [egui::pos2(x(0.64), y(0.22)), egui::pos2(x(0.60), y(0.08))],
+        stroke,
+    );
+    painter.line_segment(
+        [egui::pos2(x(0.40), y(0.08)), egui::pos2(x(0.60), y(0.08))],
+        stroke,
+    );
+
+    // Body, tapering slightly towards the bottom.
+    painter.line_segment(
+        [egui::pos2(x(0.16), y(0.30)), egui::pos2(x(0.24), y(0.94))],
+        stroke,
+    );
+    painter.line_segment(
+        [egui::pos2(x(0.84), y(0.30)), egui::pos2(x(0.76), y(0.94))],
+        stroke,
+    );
+    painter.line_segment(
+        [egui::pos2(x(0.24), y(0.94)), egui::pos2(x(0.76), y(0.94))],
+        stroke,
+    );
+
+    // Slots.
+    for t in [0.40_f32, 0.60] {
+        painter.line_segment(
+            [egui::pos2(x(t), y(0.42)), egui::pos2(x(t), y(0.82))],
+            Stroke::new(1.1, colour),
+        );
+    }
 }

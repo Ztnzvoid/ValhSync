@@ -9,15 +9,15 @@ use crate::theme as th;
 /// faint glow. The glow is the document's `text-shadow` on `h1`.
 pub fn header(ui: &mut egui::Ui, title: &str) {
     ui.horizontal(|ui| {
-        // The valknut, struck like a maker's mark to the left of the name.
+        // Algiz, struck like a maker's mark to the left of the name.
         let mark = 30.0;
         let (mark_rect, _) = ui.allocate_exact_size(egui::vec2(mark, mark), egui::Sense::hover());
         th::glow(ui.painter(), mark_rect, th::GOLD.gamma_multiply(0.12));
-        th::valknut(
+        th::rune(
             ui.painter(),
             mark_rect.center(),
             mark * 0.50,
-            egui::Stroke::new(1.4, th::GOLD),
+            egui::Stroke::new(1.8, th::GOLD),
         );
         ui.add_space(10.0);
         let galley =
@@ -107,4 +107,35 @@ pub fn code_block(ui: &mut egui::Ui, text: &str) {
             .font(egui::TextStyle::Monospace)
             .interactive(true),
     );
+}
+
+/// A square button holding a drawn icon rather than a glyph. `paint` receives
+/// the area the icon should fill and the colour it should use.
+pub fn icon_button(
+    ui: &mut egui::Ui,
+    enabled: bool,
+    tooltip: &str,
+    paint: impl FnOnce(&egui::Painter, egui::Rect, Color32),
+) -> egui::Response {
+    let (rect, response) = ui.allocate_exact_size(egui::vec2(40.0, 40.0), egui::Sense::click());
+    let hovered = response.hovered() && enabled;
+    ui.painter().rect(
+        rect,
+        3.0,
+        if hovered { th::EDGE_SOFT } else { th::LEATHER },
+        egui::Stroke::new(1.0, if hovered { th::GOLD } else { th::EDGE_SOFT }),
+        egui::StrokeKind::Inside,
+    );
+    let ink = match (enabled, hovered) {
+        (false, _) => th::BONE_DIM.gamma_multiply(0.45),
+        (true, false) => th::BONE_DIM,
+        (true, true) => th::GOLD_LIT,
+    };
+    paint(ui.painter(), rect.shrink(11.0), ink);
+    let response = response.on_hover_text(tooltip);
+    if enabled {
+        response
+    } else {
+        response.on_disabled_hover_text(tooltip)
+    }
 }

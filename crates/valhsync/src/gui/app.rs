@@ -271,6 +271,12 @@ pub(super) struct App {
     confirm_open: bool,
     settings_open: bool,
     mods_open: bool,
+    /// Height the window should have for what it currently shows.
+    wanted_height: f32,
+    /// Height the notice bar took last frame, zero when it is hidden.
+    notice_height: f32,
+    /// Window title as last set, so it is only pushed when it changes.
+    title: String,
     game_state: GameState,
     game_root_input: String,
     last_check: Instant,
@@ -320,6 +326,9 @@ impl App {
             confirm_open: false,
             settings_open: false,
             mods_open: false,
+            wanted_height: 0.0,
+            notice_height: 0.0,
+            title: String::new(),
             game_state: GameState::Idle,
             last_check: Instant::now(),
             was_focused: true,
@@ -583,6 +592,18 @@ impl App {
         }
     }
 
+    /// The taskbar should say which server is selected, and nothing more.
+    fn update_title(&mut self, ctx: &egui::Context) {
+        let wanted = match self.selected_server() {
+            Some(server) => format!("ValhSync — {}", server.name),
+            None => "ValhSync".to_string(),
+        };
+        if wanted != self.title {
+            ctx.send_viewport_cmd(egui::ViewportCommand::Title(wanted.clone()));
+            self.title = wanted;
+        }
+    }
+
     /// Ask the server again on a timer, and the moment the window regains
     /// focus: a player who alt-tabs back should see the truth, not a stale
     /// screen, and should never have to press a button for it.
@@ -624,18 +645,19 @@ impl eframe::App for App {
         chrome::handle_edge_resize(ctx);
         self.header(ctx);
         self.notice_bar(ctx);
-        egui::CentralPanel::default()
+        let panel = egui::CentralPanel::default()
             .frame(
                 egui::Frame::new()
                     .fill(th::NIGHT)
                     .inner_margin(egui::Margin::same(20)),
             )
             .show(ctx, |ui| {
+                th::backdrop(ui.ctx(), ui.painter(), ui.max_rect().expand(20.0));
                 if let Some(fatal) = self.fatal.clone() {
                     th::callout(ui, th::BLOOD, |ui| {
                         ui.colored_label(th::BLOOD_LIT, fatal);
                     });
-                    return;
+                    return ui.cursor().top();
                 }
                 self.action_bar(ui);
                 ui.add_space(12.0);
@@ -648,11 +670,21 @@ impl eframe::App for App {
                         self.mods_card(ui);
                     }
                 }
-            });
+                // The cursor sits just under the last thing drawn.
+                ui.cursor().top()
+            })
+            .inner;
+        // The window is as tall as what it draws: the content, the notice bar
+        // and one margin.
+        self.wanted_height = panel + 20.0 + self.notice_height;
 
-        // The window is as tall as what it shows: a server with three mods
-        // must not leave half the plank empty.
-        chrome::fit_to_content(ctx, egui::vec2(720.0, 380.0), egui::vec2(940.0, 900.0));
+        self.update_title(ctx);
+        chrome::fit_to_content(
+            ctx,
+            self.wanted_height,
+            egui::vec2(720.0, 360.0),
+            egui::vec2(940.0, 900.0),
+        );
         chrome::draw_border(ctx);
         self.mods_dialog(ctx);
         self.add_dialog(ctx);
@@ -704,9 +736,10 @@ impl App {
 
     fn notice_bar(&mut self, ctx: &egui::Context) {
         let Some((message, color, _)) = self.notice.clone() else {
+            self.notice_height = 0.0;
             return;
         };
-        egui::TopBottomPanel::bottom("notice")
+        let bar = egui::TopBottomPanel::bottom("notice")
             .frame(
                 egui::Frame::new()
                     .fill(th::PANEL)
@@ -724,6 +757,7 @@ impl App {
                     });
                 });
             });
+        self.notice_height = bar.response.rect.height();
     }
 
     /// Pick a server, add one, drop one, and the action the whole window is
@@ -760,13 +794,16 @@ impl App {
             {
                 self.add_dialog = Some(AddDialog::default());
             }
-            if !servers.is_empty()
-                && ui
-                    .add_enabled(!self.busy(), egui::Button::new("✕"))
-                    .on_hover_text(self.t(Key::ForgetServer))
-                    .clicked()
-            {
-                forget = true;
+            if !servers.is_empty() {
+                let bin = valhsync_ui::widgets::icon_button(
+                    ui,
+                    !self.busy(),
+                    self.t(Key::ForgetServer),
+                    th::trash,
+                );
+                if bin.clicked() {
+                    forget = true;
+                }
             }
 
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
@@ -837,26 +874,8 @@ impl App {
         let enabled = matches!(self.status, Status::Ready)
             && !self.busy()
             && self.game_state == GameState::Idle;
-        let (rect, response) = ui.allocate_exact_size(egui::vec2(44.0, 44.0), egui::Sense::click());
-        let hovered = response.hovered() && enabled;
-        ui.painter().rect(
-            rect,
-            4.0,
-            if hovered { th::EDGE_SOFT } else { th::LEATHER },
-            egui::Stroke::new(1.0, if hovered { th::GOLD } else { th::EDGE_SOFT }),
-            egui::StrokeKind::Inside,
-        );
-        let ink = match (enabled, hovered) {
-            (false, _) => th::BONE_DIM.gamma_multiply(0.5),
-            (true, false) => th::BONE_DIM,
-            (true, true) => th::GOLD_LIT,
-        };
-        th::anvil(ui.painter(), rect.shrink(11.0), ink);
-        let response = response.on_hover_text(format!(
-            "{} — {}",
-            self.t(Key::Repair),
-            self.t(Key::RepairHint)
-        ));
+        let tooltip = format!("{} — {}", self.t(Key::Repair), self.t(Key::RepairHint));
+        let response = valhsync_ui::widgets::icon_button(ui, enabled, &tooltip, th::anvil);
         if enabled && response.clicked() {
             self.start_repair();
         }

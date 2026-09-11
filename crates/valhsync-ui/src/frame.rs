@@ -31,14 +31,13 @@ pub fn viewport(title: &str, size: [f32; 2], min_size: [f32; 2]) -> egui::Viewpo
 /// Call at the end of a frame. A few pixels of slack stop the window from
 /// oscillating when a row appears and disappears; a maximised window is left
 /// alone.
-pub fn fit_to_content(ctx: &egui::Context, min: egui::Vec2, max: egui::Vec2) {
+pub fn fit_to_content(ctx: &egui::Context, wanted_height: f32, min: egui::Vec2, max: egui::Vec2) {
     if ctx.input(|i| i.viewport().maximized.unwrap_or(false)) {
         return;
     }
-    let used = ctx.used_rect().size();
     let want = egui::vec2(
-        used.x.clamp(min.x, max.x),
-        (used.y + 2.0).clamp(min.y, max.y),
+        ctx.screen_rect().width().clamp(min.x, max.x),
+        wanted_height.clamp(min.y, max.y),
     );
     let have = ctx.screen_rect().size();
     if (want.y - have.y).abs() > 8.0 || (want.x - have.x).abs() > 8.0 {
