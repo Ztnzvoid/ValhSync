@@ -457,7 +457,15 @@ fn cmd_game_root(mut ctx: Context, path: Option<PathBuf>, clear: bool) -> Result
 
 fn cmd_doctor(ctx: &Context) -> Result<()> {
     println!("valhsync {}", env!("CARGO_PKG_VERSION"));
-    println!("Config dir:   {}", ctx.paths.config_dir.display());
+    println!(
+        "Config dir:   {}{}",
+        ctx.paths.config_dir.display(),
+        if crate::paths::AppPaths::is_portable() {
+            "  (portable)"
+        } else {
+            ""
+        }
+    );
     println!("Backups dir:  {}", ctx.paths.backups_dir.display());
     let roots = game::steam_roots();
     println!(

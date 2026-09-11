@@ -5,6 +5,12 @@
 //! - backups dir (`%LOCALAPPDATA%\valhsync\backups`, `~/.local/share/valhsync/backups`)
 //!
 //! Nothing else on the machine is written to, apart from the game folder.
+//!
+//! The profile is the right home: a player replaces the executable with a
+//! newer one and keeps their servers. Two ways to put it elsewhere — a
+//! `valhsync-data` folder beside the executable, or `VALHSYNC_HOME` — which is
+//! what a player on a shared machine or a stick wants, and what anyone
+//! testing the launcher as a newcomer needs.
 
 use std::path::{Path, PathBuf};
 
@@ -20,8 +26,12 @@ pub struct AppPaths {
 }
 
 impl AppPaths {
-    /// Platform defaults.
+    /// `VALHSYNC_HOME`, else a `valhsync-data` folder beside the executable,
+    /// else the platform defaults.
     pub fn discover() -> Result<Self> {
+        if let Some(home) = portable_home() {
+            return Self::at(&home);
+        }
         let base = directories::BaseDirs::new()
             .ok_or_else(|| SyncError::Other("cannot determine the user's home directory".into()))?;
         let paths = Self {
@@ -40,6 +50,12 @@ impl AppPaths {
         };
         paths.ensure()?;
         Ok(paths)
+    }
+
+    /// True when this run keeps its files somewhere other than the profile.
+    #[must_use]
+    pub fn is_portable() -> bool {
+        portable_home().is_some()
     }
 
     fn ensure(&self) -> Result<()> {
@@ -123,4 +139,39 @@ pub fn copy_atomic(src: &Path, dst: &Path) -> Result<()> {
     SyncError::at(&tmp, "cannot copy to", std::fs::copy(src, &tmp).map(|_| ()))?;
     SyncError::at(dst, "cannot replace", std::fs::rename(&tmp, dst))?;
     Ok(())
+}
+
+/// The folder this run should keep its files in, when it is not the profile.
+///
+/// `VALHSYNC_HOME` first, so a test or a script can say so without moving
+/// anything. Then a `valhsync-data` folder next to the executable: it is only
+/// honoured when someone created it, never made on its own, so an ordinary
+/// player is never quietly switched to a portable install.
+fn portable_home() -> Option<PathBuf> {
+    if let Some(home) = std::env::var_os("VALHSYNC_HOME") {
+        let home = PathBuf::from(home);
+        if !home.as_os_str().is_empty() {
+            return Some(home);
+        }
+    }
+    let beside = std::env::current_exe().ok()?.parent()?.join(PORTABLE_DIR);
+    beside.is_dir().then_some(beside)
+}
+
+/// Create this next to `valhsync.exe` to keep everything with it.
+pub const PORTABLE_DIR: &str = "valhsync-data";
+
+#[cfg(test)]
+mod portable_tests {
+    use super::*;
+
+    #[test]
+    fn a_home_of_ones_own_holds_everything_together() {
+        let tmp = tempfile::tempdir().unwrap();
+        let paths = AppPaths::at(tmp.path()).unwrap();
+        assert!(paths.config_dir.starts_with(tmp.path()));
+        assert!(paths.backups_dir.starts_with(tmp.path()));
+        assert!(paths.config_dir.is_dir() && paths.backups_dir.is_dir());
+        assert!(paths.servers_file().starts_with(&paths.config_dir));
+    }
 }

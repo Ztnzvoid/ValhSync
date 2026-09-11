@@ -89,6 +89,25 @@ without touching the game.
 
 ---
 
+## Keeping everything next to the launcher
+
+`valhsync.exe` stores what it knows — your servers, your settings, which pack
+is installed — in your user profile, not beside itself:
+
+| | |
+| --- | --- |
+| Windows | `%APPDATA%\valhsync` |
+| Linux | `~/.config/valhsync` |
+
+That is why replacing the launcher with a newer one keeps your servers, and
+why a second copy of it on the same machine already knows them.
+
+To keep everything with the launcher instead — a shared computer, a USB
+stick, or trying it out as a newcomer would see it — **create a folder named
+`valhsync-data` next to `valhsync.exe`**. It is used only if you made it, so
+nothing changes for anyone who does not. `valhsync doctor` says which of the
+two is in use.
+
 ## En français
 
 ### Installation
