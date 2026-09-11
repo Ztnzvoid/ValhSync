@@ -101,6 +101,9 @@ pub(super) struct App {
     mods: Vec<ModEntry>,
     scripts: Vec<detect::StartScript>,
     script_index: usize,
+    /// True once the admin picked a start script themselves. Until then the
+    /// detected one is only a suggestion, and must not mark the file dirty.
+    script_chosen: bool,
     mode: PublishMode,
 
     summary: Option<PackSummary>,
@@ -152,6 +155,7 @@ impl App {
             mods: Vec::new(),
             scripts: Vec::new(),
             script_index: 0,
+            script_chosen: false,
             mode: PublishMode::Export,
             summary: None,
             invite: String::new(),
@@ -231,18 +235,31 @@ impl App {
     }
 
     fn dirty(&self) -> bool {
-        self.never_saved || self.cfg != self.saved
+        self.never_saved || self.edited() != self.saved
     }
 
-    /// Copy the text fields back into the configuration.
-    fn pull_fields(&mut self) {
-        self.cfg.server.name.clone_from(&self.name);
-        self.cfg.server.game_address = self.game_address.trim().to_string();
-        self.cfg.server.bind.clone_from(&self.bind);
+    /// The configuration as the fields currently read it. Drawing the window
+    /// never writes to the stored configuration: everything goes through here,
+    /// so the window cannot report changes it made to itself.
+    fn edited(&self) -> Config {
+        let mut cfg = self.cfg.clone();
+        cfg.server.name.clone_from(&self.name);
+        cfg.server.game_address = self.game_address.trim().to_string();
+        cfg.server.bind.clone_from(&self.bind);
         let url = self.public_url.trim();
-        self.cfg.server.public_url = (!url.is_empty()).then(|| url.to_string());
+        cfg.server.public_url = (!url.is_empty()).then(|| url.to_string());
         let root = self.server_root.trim();
-        self.cfg.pack.server_root = (!root.is_empty()).then(|| PathBuf::from(root));
+        cfg.pack.server_root = (!root.is_empty()).then(|| PathBuf::from(root));
+        if self.script_chosen || cfg.game_server.start_script.is_some() {
+            cfg.game_server.start_script =
+                self.scripts.get(self.script_index).map(|s| s.path.clone());
+        }
+        cfg
+    }
+
+    /// Take what the fields say into the configuration.
+    fn pull_fields(&mut self) {
+        self.cfg = self.edited();
     }
 
     /// Re-read what is on disk: mods, start scripts.
@@ -687,12 +704,16 @@ impl App {
                                     s.path.file_name().unwrap_or_default().to_string_lossy(),
                                     if s.is_stock { "  (Steam)" } else { "" }
                                 );
-                                ui.selectable_value(&mut self.script_index, i, label);
+                                if ui
+                                    .selectable_value(&mut self.script_index, i, label)
+                                    .clicked()
+                                {
+                                    self.script_chosen = true;
+                                }
                             }
                         });
                 });
                 if let Some(s) = self.scripts.get(self.script_index) {
-                    self.cfg.game_server.start_script = Some(s.path.clone());
                     let a = &s.args;
                     let mut bits = Vec::new();
                     if let Some(n) = &a.name {
