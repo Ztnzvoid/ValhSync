@@ -146,6 +146,31 @@ your own PC or a VPS with a local copy of the pack in `client_extras`, leave
 `server_root` out, and set `game_address` to the hosted server. Keep that copy
 in sync with what you upload to the host.
 
+## 7b. No port to open: static hosting or a tunnel
+
+The launcher only ever downloads files. Two ways to publish without touching
+the router:
+
+**Static hosting.** `valsync-server export <folder>` writes the pack as plain
+files in the exact layout the launcher expects (`manifest.json`,
+`manifest.sig`, `files/<blake3>`). Upload that folder anywhere that serves
+files over HTTP(S): GitHub Pages, S3/R2, the web space of your ISP, a
+Nextcloud public folder. Set `public_url` to the URL of that folder and hand
+out the invite. Integrity does not depend on the host: the manifest is signed
+and every file is verified by digest, so even a compromised web space cannot
+make players install something you did not sign. Re-run `export` (and upload)
+after each mod change; `serve` is not needed at all in this mode. Mind mod
+licenses before hosting DLLs on a public site.
+
+**Outbound tunnel.** Keep `serve` running locally and expose it through
+Cloudflare Tunnel, ngrok or similar: the tunnel opens an outbound connection,
+so no inbound port is needed. Set `public_url` to the tunnel's `https://` URL.
+
+**Reuse the game's rule.** If your router forwards 2456 as "TCP+UDP" (many do
+by default), bind ValSync on TCP 2456: `bind = "0.0.0.0:2456"`. Valheim only
+uses UDP on that port, so the two do not collide. Check the rule before
+relying on it.
+
 ## 8. Network and reverse proxies
 
 `valsync-server` speaks plain HTTP. Integrity does not depend on the transport

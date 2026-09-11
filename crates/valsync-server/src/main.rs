@@ -54,6 +54,12 @@ enum Cmd {
     Scan,
     /// Build the manifest, serve it, and rebuild whenever the pack changes.
     Serve,
+    /// Write the pack as static files (manifest.json, manifest.sig, files/<hash>)
+    /// to upload on any web space. No port to open.
+    Export {
+        /// Output folder, e.g. a GitHub Pages checkout or a folder you rsync.
+        dir: PathBuf,
+    },
     /// Print the invite code again.
     Invite,
     /// Generate a new signing key. Every player must import the new invite code.
@@ -110,6 +116,24 @@ fn main() -> Result<()> {
             let cfg = Config::load(&cli.config)?;
             let kp = keys::load(&data_dir)?;
             tokio::runtime::Runtime::new()?.block_on(serve::run(cfg, kp, data_dir))
+        }
+        Cmd::Export { dir } => {
+            let cfg = Config::load(&cli.config)?;
+            let kp = keys::load(&data_dir)?;
+            let outcome = pack::build(&cfg, &kp, &data_dir)?;
+            let report = pack::export_static(&outcome.published, &data_dir, &dir)?;
+            println!(
+                "Exported {} files to {} ({} copied, {} stale removed).",
+                report.files,
+                dir.display(),
+                report.copied,
+                report.removed
+            );
+            println!(
+                "Upload that folder as-is. Set [server] public_url to the URL where \
+                 manifest.json ends up (without the file name), then `valsync-server invite`."
+            );
+            Ok(())
         }
         Cmd::Invite => {
             let cfg = Config::load(&cli.config)?;

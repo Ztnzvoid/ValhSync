@@ -131,6 +131,63 @@ pub fn build(cfg: &Config, keypair: &Keypair, data_dir: &Path) -> Result<BuildOu
     })
 }
 
+/// What [`export_static`] did.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub struct ExportReport {
+    pub copied: usize,
+    pub removed: usize,
+    pub files: usize,
+}
+
+/// Write the pack as plain static files, in the exact layout the launcher
+/// fetches (`manifest.json`, `manifest.sig`, `files/<blake3>`), so it can be
+/// uploaded to any web space (GitHub Pages, S3, a Nextcloud public folder...).
+/// No port to open: the signature makes the host irrelevant to integrity.
+/// Idempotent: blobs already present are kept, stale ones are removed.
+pub fn export_static(
+    published: &Published,
+    data_dir: &Path,
+    out_dir: &Path,
+) -> Result<ExportReport> {
+    let store = Store::open(data_dir)?;
+    let files_dir = out_dir.join("files");
+    std::fs::create_dir_all(&files_dir)
+        .with_context(|| format!("cannot create {}", files_dir.display()))?;
+
+    let mut report = ExportReport {
+        files: published.hashes.len(),
+        ..ExportReport::default()
+    };
+    for hash in &published.hashes {
+        let dest = files_dir.join(hash);
+        if dest.is_file() {
+            continue;
+        }
+        let src = store
+            .path_for(hash)
+            .filter(|p| p.is_file())
+            .with_context(|| format!("blob {hash} missing from the store; run `scan`"))?;
+        let tmp = files_dir.join(format!("{hash}.tmp"));
+        std::fs::copy(&src, &tmp).with_context(|| format!("cannot copy {hash}"))?;
+        std::fs::rename(&tmp, &dest).with_context(|| format!("cannot finalize {hash}"))?;
+        report.copied += 1;
+    }
+    for entry in std::fs::read_dir(&files_dir)?.flatten() {
+        let name = entry.file_name();
+        let Some(name) = name.to_str() else { continue };
+        if !published.hashes.contains(name) && std::fs::remove_file(entry.path()).is_ok() {
+            report.removed += 1;
+        }
+    }
+    // Manifest last: a launcher that reads it finds every blob already there.
+    write_atomic(
+        &out_dir.join("manifest.sig"),
+        format!("{}\n", published.signature).as_bytes(),
+    )?;
+    write_atomic(&out_dir.join("manifest.json"), &published.manifest_bytes)?;
+    Ok(report)
+}
+
 /// Paths added, changed and removed between two manifests.
 pub fn diff(prev: &Manifest, next: &Manifest) -> (Vec<String>, Vec<String>, Vec<String>) {
     let before = prev.by_lower_path();
@@ -209,6 +266,34 @@ mod tests {
         let p = valsync_core::path::to_os_path(root, rel);
         std::fs::create_dir_all(p.parent().unwrap()).unwrap();
         std::fs::write(p, content).unwrap();
+    }
+
+    #[test]
+    fn export_mirrors_the_http_layout() {
+        let server = tempfile::tempdir().unwrap();
+        let data = tempfile::tempdir().unwrap();
+        let out = tempfile::tempdir().unwrap();
+        write(server.path(), "winhttp.dll", b"doorstop");
+        write(server.path(), "BepInEx/plugins/A/A.dll", b"a1");
+        let mut cfg = Config::default();
+        cfg.pack.server_root = Some(server.path().to_path_buf());
+        let kp = Keypair::generate();
+
+        let first = build(&cfg, &kp, data.path()).unwrap();
+        let r = export_static(&first.published, data.path(), out.path()).unwrap();
+        assert_eq!((r.copied, r.removed, r.files), (2, 0, 2));
+        let bytes = std::fs::read(out.path().join("manifest.json")).unwrap();
+        let sig = std::fs::read_to_string(out.path().join("manifest.sig")).unwrap();
+        kp.public().verify_text(&bytes, sig.trim()).unwrap();
+        for f in &first.published.manifest.files {
+            assert!(out.path().join("files").join(&f.blake3).is_file());
+        }
+
+        // A changed file: one new blob copied, the stale one removed.
+        write(server.path(), "BepInEx/plugins/A/A.dll", b"a2");
+        let second = build(&cfg, &kp, data.path()).unwrap();
+        let r = export_static(&second.published, data.path(), out.path()).unwrap();
+        assert_eq!((r.copied, r.removed, r.files), (1, 1, 2));
     }
 
     #[test]
