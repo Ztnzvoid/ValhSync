@@ -13,7 +13,7 @@ use clap::{Parser, Subcommand};
 use tracing_subscriber::EnvFilter;
 use valhsync_core::{Invite, Keypair};
 use valhsync_server::config::{Config, TemplateOptions};
-use valhsync_server::{config, detect, gui, keys, net, pack, serve};
+use valhsync_server::{config, detect, gameserver, gui, keys, net, pack, serve};
 
 #[derive(Parser, Debug)]
 #[command(
@@ -72,6 +72,10 @@ enum Cmd {
     },
     /// Print the invite code again.
     Invite,
+    /// Start the dedicated server, in its own console window.
+    StartGame,
+    /// Stop it the way its console does: Ctrl+C, which saves the world first.
+    StopGame,
     /// Generate a new signing key. Every player must import the new invite code.
     RotateKey {
         /// Confirm; without it the command only explains the consequences.
@@ -149,6 +153,12 @@ fn main() -> Result<()> {
             if watch {
                 watch_and_export(&cfg, &kp, &data_dir, &dir)?;
             }
+            Ok(())
+        }
+        Cmd::StartGame => cmd_start_game(&config_path),
+        Cmd::StopGame => {
+            gameserver::stop()?;
+            println!("Ctrl+C sent. Valheim saves the world, then exits.");
             Ok(())
         }
         Cmd::Invite => {
@@ -349,6 +359,33 @@ fn watch_and_export(cfg: &Config, kp: &Keypair, data_dir: &Path, dir: &Path) -> 
             Err(e) => eprintln!("export failed, previous export kept: {e:#}"),
         }
     }
+}
+
+/// Start the dedicated server from the script the configuration names.
+fn cmd_start_game(config_path: &Path) -> Result<()> {
+    let cfg = Config::load(config_path)?;
+    let launch = start_script(&cfg)?;
+    gameserver::start(&launch)?;
+    println!("Started {}", launch.describe());
+    println!("It runs in its own console window; ValhSync does not hold on to it.");
+    Ok(())
+}
+
+/// The script the configuration names, or the one detected beside the server.
+fn start_script(cfg: &Config) -> Result<gameserver::Launch> {
+    if let Some(path) = &cfg.game_server.start_script {
+        return Ok(gameserver::Launch(path.clone()));
+    }
+    let root = cfg
+        .pack
+        .server_root
+        .as_deref()
+        .context("[pack] server_root is not set, so there is no script to start")?;
+    detect::find_start_scripts(root)
+        .into_iter()
+        .next()
+        .map(|s| gameserver::Launch(s.path))
+        .with_context(|| format!("no start script found in {}", root.display()))
 }
 
 fn print_invite(cfg: &Config, kp: &Keypair) -> Result<()> {
