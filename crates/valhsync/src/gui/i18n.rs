@@ -158,7 +158,9 @@ fn fr(key: Key) -> &'static str {
         Key::Apply => "Appliquer",
         Key::Cancel => "Annuler",
         Key::Close => "Fermer",
-        Key::InvitePrompt => "Code d'invitation, ou adresse du serveur",
+        Key::InvitePrompt => {
+            "Code d'invitation, ou adresse ValhSync du serveur (port 2470, pas celui du jeu)"
+        }
         Key::InviteHint => "valhsync1:…  ou  monserveur.exemple.org:2470",
         Key::Checking2 => "Interrogation du serveur…",
         Key::ConfirmKeyTitle => "Vérifiez l'empreinte",
@@ -246,7 +248,9 @@ fn en(key: Key) -> &'static str {
         Key::Apply => "Apply",
         Key::Cancel => "Cancel",
         Key::Close => "Close",
-        Key::InvitePrompt => "Invite code, or server address",
+        Key::InvitePrompt => {
+            "Invite code, or the server's ValhSync address (port 2470, not the game's)"
+        }
         Key::InviteHint => "valhsync1:…  or  myserver.example.org:2470",
         Key::Checking2 => "Asking the server…",
         Key::ConfirmKeyTitle => "Check the fingerprint",

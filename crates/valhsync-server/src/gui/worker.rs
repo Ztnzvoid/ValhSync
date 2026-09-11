@@ -31,6 +31,8 @@ pub(super) enum Msg {
     /// The live server stopped (on request, or because it failed).
     ServeStopped(Option<String>),
     PublicIp(String),
+    /// The published link was fetched as a player would fetch it.
+    LinkChecked(String),
     Error(String),
     /// A job finished; the window can re-enable its buttons.
     Idle,
@@ -131,6 +133,58 @@ pub(super) fn serve_blocking(
     })();
     rep.send(Msg::ServeStopped(result.err().map(|e| format!("{e:#}"))));
     rep.send(Msg::Idle);
+}
+
+/// Fetch the published pack exactly as a launcher would: the key, then the
+/// manifest and its signature, checked against the key we hold. It is the only
+/// answer worth giving to "will the invite code work?" -- everything else is a
+/// guess about someone else's network.
+pub(super) fn check_link(cfg: &Config, data_dir: &Path) -> Result<Msg> {
+    let kp = load_key(data_dir)?;
+    let base = cfg.public_url();
+    let client = reqwest::blocking::Client::builder()
+        .timeout(std::time::Duration::from_secs(10))
+        .user_agent(concat!("valhsync-server/", env!("CARGO_PKG_VERSION")))
+        .build()?;
+    let get = |suffix: &str| -> Result<Vec<u8>> {
+        let url = format!("{base}{suffix}");
+        let body = client
+            .get(&url)
+            .send()
+            .with_context(|| format!("cannot reach {url}"))?
+            .error_for_status()
+            .with_context(|| format!("{url} answered with an error"))?
+            .bytes()
+            .with_context(|| format!("cannot read {url}"))?;
+        Ok(body.to_vec())
+    };
+
+    let published_key = String::from_utf8(get("/key")?)
+        .context("/key did not answer with a key")?
+        .trim()
+        .to_string();
+    let ours = kp.public();
+    if published_key != ours.to_b64() {
+        anyhow::bail!("{base} is publishing a different server's key");
+    }
+    let manifest = get("/manifest.json")?;
+    let signature = String::from_utf8(get("/manifest.sig")?)
+        .context("/manifest.sig did not answer with a signature")?;
+    // The same checks a launcher runs: the signature, then the paths and the
+    // limits, so a pack that no player could apply is reported here first.
+    let manifest = valhsync_core::Manifest::parse_verified(
+        &manifest,
+        signature.trim(),
+        &ours,
+        &valhsync_core::AllowedRoots::bepinex(),
+        &valhsync_core::Limits::default(),
+    )
+    .context("the published manifest is not what this server signed")?;
+    Ok(Msg::LinkChecked(format!(
+        "{base} -> {} files, pack {}",
+        manifest.files.len(),
+        manifest.pack_id
+    )))
 }
 
 /// Ask a public echo service what address the internet sees us as.

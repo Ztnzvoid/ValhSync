@@ -135,6 +135,27 @@ pub fn address_to_url(input: &str) -> Option<String> {
     Some(format!("{scheme}://{body}"))
 }
 
+/// The same host on ValhSync's own port.
+///
+/// Players are given the address of the *game* server, which is the one they
+/// are told about, and they type it here. Nothing but ValhSync ever answers on
+/// [`DEFAULT_PORT`], so trying it once is unambiguous. Returns `None` when
+/// there is nothing to try: the port is already the default, or the URL names
+/// a path, which means a static export rather than a live server.
+#[must_use]
+pub fn on_default_port(url: &str) -> Option<String> {
+    let (scheme, rest) = url.split_once("://")?;
+    if rest.contains('/') {
+        return None;
+    }
+    let host = rest.split_once(':').map_or(rest, |(h, _)| h);
+    if host.is_empty() {
+        return None;
+    }
+    let candidate = format!("{scheme}://{host}:{DEFAULT_PORT}");
+    (candidate != url).then_some(candidate)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -154,6 +175,22 @@ mod tests {
         assert_eq!(back, inv);
         assert_eq!(back.url, "http://valheim.example.org:2470");
         assert_eq!(back.public_key().unwrap(), kp.public());
+    }
+
+    #[test]
+    fn the_game_port_is_retried_on_ours() {
+        assert_eq!(
+            on_default_port("http://203.0.113.10:2456").as_deref(),
+            Some("http://203.0.113.10:2470")
+        );
+        assert_eq!(
+            on_default_port("http://valheim.example.org").as_deref(),
+            Some("http://valheim.example.org:2470")
+        );
+        // Nothing to try: already ours, or a static export under a path.
+        assert_eq!(on_default_port("http://203.0.113.10:2470"), None);
+        assert_eq!(on_default_port("https://you.github.io/pack"), None);
+        assert_eq!(on_default_port("not a url"), None);
     }
 
     #[test]

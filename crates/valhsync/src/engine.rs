@@ -164,17 +164,29 @@ pub struct Discovered {
 pub fn discover(ctx: &Context, address: &str) -> Result<Discovered> {
     let url = valhsync_core::invite::address_to_url(address)
         .ok_or_else(|| SyncError::Other(format!("{address:?} is not a server address")))?;
-    let key = ctx.client.fetch_key(&url)?;
-    let (manifest, _) = ctx.client.fetch_manifest(
-        &url,
-        &key,
-        &ctx.settings.allowed_roots(),
-        &Limits::default(),
-    )?;
+    match ask(ctx, &url) {
+        Err(first) if is_unreachable(&first) => {
+            // The address a player is given is the game server's. ValhSync
+            // answers on its own port, so try that once before giving up, and
+            // report the address they actually typed if that fails too.
+            match valhsync_core::invite::on_default_port(&url) {
+                Some(alt) => ask(ctx, &alt).map_err(|_| first),
+                None => Err(first),
+            }
+        }
+        result => result,
+    }
+}
+
+fn ask(ctx: &Context, url: &str) -> Result<Discovered> {
+    let key = ctx.client.fetch_key(url)?;
+    let (manifest, _) =
+        ctx.client
+            .fetch_manifest(url, &key, &ctx.settings.allowed_roots(), &Limits::default())?;
     Ok(Discovered {
         fingerprint: key.fingerprint(),
         files: manifest.files.len(),
-        invite: Invite::new(url, &key, manifest.server_name.trim()),
+        invite: Invite::new(url.to_owned(), &key, manifest.server_name.trim()),
     })
 }
 

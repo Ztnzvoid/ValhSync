@@ -149,6 +149,11 @@ pub(super) struct App {
     /// Second click confirms replacing a script that already exists.
     recipe_replace: bool,
 
+    /// Result of the last "test the link", which is the only honest answer to
+    /// "will my players be able to fetch this?".
+    link_ok: Option<bool>,
+    checking_link: bool,
+
     /// Window title as last set, so it is only pushed when it changes.
     title: String,
     busy: bool,
@@ -214,6 +219,8 @@ impl App {
             recipe: wizard::Recipe::default(),
             recipe_file: String::from("start_valheim_server.bat"),
             recipe_replace: false,
+            link_ok: None,
+            checking_link: false,
             title: String::new(),
             busy: false,
             rx: None,
@@ -596,12 +603,23 @@ impl App {
                     );
                     self.notify(msg, th::MOSS);
                 }
-                Msg::Error(e) => self.notify(e, th::BLOOD_LIT),
+                Msg::LinkChecked(detail) => {
+                    self.link_ok = Some(true);
+                    let msg = format!("{} {detail}", self.t("Lien joignable :", "Link reachable:"));
+                    self.notify(msg, th::MOSS);
+                }
+                Msg::Error(e) => {
+                    if self.checking_link {
+                        self.link_ok = Some(false);
+                    }
+                    self.notify(e, th::BLOOD_LIT);
+                }
                 Msg::Idle => {
                     // A live server reports Idle only once it has stopped.
                     if self.serving_at.is_none() {
                         self.busy = false;
                     }
+                    self.checking_link = false;
                     self.rx = None;
                 }
             }
@@ -1478,6 +1496,8 @@ impl App {
                 );
                 return;
             }
+            self.reachability(ui);
+            ui.add_space(6.0);
             th::callout(ui, th::GOLD, |ui| {
                 w::code_block(ui, &self.invite);
                 if let Ok(key) = crate::keys::load(&self.data_dir) {
@@ -1497,6 +1517,26 @@ impl App {
                     ui.ctx().copy_text(self.invite.clone());
                     let msg = self.t("Code copié.", "Code copied.").to_string();
                     self.notify(msg, th::MOSS);
+                }
+                if ui
+                    .add_enabled(
+                        !self.busy,
+                        egui::Button::new(self.t("Tester le lien", "Test the link")),
+                    )
+                    .on_hover_text(self.t(
+                        "Récupère le pack comme le ferait un joueur, et vérifie la signature.",
+                        "Fetches the pack the way a player would, and checks the signature.",
+                    ))
+                    .clicked()
+                {
+                    self.pull_fields();
+                    self.link_ok = None;
+                    self.checking_link = true;
+                    let cfg = self.cfg.clone();
+                    let data = self.data_dir.clone();
+                    self.start_job(move |rep| {
+                        rep.run(|| worker::check_link(&cfg, &data));
+                    });
                 }
                 if ui
                     .button(self.t(
@@ -1775,6 +1815,82 @@ impl App {
                 );
             }
         });
+    }
+
+    /// Whether a player could fetch this pack right now, and what to do when
+    /// they could not. Nothing here is guessed at: it reads the publishing
+    /// mode, whether the live server is up, and the last real test.
+    fn reachability(&mut self, ui: &mut egui::Ui) {
+        let published = self.summary.is_some()
+            || self
+                .data_dir
+                .join("published")
+                .join("manifest.json")
+                .is_file();
+        let (colour, state, what_to_do) = if !published {
+            (
+                th::GOLD,
+                self.t("Pack jamais construit", "Pack never built"),
+                self.t(
+                    "Enregistrez, puis publiez : sans manifeste, le code ne mène à rien.",
+                    "Save, then publish: with no manifest the code leads nowhere.",
+                ),
+            )
+        } else if self.mode == PublishMode::Live && self.serving_at.is_none() {
+            (
+                th::GOLD,
+                self.t("Publication arrêtée", "Publishing stopped"),
+                self.t(
+                    "Démarrez le serveur local dans Publication ci-dessus, sinon personne ne peut télécharger le pack.",
+                    "Start the live server under Publishing above, or nobody can download the pack.",
+                ),
+            )
+        } else if self.mode == PublishMode::Export && self.public_url.trim().is_empty() {
+            (
+                th::GOLD,
+                self.t("URL publique manquante", "Public URL missing"),
+                self.t(
+                    "Le code pointe sur cette machine. Exportez le dossier, déposez-le sur votre espace web, puis mettez son URL dans « URL publique ».",
+                    "The code points at this machine. Export the folder, upload it to your web space, then put its URL in \"Public URL\".",
+                ),
+            )
+        } else {
+            match self.link_ok {
+                Some(true) => (
+                    th::MOSS,
+                    self.t("Lien vérifié", "Link verified"),
+                    self.t(
+                        "Un joueur a récupéré ce pack depuis cette adresse, signature comprise.",
+                        "The pack was fetched from this address, signature and all.",
+                    ),
+                ),
+                Some(false) => (
+                    th::BLOOD_LIT,
+                    self.t("Lien injoignable", "Link unreachable"),
+                    self.t(
+                        "L'adresse publiée n'a pas répondu. Voyez le message ci-dessous.",
+                        "The published address did not answer. See the message below.",
+                    ),
+                ),
+                None => (
+                    th::GOLD.gamma_multiply(0.55),
+                    self.t("Non testé", "Not tested"),
+                    self.t(
+                        "« Tester le lien » récupère le pack comme le ferait un joueur.",
+                        "\"Test the link\" fetches the pack the way a player would.",
+                    ),
+                ),
+            }
+        };
+        ui.horizontal(|ui| {
+            w::lamp(ui, colour, 20.0);
+            ui.label(
+                RichText::new(state)
+                    .text_style(th::label_style())
+                    .color(th::BONE),
+            );
+        });
+        w::hint(ui, what_to_do);
     }
 
     /// Write it, then re-detect so the new script is the one the panel uses.
