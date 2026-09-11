@@ -269,8 +269,9 @@ fn cmd_init(config_path: &Path, data_dir: &Path, args: InitArgs) -> Result<()> {
          (GitHub Pages, S3, your host): nothing to open on the router"
     );
     println!(
-        "     - `valhsync-server serve` on this machine: needs TCP {} open in the firewall \
-         and router\n",
+        "     - `valhsync-server serve` on this machine: listens on TCP {}, the game's own \
+         port. Valheim uses it in UDP only, so no new port to open - just make sure the \
+         router rule for it covers TCP as well as UDP\n",
         cfg.bind_addr()?.port()
     );
     print_invite(&cfg, &kp)
@@ -351,14 +352,23 @@ fn watch_and_export(cfg: &Config, kp: &Keypair, data_dir: &Path, dir: &Path) -> 
 }
 
 fn print_invite(cfg: &Config, kp: &Keypair) -> Result<()> {
-    let url = cfg.public_url();
+    let Some(url) = cfg.public_url() else {
+        println!(
+            "No invite code yet: {}.\nSet [server] game_address to the address your players \
+             already use for the game, or [server] public_url to where you host the export.",
+            cfg.public_url_problem()
+        );
+        return Ok(());
+    };
     let invite = Invite::new(&url, &kp.public(), cfg.server.name.trim()).encode()?;
     println!("Invite code for \"{}\" ({url}):\n", cfg.server.name.trim());
     println!("{invite}\n");
     if cfg.server.public_url.is_none() {
         println!(
-            "Note: no [server] public_url set, so this code uses the LAN address. Players \
-             outside your network need public_url set to your public IP or DNS name."
+            "Note: this code points at the game server's own address, on ValhSync's port. \
+             It reaches players wherever the game does, as long as the router rule on that \
+             port covers TCP as well as UDP. Set [server] public_url instead when you host \
+             the export somewhere."
         );
     }
     println!(

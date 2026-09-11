@@ -1373,8 +1373,8 @@ impl App {
                     w::hint(
                         ui,
                         self.t(
-                            "ValhSync sert le pack depuis cette machine. Il faut ouvrir ce port TCP dans le pare-feu et le routeur pour les joueurs hors de votre réseau.",
-                            "ValhSync serves the pack from this machine. This TCP port must be open in the firewall and router for players outside your network.",
+                            "ValhSync sert le pack depuis cette machine, sur le port du jeu mais en TCP : Valheim ne l'utilise qu'en UDP, donc aucun nouveau port à ouvrir. Vérifiez seulement que votre règle de routeur couvre TCP et UDP.",
+                            "ValhSync serves the pack from this machine, on the game's port but in TCP: Valheim only uses it in UDP, so there is no new port to open. Just check that your router rule covers TCP as well as UDP.",
                         ),
                     );
                     ui.horizontal(|ui| {

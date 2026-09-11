@@ -166,10 +166,11 @@ pub fn discover(ctx: &Context, address: &str) -> Result<Discovered> {
         .ok_or_else(|| SyncError::Other(format!("{address:?} is not a server address")))?;
     match ask(ctx, &url) {
         Err(first) if is_unreachable(&first) => {
-            // The address a player is given is the game server's. ValhSync
-            // answers on its own port, so try that once before giving up, and
-            // report the address they actually typed if that fails too.
-            match valhsync_core::invite::on_default_port(&url) {
+            // The address a player is given is the game server's, and that
+            // is the port ValhSync listens on. A server still on the old port
+            // is worth one more try; failing that, report the address they
+            // actually typed.
+            match valhsync_core::invite::other_port(&url) {
                 Some(alt) => ask(ctx, &alt).map_err(|_| first),
                 None => Err(first),
             }

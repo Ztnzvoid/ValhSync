@@ -70,8 +70,12 @@ pub fn prepare(cfg: &Config, keypair: Keypair, data_dir: PathBuf, watch: bool) -
     let outcome = pack::build(cfg, &keypair, &data_dir)?;
     pack::print_summary(&outcome);
 
-    let invite =
-        Invite::new(cfg.public_url(), &keypair.public(), cfg.server.name.trim()).encode()?;
+    let invite = match cfg.public_url() {
+        Some(url) => Invite::new(url, &keypair.public(), cfg.server.name.trim()).encode()?,
+        // Served anyway: a player who joins by address gets the key from
+        // `/key`, and the admin sees the warning `print_warnings` prints.
+        None => String::new(),
+    };
     let state = Arc::new(AppState {
         current: RwLock::new(Arc::clone(&outcome.published)),
         store: Store::open(&data_dir)?,
@@ -114,7 +118,7 @@ pub async fn run(cfg: Config, keypair: Keypair, data_dir: PathBuf) -> Result<()>
         .with_context(|| format!("cannot listen on {addr}; is another valhsync-server running?"))?;
     tracing::info!(
         "listening on http://{addr}  (public URL: {})",
-        cfg.public_url()
+        cfg.public_url().as_deref().unwrap_or("not set")
     );
     tracing::info!("press Ctrl+C to stop");
     let watch_game = cfg.is_colocated() && cfg.game_server.stop_with_game;

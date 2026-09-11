@@ -1258,6 +1258,8 @@ impl App {
                     }
                     Err(e) => dialog.error = Some(e.to_string()),
                 }
+            } else if valhsync_core::invite::looks_like_join_code(&text) {
+                dialog.error = Some(self.t(Key::JoinCodeNotAnAddress).to_string());
             } else {
                 // An address: ask the server who it is, then have the player
                 // confirm the fingerprint before pinning anything.

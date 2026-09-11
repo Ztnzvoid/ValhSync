@@ -123,11 +123,32 @@ fn normalize_url(url: &str) -> String {
     url.trim().trim_end_matches('/').to_string()
 }
 
-/// Default port of `valhsync-server`.
-pub const DEFAULT_PORT: u16 = 2470;
+/// The port ValhSync serves on by default: the game's own.
+///
+/// Valheim uses it in UDP only, so nothing collides, and a router rule that
+/// covers TCP+UDP -- which is what most of them write -- already carries it.
+/// Asking an admin to open a second port for a mod list is not something this
+/// project does.
+pub const DEFAULT_PORT: u16 = 2456;
+
+/// The port earlier versions used, and which a hosted setup may still be on.
+pub const LEGACY_PORT: u16 = 2470;
+
+/// Is this Valheim's own join code rather than an address?
+///
+/// A crossplay server shows a six-digit code, and it is the thing a player is
+/// most likely to be handed, so it is the thing they will paste here. It
+/// cannot work: that code reaches the *game* through PlayFab's relay, which
+/// carries no file transfer and no HTTP. Recognising it is the difference
+/// between a useless DNS error and an answer.
+#[must_use]
+pub fn looks_like_join_code(text: &str) -> bool {
+    let t = text.trim();
+    (4..=8).contains(&t.len()) && t.chars().all(|c| c.is_ascii_digit())
+}
 
 /// Turn what an admin types or dictates into a base URL: `valheim.example.org`,
-/// `1.2.3.4:2470` and `https://pack.example.org/valheim` all work.
+/// `1.2.3.4:2456` and `https://pack.example.org/valheim` all work.
 ///
 /// Returns `None` for something that cannot be a host at all.
 pub fn address_to_url(input: &str) -> Option<String> {
@@ -165,24 +186,33 @@ pub fn address_to_url(input: &str) -> Option<String> {
     Some(format!("{scheme}://{body}"))
 }
 
-/// The same host on ValhSync's own port.
+/// The same host on the other port worth trying.
 ///
-/// Players are given the address of the *game* server, which is the one they
-/// are told about, and they type it here. Nothing but ValhSync ever answers on
-/// [`DEFAULT_PORT`], so trying it once is unambiguous. Returns `None` when
-/// there is nothing to try: the port is already the default, or the URL names
-/// a path, which means a static export rather than a live server.
+/// Players type the address of the *game* server, because that is the one they
+/// were given, and ValhSync now answers on that very port. When it does not,
+/// the server is probably still on [`LEGACY_PORT`], so try that once before
+/// giving up -- and the other way round, for a player who was handed a
+/// `:2470` address for a server that has since moved.
+///
+/// Returns `None` when there is nothing to try: the URL names a path, which
+/// means a static export rather than a live server.
 #[must_use]
-pub fn on_default_port(url: &str) -> Option<String> {
+pub fn other_port(url: &str) -> Option<String> {
     let (scheme, rest) = url.split_once("://")?;
     if rest.contains('/') {
         return None;
     }
-    let host = rest.split_once(':').map_or(rest, |(h, _)| h);
+    let (host, port) = rest
+        .split_once(':')
+        .map_or((rest, None), |(h, p)| (h, p.parse().ok()));
     if host.is_empty() {
         return None;
     }
-    let candidate = format!("{scheme}://{host}:{DEFAULT_PORT}");
+    let other = match port {
+        Some(LEGACY_PORT) => DEFAULT_PORT,
+        _ => LEGACY_PORT,
+    };
+    let candidate = format!("{scheme}://{host}:{other}");
     (candidate != url).then_some(candidate)
 }
 
@@ -258,26 +288,48 @@ mod tests {
     }
 
     #[test]
-    fn the_game_port_is_retried_on_ours() {
+    fn the_old_port_is_retried_and_the_new_one_too() {
+        // The address a player types is the game's, which is where ValhSync
+        // now listens; a server still on the old port answers there.
         assert_eq!(
-            on_default_port("http://203.0.113.10:2456").as_deref(),
+            other_port("http://203.0.113.10:2456").as_deref(),
             Some("http://203.0.113.10:2470")
         );
+        // And the other way round, for an address handed out long ago.
         assert_eq!(
-            on_default_port("http://valheim.example.org").as_deref(),
+            other_port("http://203.0.113.10:2470").as_deref(),
+            Some("http://203.0.113.10:2456")
+        );
+        assert_eq!(
+            other_port("http://valheim.example.org").as_deref(),
             Some("http://valheim.example.org:2470")
         );
-        // Nothing to try: already ours, or a static export under a path.
-        assert_eq!(on_default_port("http://203.0.113.10:2470"), None);
-        assert_eq!(on_default_port("https://you.github.io/pack"), None);
-        assert_eq!(on_default_port("not a url"), None);
+        // Nothing to try: a static export lives under a path.
+        assert_eq!(other_port("https://you.github.io/pack"), None);
+        assert_eq!(other_port("not a url"), None);
+    }
+
+    #[test]
+    fn a_valheim_join_code_is_not_an_address() {
+        for code in ["236486", "024150", "1234", "12345678"] {
+            assert!(looks_like_join_code(code), "{code}");
+        }
+        for other in [
+            "203.0.113.10",
+            "203.0.113.10:2456",
+            "valheim.example.org",
+            "123456789",
+            "",
+        ] {
+            assert!(!looks_like_join_code(other), "{other}");
+        }
     }
 
     #[test]
     fn addresses_become_urls() {
         assert_eq!(
             address_to_url("valheim.example.org").as_deref(),
-            Some("http://valheim.example.org:2470")
+            Some("http://valheim.example.org:2456")
         );
         assert_eq!(
             address_to_url(" 203.0.113.10:2470/ ").as_deref(),

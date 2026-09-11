@@ -54,7 +54,7 @@ which `valhsync-server` does not yet; use NSSM or the Task Scheduler instead.
 
 ## Firewall
 
-Allow inbound TCP 2470 (or whatever `[server] bind` says) for
+Allow inbound TCP on the game's port (or whatever `[server] bind` says) for
 `valhsync-server.exe`. Players outside the LAN also need the port forwarded on
 the router, exactly like UDP 2456-2457 for the game.
 

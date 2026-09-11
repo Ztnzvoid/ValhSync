@@ -22,7 +22,7 @@ That log line is why this exists.
  ┌──────────────────────────────┐                  ┌────────────────────────────────┐
  │ Valheim Dedicated Server     │                  │ valhsync (launcher)             │
  │  └ BepInEx/ (server mods)    │                  │  1. GET /manifest.json + .sig  │
- │                              │   HTTP TCP 2470  │  2. verify Ed25519 signature   │
+ │                              │   HTTP over TCP  │  2. verify Ed25519 signature   │
  │ valhsync-server               │ ◀──────────────▶ │  3. compare with local hashes  │
  │  ├ scans pack + client extras│                  │  4. download /files/<blake3>   │
  │  ├ signs the manifest        │                  │  5. apply atomically, journaled│
@@ -97,7 +97,7 @@ warn about a game-version mismatch.
   is `valhsync-server export`: it writes the pack as plain files that any web
   space serves (GitHub Pages, S3/R2, Cloudflare Pages, your host's FTP). The
   signature travels with the files, so the host is irrelevant to integrity.
-  Running `valhsync-server serve` on your own machine (TCP 2470) is the LAN and
+  Running `valhsync-server serve` on your own machine (the game's port, in TCP) is the LAN and
   advanced option, not the default.
 
 ## Quick start: admin
@@ -119,7 +119,9 @@ Upload `pack-site/` to the web space `public_url` points at. `export --watch`
 keeps the folder current whenever a mod changes, so pair it with whatever
 already uploads for you (rclone, a git push, the Nextcloud client). Prefer a
 live server on your machine? `valhsync-server serve` does the same over TCP
-2470, with automatic rebuilds; that one needs the port open.
+the game's own port in TCP, with automatic rebuilds. Valheim uses that port in
+UDP only, so a router rule covering TCP+UDP — which is the usual shape — carries
+both. ValhSync never asks for a port the game does not already use.
 
 Hand players the invite code, or better, a zip of `valhsync.exe` plus a
 `valhsync-invite.txt` containing the code: the launcher imports it on first
@@ -218,7 +220,8 @@ n'est jamais touchée. L'admin non plus n'a pas de port à ouvrir : la voie
 recommandée est `valhsync-server export`, qui produit des fichiers statiques à
 déposer sur n'importe quel espace web (GitHub Pages, S3, l'hébergement de ton
 FAI) ; la signature voyage avec les fichiers, l'hébergeur n'a aucune prise sur
-l'intégrité. `serve` sur ta machine (TCP 2470) reste l'option LAN/avancée.
+l'intégrité. `serve` sur ta machine reste l'option LAN/avancée : il écoute sur
+le port du jeu, en TCP, donc aucun nouveau port à ouvrir.
 
 **Côté admin** : `valhsync-server init` détecte le serveur dédié installé par
 Steam, écrit une configuration commentée, génère la clé de signature et affiche
@@ -228,7 +231,7 @@ en direct et le reconstruit quand un mod change. Les mods serveur seuls vont dan
 mods client seuls dans le dossier `client-extras/`. Un serveur hébergé en ligne
 (G-Portal, Nitrado…) fonctionne aussi : le publieur tourne où tu veux avec une
 copie du pack, seul `game_address` pointe vers l'hébergeur. Ouvre le port TCP
-2470. Guide complet : [docs/admin-guide.md](docs/admin-guide.md).
+le port du jeu. Guide complet : [docs/admin-guide.md](docs/admin-guide.md).
 
 **Côté joueur** : double-clic sur `valhsync.exe`, coller le code (ou avoir le
 fichier `valhsync-invite.txt` à côté de l'exe), bouton **JOUER**. La première

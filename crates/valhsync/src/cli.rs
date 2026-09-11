@@ -190,6 +190,13 @@ fn cmd_join(ctx: &Context, code: &str, yes: bool, replace_key: bool) -> Result<(
     let invite = if text.contains(valhsync_core::invite::PREFIX) {
         Invite::parse(&text)?
     } else {
+        if valhsync_core::invite::looks_like_join_code(&text) {
+            bail!(
+                "{} is Valheim's join code: it gets you into the game, not to the mods. \
+                 Ask your admin for their ValhSync invite code, or the server's address.",
+                text.trim()
+            );
+        }
         // An address: the server tells us its key, and the player confirms
         // the fingerprint against what the admin announced.
         let found = engine::discover(ctx, text.trim())?;

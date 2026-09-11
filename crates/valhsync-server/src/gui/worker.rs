@@ -95,7 +95,13 @@ pub(super) fn load_key(data_dir: &Path) -> Result<Keypair> {
 }
 
 pub(super) fn invite_code(cfg: &Config, kp: &Keypair) -> Result<String> {
-    valhsync_core::Invite::new(cfg.public_url(), &kp.public(), cfg.server.name.trim())
+    let url = cfg.public_url().with_context(|| {
+        format!(
+            "no address to put in the code: {}",
+            cfg.public_url_problem()
+        )
+    })?;
+    valhsync_core::Invite::new(url, &kp.public(), cfg.server.name.trim())
         .encode()
         .context("cannot build the invite code")
 }
@@ -119,7 +125,9 @@ pub(super) fn serve_blocking(
             let listener = tokio::net::TcpListener::bind(addr).await.with_context(|| {
                 format!("cannot listen on {addr}; is another valhsync-server running?")
             })?;
-            rep.send(Msg::Serving(cfg.public_url()));
+            rep.send(Msg::Serving(
+                cfg.public_url().unwrap_or_else(|| addr.to_string()),
+            ));
             // The window's Stop button, or the dedicated server going away.
             let watch_game = cfg.is_colocated() && cfg.game_server.stop_with_game;
             serve::serve_until(listener, server, async move {
@@ -141,7 +149,9 @@ pub(super) fn serve_blocking(
 /// guess about someone else's network.
 pub(super) fn check_link(cfg: &Config, data_dir: &Path) -> Result<Msg> {
     let kp = load_key(data_dir)?;
-    let base = cfg.public_url();
+    let base = cfg
+        .public_url()
+        .with_context(|| format!("nothing to test: {}", cfg.public_url_problem()))?;
     let client = reqwest::blocking::Client::builder()
         .timeout(std::time::Duration::from_secs(10))
         .user_agent(concat!("valhsync-server/", env!("CARGO_PKG_VERSION")))

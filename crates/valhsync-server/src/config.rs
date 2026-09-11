@@ -8,7 +8,9 @@ use serde::{Deserialize, Serialize};
 use valhsync_core::scan::{PolicyRules, ScanConfig, ScanSource};
 use valhsync_core::{AllowedRoots, Limits, Policy};
 
-pub const DEFAULT_PORT: u16 = 2470;
+/// ValhSync serves on the game's own port. Valheim uses it in UDP only, so
+/// the two do not collide and no second router rule is needed.
+pub const DEFAULT_PORT: u16 = valhsync_core::invite::DEFAULT_PORT;
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
@@ -314,14 +316,43 @@ impl Config {
     }
 
     /// URL that goes into the invite code.
-    pub fn public_url(&self) -> String {
+    /// The address players will contact.
+    ///
+    /// Either what the admin published, or the game server's own address on
+    /// ValhSync's port -- players already have that one, and it is already
+    /// routed. This machine's LAN address is never invented in its place: an
+    /// invite code carrying `192.168.x.x` works for the admin and for nobody
+    /// else, which is the worst way for it to fail.
+    ///
+    /// `None` when the configuration says nothing usable yet.
+    pub fn public_url(&self) -> Option<String> {
         if let Some(url) = &self.server.public_url {
-            return url.trim_end_matches('/').to_string();
+            let url = url.trim().trim_end_matches('/');
+            if !url.is_empty() {
+                return Some(url.to_string());
+            }
+        }
+        let host = self.server.game_address.trim().rsplit_once(':')?.0.trim();
+        if host.is_empty() || valhsync_core::manifest::is_private_host(host) {
+            return None;
         }
         let port = self.bind_addr().map_or(DEFAULT_PORT, |a| a.port());
-        let host =
-            crate::net::lan_ip().map_or_else(|| "127.0.0.1".to_string(), |ip| ip.to_string());
-        format!("http://{host}:{port}")
+        Some(format!("http://{host}:{port}"))
+    }
+
+    /// Why there is no address to hand out, in one sentence.
+    pub fn public_url_problem(&self) -> &'static str {
+        let host = self
+            .server
+            .game_address
+            .trim()
+            .rsplit_once(':')
+            .map_or("", |(h, _)| h.trim());
+        if host.is_empty() {
+            "no game address is set, and no public URL either"
+        } else {
+            "the game address is a local one, so it cannot be handed to players"
+        }
     }
 }
 
@@ -341,12 +372,21 @@ impl From<&TemplateOptions> for Config {
         let mut cfg = Self::default();
         cfg.server.name.clone_from(&o.name);
         cfg.server.game_address.clone_from(&o.game_address);
+        // Serve on whatever port the game was given: one rule covers both.
+        if let Some(port) = game_port(&o.game_address) {
+            cfg.server.bind = format!("0.0.0.0:{port}");
+        }
         cfg.server.public_url.clone_from(&o.public_url);
         cfg.pack.server_root.clone_from(&o.server_root);
         cfg.pack.client_extras = Some(o.client_extras.clone());
         cfg.game_server.start_script.clone_from(&o.start_script);
         cfg
     }
+}
+
+/// The port out of a `host:port` game address.
+fn game_port(address: &str) -> Option<u16> {
+    address.trim().rsplit_once(':')?.1.trim().parse().ok()
 }
 
 fn toml_str(s: &str) -> String {
@@ -390,7 +430,7 @@ name = {name}
 # TCP address to listen on, for `serve` only. `export` needs no port at all.
 bind = {bind}
 # URL players reach the pack at. Goes into the invite code: the folder holding
-# manifest.json for a static export, or http://your.address:2470 for `serve`.
+# manifest.json for a static export, or http://your.address:2456 for `serve`.
 {public_url}
 # host:port the launcher hands to Valheim.
 # Use your PUBLIC IP or a DNS name, not a local 192.168.x address: a server
@@ -453,7 +493,7 @@ stop_with_game = {stop_with_game}
         bind = toml_str(&cfg.server.bind),
         public_url = match &cfg.server.public_url {
             Some(u) => format!("public_url = {}", toml_str(u)),
-            None => "# public_url = \"http://your.public.address:2470\"".to_string(),
+            None => "# public_url = \"http://your.public.address:2456\"".to_string(),
         },
         game_address = toml_str(cfg.server.game_address.trim()),
         server_root = toml_opt_path(
@@ -580,7 +620,7 @@ mod tests {
         assert_eq!(cfg.pack.client_extras.as_deref(), Some(extras.as_path()));
         assert_eq!(cfg.sources().len(), 2);
         assert_eq!(cfg.limits(), Limits::default());
-        assert!(cfg.public_url().starts_with("http://"));
+        assert!(cfg.public_url().unwrap().starts_with("http://"));
     }
 
     #[test]

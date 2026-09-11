@@ -53,7 +53,7 @@ somewhere convenient, for example next to the dedicated server's `.bat`. Then:
 ```bash
 valhsync-server init --name "My server" \
                     --game-address valheim.example.org:2456 \
-                    --public-url http://valheim.example.org:2470
+                    --public-url https://you.github.io/valheim-pack
 ```
 
 `init`:
@@ -78,8 +78,8 @@ Open `valhsync-server.toml`. The sections that matter:
 ```toml
 [server]
 name = "My server"                       # shown in the launcher
-bind = "0.0.0.0:2470"                    # open this TCP port
-public_url = "http://valheim.example.org:2470"
+bind = "0.0.0.0:2456"                    # the game's port, in TCP
+public_url = "http://valheim.example.org:2456"
 game_address = "valheim.example.org:2456" # handed to Valheim (+connect)
 
 [pack]
@@ -143,7 +143,7 @@ make players install something you did not sign. What it can do is serve an
 old copy; the launcher refuses a manifest older than the one it last applied.
 Mind mod licenses before hosting DLLs on a public site.
 
-### 4b. Live server on your machine (needs TCP 2470)
+### 4b. Live server on your machine (no new port)
 
 ```bash
 valhsync-server serve    # Ctrl+C to stop
@@ -151,9 +151,20 @@ valhsync-server serve    # Ctrl+C to stop
 
 `serve` listens on `bind`, rebuilds automatically when a mod changes, and
 keeps the previous generation's files available for a launcher that fetched
-the old manifest a moment ago. Visit `http://<host>:2470/` in a browser: it
+the old manifest a moment ago. Visit `http://<host>:2456/` in a browser: it
 shows the invite code and the pack summary. `/health` returns JSON for
-monitoring. Internet players need TCP 2470 forwarded to this machine, or an
+monitoring.
+
+ValhSync listens on **the game's own port, in TCP**. Valheim uses that port in
+UDP only, so the two never collide, and the router rule you already wrote for
+the game carries ValhSync too — as long as that rule says **TCP and UDP**, which
+is what most router pages write by default. Check yours before relying on it;
+if it is UDP-only, widening it is one checkbox, not a new port.
+
+ValhSync will never ask you to open a port the game does not already use.
+
+Older setups on TCP 2470 keep working: a launcher that fails on the address it
+was given retries the other port once. Internet players need that rule, or an
 outbound tunnel (Cloudflare Tunnel, ngrok) in front of it.
 
 Run it as a service: see [deploy/](deploy/).
@@ -226,12 +237,16 @@ your own PC or a VPS with a local copy of the pack in `client_extras`, leave
 `server_root` out, and set `game_address` to the hosted server. Keep that copy
 in sync with what you upload to the host.
 
-## 7b. Reusing the game's port rule
+## 7b. What players type
 
-If you do run `serve` and your router already forwards 2456 as "TCP+UDP"
-(many do by default), you can bind ValhSync on TCP 2456: `bind = "0.0.0.0:2456"`.
-Valheim only uses UDP on that port, so the two do not collide. Check the rule
-before relying on it. Static export (4a) remains the simpler answer.
+One address: the game server's. It is the one they already have, it is the one
+ValhSync listens on, and the launcher takes it as it is. The invite code carries
+that same address, so the two routes agree.
+
+Valheim's six-digit **join code is not an address**. It reaches the game through
+PlayFab's relay, which carries no file transfer — no launcher can fetch a pack
+through it. The launcher recognises one and says so rather than trying to
+resolve it as a host.
 
 ## 7c. Crossplay servers and `game_address`
 
@@ -257,7 +272,7 @@ local address works, and internet players need UDP 2456-2457 forwarded.
 If you want HTTPS anyway, put it behind Caddy, nginx or a Cloudflare tunnel
 and set `public_url` to the `https://` address. The launcher accepts both.
 
-Ports: TCP 2470 for ValhSync (configurable), UDP 2456-2457 for the game itself,
+Ports: the game's own port in TCP for ValhSync (`bind`, configurable), UDP 2456-2457 for the game itself,
 as before.
 
 ## 9. Things to say to your players

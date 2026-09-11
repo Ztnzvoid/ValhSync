@@ -4,7 +4,7 @@
 #   sudo mkdir -p /opt/valhsync && sudo chown valhsync: /opt/valhsync
 #   sudo -u valhsync /opt/valhsync/valhsync-server --config /opt/valhsync/valhsync-server.toml init \
 #        --server-root /home/steam/valheim --name "My server" \
-#        --game-address valheim.example.org:2456 --public-url http://valheim.example.org:2470
+#        --game-address valheim.example.org:2456 --public-url http://valheim.example.org:2456
 #   sudo cp valhsync-server.service /etc/systemd/system/
 #   sudo systemctl daemon-reload && sudo systemctl enable --now valhsync-server
 #   journalctl -u valhsync-server -f

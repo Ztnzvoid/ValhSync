@@ -70,6 +70,7 @@ pub enum Key {
     Close,
     InvitePrompt,
     InviteHint,
+    JoinCodeNotAnAddress,
     Checking2,
     ConfirmKeyTitle,
     ConfirmKeyBody,
@@ -159,9 +160,12 @@ fn fr(key: Key) -> &'static str {
         Key::Cancel => "Annuler",
         Key::Close => "Fermer",
         Key::InvitePrompt => {
-            "Code d'invitation, ou adresse ValhSync du serveur (port 2470, pas celui du jeu)"
+            "Code d'invitation, ou simplement l'adresse du serveur de jeu — la même que dans Valheim"
         }
-        Key::InviteHint => "valhsync1:…  ou  monserveur.exemple.org:2470",
+        Key::InviteHint => "valhsync1:…  ou  monserveur.exemple.org:2456",
+        Key::JoinCodeNotAnAddress => {
+            "Ça, c'est le code de connexion Valheim : il sert à rejoindre la partie, pas à récupérer les mods. Demandez à votre admin son code d'invitation ValhSync, ou l'adresse du serveur."
+        }
         Key::Checking2 => "Interrogation du serveur…",
         Key::ConfirmKeyTitle => "Vérifiez l'empreinte",
         Key::ConfirmKeyBody => {
@@ -249,9 +253,12 @@ fn en(key: Key) -> &'static str {
         Key::Cancel => "Cancel",
         Key::Close => "Close",
         Key::InvitePrompt => {
-            "Invite code, or the server's ValhSync address (port 2470, not the game's)"
+            "Invite code, or simply the game server's address — the same one you use in Valheim"
         }
-        Key::InviteHint => "valhsync1:…  or  myserver.example.org:2470",
+        Key::InviteHint => "valhsync1:…  or  myserver.example.org:2456",
+        Key::JoinCodeNotAnAddress => {
+            "That is Valheim's join code: it gets you into the game, not to the mods. Ask your admin for their ValhSync invite code, or the server's address."
+        }
         Key::Checking2 => "Asking the server…",
         Key::ConfirmKeyTitle => "Check the fingerprint",
         Key::ConfirmKeyBody => {
