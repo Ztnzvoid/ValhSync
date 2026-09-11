@@ -265,7 +265,7 @@ mod tests {
 	}
 	"1"
 	{
-		"path"		"E:\\SteamLibrary"
+		"path"		"D:\\SteamLibrary"
 		"apps"
 		{
 			"892970"		"1234"
@@ -299,7 +299,7 @@ mod tests {
             library_paths(MODERN),
             vec![
                 PathBuf::from(r"C:\Program Files (x86)\Steam"),
-                PathBuf::from(r"E:\SteamLibrary")
+                PathBuf::from(r"D:\SteamLibrary")
             ]
         );
         assert_eq!(

@@ -338,7 +338,7 @@
   <p>Le serveur sert <code>manifest.json</code> et <code>manifest.sig</code>, une signature Ed25519 détachée calculée sur les octets exacts du JSON. Le client vérifie la signature <em>avant</em> de parser.</p>
 <pre><code>{
   "format": 1,
-  "server_name": "Serveur de Ztnzvoid",
+  "server_name": "Serveur de test",
   "game_address": "valheim.example.org:2456",
   "generated_at": "2026-09-10T18:00:00Z",
   "pack_id": "b3:9f2c…",
@@ -368,7 +368,7 @@
   <p>C'est la leçon principale de l'installation du serveur de Ztnzvoid. Certains mods ne doivent tourner que sur le serveur (DiscordConnector), d'autres que chez les joueurs (EquipmentAndQuickSlots, BetterArchery, ConfigManager, Unshamed), et la plupart des deux côtés. Le pack distribué se construit donc ainsi : <strong>dossier BepInEx du serveur, moins les exclusions, plus un dossier d'extras réservés aux clients.</strong></p>
 <pre><code># valhsync-server.toml
 [server]
-name = "Serveur de Ztnzvoid"
+name = "Serveur de test"
 bind = "0.0.0.0:2470"                          # port TCP par défaut, à ouvrir dans le pare-feu
 game_address = "valheim.example.org:2456"      # adresse que le launcher donnera au jeu
 

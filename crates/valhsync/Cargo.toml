@@ -31,7 +31,6 @@ directories.workspace = true
 time.workspace = true
 sysinfo.workspace = true
 eframe.workspace = true
-sys-locale.workspace = true
 
 [target.'cfg(windows)'.dependencies]
 winreg.workspace = true

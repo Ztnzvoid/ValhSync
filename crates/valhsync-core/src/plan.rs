@@ -113,6 +113,19 @@ pub fn compute(
     game_root: &Path,
     previous: Option<&InstalledState>,
 ) -> Result<SyncPlan> {
+    compute_with(manifest, game_root, previous, false)
+}
+
+/// As [`compute`], but `repair` ignores the `seed` policy: every file that
+/// differs from the manifest is replaced, configuration included. It is what
+/// a player asks for when their installation is in a state they cannot
+/// explain.
+pub fn compute_with(
+    manifest: &Manifest,
+    game_root: &Path,
+    previous: Option<&InstalledState>,
+    repair: bool,
+) -> Result<SyncPlan> {
     let wanted = manifest.by_lower_path();
     let installed: HashMap<String, _> = previous
         .map(InstalledState::by_lower_path)
@@ -130,7 +143,7 @@ pub fn compute(
                 let local = hash::to_hex(&hash::hash_file(&os_path)?);
                 if local == entry.blake3 {
                     Action::Keep
-                } else if entry.policy == Policy::Seed {
+                } else if entry.policy == Policy::Seed && !repair {
                     Action::SeedKept
                 } else {
                     Action::Replace
@@ -398,6 +411,30 @@ mod tests {
         assert_eq!(
             (c.replace, c.remove, c.quarantine, c.seed_kept),
             (1, 1, 4, 1)
+        );
+    }
+
+    #[test]
+    fn repair_puts_configs_back() {
+        let game = tempfile::tempdir().unwrap();
+        let g = game.path();
+        write(g, "winhttp.dll", b"doorstop");
+        write(g, "BepInEx/core/BepInEx.dll", b"core");
+        write(g, "BepInEx/plugins/Azu/Azu.dll", b"azu v2");
+        write(g, "BepInEx/plugins/Azu/Azu.cfg", b"azu cfg");
+        write(g, "BepInEx/config/Azu.cfg", b"player changed this");
+        let m = manifest();
+
+        let normal = compute(&m, g, None).unwrap();
+        assert_eq!(
+            action_of(&normal, "BepInEx/config/Azu.cfg"),
+            Some(Action::SeedKept)
+        );
+
+        let repair = compute_with(&m, g, None, true).unwrap();
+        assert_eq!(
+            action_of(&repair, "BepInEx/config/Azu.cfg"),
+            Some(Action::Replace)
         );
     }
 

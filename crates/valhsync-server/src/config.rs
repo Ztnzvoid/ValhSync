@@ -396,6 +396,8 @@ managed_roots = [
 [policy]
 # "enforce": always replaced when different. "seed": installed only if absent,
 # then never touched (player preferences).
+# Only the .cfg files BepInEx generates are seeded: what a mod ships inside
+# config/ (YAML tables, texture packs) is data the players must receive.
 default = {policy_default}
 seed = [
 {seed}

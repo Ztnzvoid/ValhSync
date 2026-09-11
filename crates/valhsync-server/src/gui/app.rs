@@ -28,13 +28,9 @@ enum Lang {
 }
 
 impl Lang {
+    /// English by default; the header switches language in one click.
     fn detect() -> Self {
-        let code = sys_locale::get_locale().unwrap_or_default().to_lowercase();
-        if code.starts_with("fr") {
-            Self::Fr
-        } else {
-            Self::En
-        }
+        Self::En
     }
 
     fn other(self) -> Self {

@@ -10,7 +10,7 @@ use anyhow::{Context as _, Result};
 
 pub fn run() -> Result<()> {
     let options = eframe::NativeOptions {
-        viewport: valhsync_ui::frame::viewport("ValhSync", [660.0, 540.0], [560.0, 440.0]),
+        viewport: valhsync_ui::frame::viewport("ValhSync", [940.0, 660.0], [720.0, 520.0]),
         ..Default::default()
     };
     eframe::run_native(

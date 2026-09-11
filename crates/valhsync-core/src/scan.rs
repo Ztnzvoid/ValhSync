@@ -38,7 +38,11 @@ impl Default for PolicyRules {
     fn default() -> Self {
         Self {
             default: Policy::Enforce,
-            seed: vec!["BepInEx/config/**".into()],
+            // Only the `.cfg` files BepInEx generates hold player preferences
+            // (keybinds, UI). Everything else a mod puts in `config/` is data
+            // the admin curates: YAML tables, texture packs, season files.
+            // Those must follow the server.
+            seed: vec!["BepInEx/config/*.cfg".into()],
             enforce: vec!["BepInEx/config/BepInEx.cfg".into()],
         }
     }
@@ -323,6 +327,63 @@ mod tests {
             result.files.iter().map(|f| f.entry.size).sum::<u64>()
         );
         assert!(result.skipped.is_empty());
+    }
+
+    /// A mod that ships assets, not just a DLL: nested folders, images, data
+    /// files, and a folder of its own under `config/`. All of it has to reach
+    /// the player, and the data has to follow the server.
+    #[test]
+    fn asset_heavy_mods_are_published_whole() {
+        let server = tempfile::tempdir().unwrap();
+        let s = server.path();
+        write(s, "BepInEx/plugins/Seasonality/Seasonality.dll", b"dll");
+        write(
+            s,
+            "BepInEx/plugins/Seasonality/Textures/Fall/beech.png",
+            b"png",
+        );
+        write(
+            s,
+            "BepInEx/plugins/Seasonality/Textures/Winter/pine.png",
+            b"png",
+        );
+        write(s, "BepInEx/plugins/Seasonality/manifest.json", b"json");
+        write(s, "BepInEx/config/Seasonality/Seasonality.yml", b"data");
+        write(s, "BepInEx/config/Seasonality/Custom/leaf.png", b"png");
+        write(s, "BepInEx/config/RustyMods.Seasonality.cfg", b"keybinds");
+
+        let cfg = ScanConfig {
+            sources: vec![ScanSource {
+                root: s.to_path_buf(),
+                include: default_include(),
+                exclude: vec![],
+            }],
+            policy: PolicyRules::default(),
+            limits: Limits::default(),
+            roots: AllowedRoots::bepinex(),
+        };
+        let result = scan(&cfg).unwrap();
+        let by: BTreeMap<&str, &ScannedFile> = result
+            .files
+            .iter()
+            .map(|f| (f.entry.path.as_str(), f))
+            .collect();
+
+        for path in [
+            "BepInEx/plugins/Seasonality/Seasonality.dll",
+            "BepInEx/plugins/Seasonality/Textures/Fall/beech.png",
+            "BepInEx/plugins/Seasonality/Textures/Winter/pine.png",
+            "BepInEx/plugins/Seasonality/manifest.json",
+            "BepInEx/config/Seasonality/Seasonality.yml",
+            "BepInEx/config/Seasonality/Custom/leaf.png",
+        ] {
+            assert!(by.contains_key(path), "missing {path}");
+            assert_eq!(by[path].entry.policy, Policy::Enforce, "{path}");
+        }
+        assert_eq!(
+            by["BepInEx/config/RustyMods.Seasonality.cfg"].entry.policy,
+            Policy::Seed
+        );
     }
 
     #[test]

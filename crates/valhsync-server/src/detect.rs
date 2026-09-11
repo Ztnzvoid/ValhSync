@@ -240,8 +240,8 @@ title Valheim Dedicated Server
 setlocal
 REM  -port 9999 dans un commentaire ne doit pas compter
 set "PASSWORD=secret123"
-set "SERVERNAME=Northwatch"
-set "WORLD=Northwatch"
+set "SERVERNAME=My Server"
+set "WORLD=My Server"
 set "PORT=2456"
 set "PUBLIC=0"
 set SteamAppId=892970
@@ -265,8 +265,8 @@ export templdpath=$LD_LIBRARY_PATH
     #[test]
     fn reads_a_windows_start_script() {
         let a = parse_start_script(BAT);
-        assert_eq!(a.name.as_deref(), Some("Northwatch"));
-        assert_eq!(a.world.as_deref(), Some("Northwatch"));
+        assert_eq!(a.name.as_deref(), Some("My Server"));
+        assert_eq!(a.world.as_deref(), Some("My Server"));
         assert_eq!(a.port, Some(2456));
         assert_eq!(a.public, Some(false));
         assert!(a.crossplay);

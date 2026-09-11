@@ -38,6 +38,8 @@ pub struct Context {
     pub skip_process_check: bool,
     /// Accept a manifest older than the last one applied (admin rolled back).
     pub allow_older: bool,
+    /// Replace every file that differs, configuration included.
+    pub repair: bool,
 }
 
 impl Context {
@@ -50,6 +52,7 @@ impl Context {
             client: Client::new()?,
             skip_process_check: false,
             allow_older: false,
+            repair: false,
         })
     }
 
@@ -60,6 +63,7 @@ impl Context {
             client: Client::new()?,
             skip_process_check: false,
             allow_older: false,
+            repair: false,
         })
     }
 
@@ -215,7 +219,7 @@ pub fn prepare(
         });
     }
     let previous = ctx.installed()?;
-    let plan = plan::compute(&manifest, &install.root, previous.as_ref())?;
+    let plan = plan::compute_with(&manifest, &install.root, previous.as_ref(), ctx.repair)?;
     progress.on(Event::Planned(&plan));
     let needs_confirmation = previous.as_ref().is_none_or(|p| p.server_id != server.id);
     Ok(Prepared {

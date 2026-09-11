@@ -8,17 +8,12 @@ pub enum Lang {
 }
 
 impl Lang {
-    /// From the saved setting, else the system locale, else English.
+    /// English unless the player chose French: the project is public, and the
+    /// other language is one click away in the header.
     pub fn detect(setting: Option<&str>) -> Self {
-        let code = setting
-            .map(str::to_string)
-            .or_else(sys_locale::get_locale)
-            .unwrap_or_default()
-            .to_lowercase();
-        if code.starts_with("fr") {
-            Self::Fr
-        } else {
-            Self::En
+        match setting.map(str::to_lowercase) {
+            Some(code) if code.starts_with("fr") => Self::Fr,
+            _ => Self::En,
         }
     }
 
@@ -48,6 +43,12 @@ pub enum Key {
     FirstSync,
     Pending,
     Play,
+    Update,
+    Launching2,
+    Repair,
+    RepairHint,
+    ForgetServer,
+    SetAsideCount,
     PlayVanilla,
     ModsDisabled,
     ModsEnabled,
@@ -98,6 +99,7 @@ pub enum Key {
     Installed,
     Nothing,
     ServerMods,
+    ShowAll,
     ModToInstall,
     ModToUpdate,
     ModInstalled,
@@ -124,6 +126,14 @@ fn fr(key: Key) -> &'static str {
         Key::FirstSync => "Première synchronisation",
         Key::Pending => "Mise à jour disponible",
         Key::Play => "JOUER",
+        Key::Update => "METTRE À JOUR",
+        Key::Launching2 => "Démarrage de Valheim",
+        Key::Repair => "Réparer",
+        Key::RepairHint => {
+            "Revérifie chaque fichier et remet en place tout ce qui diffère du serveur, y compris vos configurations."
+        }
+        Key::ForgetServer => "Retirer ce serveur de la liste",
+        Key::SetAsideCount => "mods mis de côté",
         Key::PlayVanilla => "Jouer sans mods",
         Key::ModsDisabled => "Mods désactivés. La prochaine synchronisation les rétablira.",
         Key::ModsEnabled => "Mods réactivés.",
@@ -151,7 +161,7 @@ fn fr(key: Key) -> &'static str {
         Key::Cancel => "Annuler",
         Key::Close => "Fermer",
         Key::InvitePrompt => "Code d'invitation, ou adresse du serveur",
-        Key::InviteHint => "valhsync1:…  ou  203.0.113.10:2470",
+        Key::InviteHint => "valhsync1:…  ou  monserveur.exemple.org:2470",
         Key::Checking2 => "Interrogation du serveur…",
         Key::ConfirmKeyTitle => "Vérifiez l'empreinte",
         Key::ConfirmKeyBody => {
@@ -186,6 +196,7 @@ fn fr(key: Key) -> &'static str {
         Key::Installed => "installés",
         Key::Nothing => "Rien à faire.",
         Key::ServerMods => "Mods du serveur",
+        Key::ShowAll => "Tout afficher",
         Key::ModInstalled => "installé",
         Key::Speed => "vitesse",
         Key::Remaining => "restant",
@@ -204,6 +215,14 @@ fn en(key: Key) -> &'static str {
         Key::FirstSync => "First sync",
         Key::Pending => "Update available",
         Key::Play => "PLAY",
+        Key::Update => "UPDATE",
+        Key::Launching2 => "Starting Valheim",
+        Key::Repair => "Repair",
+        Key::RepairHint => {
+            "Check every file again and put back anything that differs from the server, your configuration included."
+        }
+        Key::ForgetServer => "Remove this server from the list",
+        Key::SetAsideCount => "mods set aside",
         Key::PlayVanilla => "Play without mods",
         Key::ModsDisabled => "Mods disabled. The next sync will restore them.",
         Key::ModsEnabled => "Mods enabled again.",
@@ -231,7 +250,7 @@ fn en(key: Key) -> &'static str {
         Key::Cancel => "Cancel",
         Key::Close => "Close",
         Key::InvitePrompt => "Invite code, or server address",
-        Key::InviteHint => "valhsync1:…  or  203.0.113.10:2470",
+        Key::InviteHint => "valhsync1:…  or  myserver.example.org:2470",
         Key::Checking2 => "Asking the server…",
         Key::ConfirmKeyTitle => "Check the fingerprint",
         Key::ConfirmKeyBody => {
@@ -266,6 +285,7 @@ fn en(key: Key) -> &'static str {
         Key::Installed | Key::ModInstalled => "installed",
         Key::Nothing => "Nothing to do.",
         Key::ServerMods => "Server mods",
+        Key::ShowAll => "Show all",
         Key::Speed => "speed",
         Key::Remaining => "left",
     }
@@ -276,9 +296,11 @@ mod tests {
     use super::*;
 
     #[test]
-    fn detect_prefers_setting() {
+    fn english_unless_french_was_chosen() {
         assert_eq!(Lang::detect(Some("fr-FR")), Lang::Fr);
         assert_eq!(Lang::detect(Some("en")), Lang::En);
         assert_eq!(Lang::detect(Some("de")), Lang::En);
+        assert_eq!(Lang::detect(None), Lang::En);
+        assert_eq!(Lang::detect(None), Lang::En);
     }
 }

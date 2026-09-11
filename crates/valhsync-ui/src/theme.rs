@@ -191,65 +191,113 @@ pub fn callout<R>(
 /// vignette pulling the corners into shadow.
 pub fn backdrop(ctx: &egui::Context, painter: &egui::Painter, rect: Rect) {
     painter.rect_filled(rect, 0.0, NIGHT);
+    wood(ctx, painter, rect);
+    // Torchlight falls from the top of the window onto the plank.
     radial_pool(
         painter,
         egui::pos2(rect.center().x, rect.min.y),
         rect.width().max(rect.height()) * 0.85,
-        Color32::from_rgb(0x24, 0x1D, 0x14),
+        Color32::from_rgba_unmultiplied(0x3A, 0x2E, 0x1E, 150),
     );
-    radial_pool(
-        painter,
-        egui::pos2(rect.center().x, rect.max.y),
-        rect.width() * 0.6,
-        Color32::from_rgb(0x1A, 0x16, 0x10),
-    );
-    grain(ctx, painter, rect);
     vignette(painter, rect);
 }
 
-/// Tile a small noise texture over `rect` at low opacity.
-fn grain(ctx: &egui::Context, painter: &egui::Painter, rect: Rect) {
-    let texture = grain_texture(ctx);
+/// Lay the wood over `rect`. The tile repeats, so a window of any size is
+/// one continuous plank.
+fn wood(ctx: &egui::Context, painter: &egui::Painter, rect: Rect) {
+    let texture = wood_texture(ctx);
     let mut mesh = egui::Mesh::with_texture(texture.id());
-    let scale = 1.0 / 96.0;
+    let scale = 1.0 / WOOD_TILE;
     mesh.add_rect_with_uv(
         rect,
         Rect::from_min_size(
             egui::pos2(0.0, 0.0),
             egui::vec2(rect.width() * scale, rect.height() * scale),
         ),
-        Color32::from_white_alpha(14),
+        Color32::WHITE,
     );
     painter.add(egui::Shape::mesh(mesh));
 }
 
-/// A deterministic noise tile, built once and kept in the context.
-#[allow(clippy::cast_precision_loss)]
-fn grain_texture(ctx: &egui::Context) -> egui::TextureHandle {
-    const SIDE: usize = 96;
-    let id = egui::Id::new("valhsync-grain");
+const WOOD_TILE: f32 = 256.0;
+
+/// Deterministic value noise: the same plank on every machine, and no
+/// dependency to draw it.
+fn hash_noise(x: i32, y: i32, seed: u32) -> f32 {
+    #[allow(clippy::cast_sign_loss)]
+    let mut h = (x as u32)
+        .wrapping_mul(0x27d4_eb2d)
+        .wrapping_add((y as u32).wrapping_mul(0x1656_67b1))
+        .wrapping_add(seed.wrapping_mul(0x9e37_79b9));
+    h ^= h >> 15;
+    h = h.wrapping_mul(0x2545_f491);
+    h ^= h >> 13;
+    #[allow(clippy::cast_precision_loss)]
+    {
+        (h & 0xffff) as f32 / 65535.0
+    }
+}
+
+/// Smoothed noise at a point, wrapping on the tile so the texture repeats
+/// without a seam.
+fn smooth_noise(x: f32, y: f32, period: i32, seed: u32) -> f32 {
+    #[allow(clippy::cast_possible_truncation)]
+    let (xi, yi) = (x.floor() as i32, y.floor() as i32);
+    let (xf, yf) = (x - x.floor(), y - y.floor());
+    // Smoothstep, so the bands curve instead of creasing.
+    let (u, v) = (xf * xf * (3.0 - 2.0 * xf), yf * yf * (3.0 - 2.0 * yf));
+    let at = |dx: i32, dy: i32| {
+        hash_noise(
+            (xi + dx).rem_euclid(period),
+            (yi + dy).rem_euclid(period),
+            seed,
+        )
+    };
+    let top = at(0, 0) * (1.0 - u) + at(1, 0) * u;
+    let bottom = at(0, 1) * (1.0 - u) + at(1, 1) * u;
+    top * (1.0 - v) + bottom * v
+}
+
+/// A plank: long grain along x, knots and darker rings from layered noise.
+/// Kept very low in contrast; it is a ground for text, not a wallpaper.
+#[allow(
+    clippy::cast_precision_loss,
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss
+)]
+fn wood_texture(ctx: &egui::Context) -> egui::TextureHandle {
+    let id = egui::Id::new("valhsync-wood");
     if let Some(handle) = ctx.data(|d| d.get_temp::<egui::TextureHandle>(id)) {
         return handle;
     }
-    // A tiny xorshift: the same grain on every machine, and no dependency.
-    let mut state: u32 = 0x1234_5678;
-    let mut pixels = Vec::with_capacity(SIDE * SIDE);
-    for _ in 0..SIDE * SIDE {
-        state ^= state << 13;
-        state ^= state >> 17;
-        state ^= state << 5;
-        #[allow(clippy::cast_possible_truncation)]
-        let n = (state >> 24) as u8;
-        // Mostly transparent, a few brighter specks: dust on wood.
-        pixels.push(Color32::from_white_alpha(n / 6));
+    let side = WOOD_TILE as usize;
+    let mut pixels = Vec::with_capacity(side * side);
+    for y in 0..side {
+        for x in 0..side {
+            let (fx, fy) = (x as f32, y as f32);
+            // Grain runs along x: stretch the noise horizontally.
+            let warp = smooth_noise(fx / 48.0, fy / 12.0, 8, 1) * 2.2
+                + smooth_noise(fx / 16.0, fy / 5.0, 24, 2) * 0.7;
+            let rings = ((fy / 9.0 + warp) * std::f32::consts::TAU).sin() * 0.5 + 0.5;
+            let fibre = smooth_noise(fx / 2.0, fy / 1.2, 128, 3);
+            let knots = smooth_noise(fx / 70.0, fy / 70.0, 4, 4);
+
+            // Two browns, far apart in the source and brought close here.
+            let t = (rings * 0.55 + fibre * 0.25 + knots * 0.20).clamp(0.0, 1.0);
+            let lift = 0.55 + t * 0.45;
+            let r = (0x2A as f32 * lift) as u8;
+            let g = (0x22 as f32 * lift) as u8;
+            let b = (0x18 as f32 * lift) as u8;
+            pixels.push(Color32::from_rgba_unmultiplied(r, g, b, 235));
+        }
     }
     let image = egui::ColorImage {
-        size: [SIDE, SIDE],
+        size: [side, side],
         pixels,
-        source_size: egui::vec2(SIDE as f32, SIDE as f32),
+        source_size: egui::vec2(side as f32, side as f32),
     };
     let handle = ctx.load_texture(
-        "valhsync-grain",
+        "valhsync-wood",
         image,
         egui::TextureOptions {
             wrap_mode: TextureWrapMode::Repeat,
@@ -476,4 +524,55 @@ pub fn icon() -> egui::IconData {
         width: S as u32,
         height: S as u32,
     }
+}
+
+/// A stylised anvil, drawn from three blocks: the face with its horn, the
+/// waist, and the base. Used for the repair action.
+pub fn anvil(painter: &egui::Painter, rect: Rect, colour: Color32) {
+    let (w, h) = (rect.width(), rect.height());
+    let x = |t: f32| rect.min.x + w * t;
+    let y = |t: f32| rect.min.y + h * t;
+
+    // Face, with the horn drawn out to the left.
+    painter.add(egui::Shape::convex_polygon(
+        vec![
+            egui::pos2(x(0.16), y(0.30)),
+            egui::pos2(x(0.92), y(0.30)),
+            egui::pos2(x(0.92), y(0.46)),
+            egui::pos2(x(0.16), y(0.46)),
+        ],
+        colour,
+        Stroke::NONE,
+    ));
+    painter.add(egui::Shape::convex_polygon(
+        vec![
+            egui::pos2(x(0.16), y(0.30)),
+            egui::pos2(x(0.16), y(0.46)),
+            egui::pos2(x(0.02), y(0.40)),
+        ],
+        colour,
+        Stroke::NONE,
+    ));
+    // Waist.
+    painter.add(egui::Shape::convex_polygon(
+        vec![
+            egui::pos2(x(0.42), y(0.46)),
+            egui::pos2(x(0.70), y(0.46)),
+            egui::pos2(x(0.62), y(0.74)),
+            egui::pos2(x(0.50), y(0.74)),
+        ],
+        colour,
+        Stroke::NONE,
+    ));
+    // Base.
+    painter.add(egui::Shape::convex_polygon(
+        vec![
+            egui::pos2(x(0.30), y(0.86)),
+            egui::pos2(x(0.82), y(0.86)),
+            egui::pos2(x(0.78), y(0.74)),
+            egui::pos2(x(0.34), y(0.74)),
+        ],
+        colour,
+        Stroke::NONE,
+    ));
 }

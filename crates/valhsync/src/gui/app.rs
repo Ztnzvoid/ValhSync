@@ -22,6 +22,8 @@ use valhsync_ui::theme as th;
 const NOTICE_TTL: Duration = Duration::from_secs(7);
 /// How often the launcher asks the server again, on its own.
 const AUTO_REFRESH: Duration = Duration::from_secs(25);
+/// Rows of the mod list shown before "show all" takes over.
+const MODS_SHOWN: usize = 6;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Phase {
@@ -41,7 +43,6 @@ enum Msg {
     Prepared(Result<Box<Prepared>, String>),
     Discovered(Result<Box<engine::Discovered>, String>),
     Applied(Result<(Applied, Option<String>), String>),
-    RolledBack(Result<String, String>),
     Done,
 }
 
@@ -50,7 +51,6 @@ enum Job {
     Check,
     Discover,
     Sync,
-    Rollback,
 }
 
 /// Worker-side handle: sends messages and wakes the UI.
@@ -221,6 +221,31 @@ fn mod_rows(prepared: &Prepared) -> Vec<ModRow> {
         .collect()
 }
 
+/// Where the game is, as far as the launcher can tell.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum GameState {
+    Idle,
+    /// Steam was asked to start the game; we are waiting for the process.
+    Launching(Instant),
+    Running,
+}
+
+/// One line of the mod list: a dot, the name, and what will happen to it.
+fn mod_row(ui: &mut egui::Ui, row: &ModRow, lang: Lang) {
+    let (colour, label) = match row.status {
+        ModStatus::Installed => (th::MOSS, text(lang, Key::ModInstalled)),
+        ModStatus::ToInstall => (th::GOLD, text(lang, Key::ModToInstall)),
+        ModStatus::ToUpdate => (th::GOLD_LIT, text(lang, Key::ModToUpdate)),
+    };
+    ui.horizontal(|ui| {
+        valhsync_ui::widgets::dot(ui, colour);
+        ui.label(RichText::new(&row.name).color(th::BONE));
+        ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+            ui.label(RichText::new(label).small().color(colour));
+        });
+    });
+}
+
 #[derive(Debug)]
 enum Status {
     NoServer,
@@ -245,6 +270,8 @@ pub(super) struct App {
     add_dialog: Option<AddDialog>,
     confirm_open: bool,
     settings_open: bool,
+    mods_open: bool,
+    game_state: GameState,
     game_root_input: String,
     last_check: Instant,
     was_focused: bool,
@@ -292,6 +319,8 @@ impl App {
             add_dialog: None,
             confirm_open: false,
             settings_open: false,
+            mods_open: false,
+            game_state: GameState::Idle,
             last_check: Instant::now(),
             was_focused: true,
             fatal,
@@ -393,27 +422,49 @@ impl App {
         });
     }
 
-    fn start_rollback(&mut self) {
-        if self.busy() {
-            return;
-        }
-        self.start_job(Job::Rollback, move |rep| {
-            let result = Context::discover()
-                .and_then(|ctx| engine::rollback(&ctx))
-                .map(|(stamp, _)| stamp)
-                .map_err(|e| e.to_string());
-            rep.send(Msg::RolledBack(result));
-        });
-    }
-
-    fn on_play(&mut self) {
+    /// One button, three jobs: bring the installation up to date, then start
+    /// the game, and say which it is doing.
+    fn on_action(&mut self) {
         let Some(p) = &self.prepared else {
             return;
         };
-        if p.needs_confirmation && !p.is_up_to_date() {
+        if p.is_up_to_date() {
+            self.launch_game();
+        } else if p.needs_confirmation {
             self.confirm_open = true;
         } else {
-            self.start_sync(true);
+            self.start_sync(false);
+        }
+    }
+
+    fn launch_game(&mut self) {
+        let Some(p) = &self.prepared else {
+            return;
+        };
+        match game::launch(&p.install, &p.manifest.game_address) {
+            Ok(_) => self.game_state = GameState::Launching(Instant::now()),
+            Err(e) => self.notify(e.to_string(), th::BLOOD_LIT),
+        }
+    }
+
+    /// Follow the game after Steam was asked to start it, so the button can
+    /// say what is actually happening.
+    fn track_game(&mut self) {
+        match self.game_state {
+            GameState::Idle => {}
+            GameState::Launching(since) => {
+                if game::is_running() {
+                    self.game_state = GameState::Running;
+                } else if since.elapsed() > Duration::from_secs(90) {
+                    // Steam never brought it up; stop claiming otherwise.
+                    self.game_state = GameState::Idle;
+                }
+            }
+            GameState::Running => {
+                if !game::is_running() {
+                    self.game_state = GameState::Idle;
+                }
+            }
         }
     }
 
@@ -519,10 +570,7 @@ impl App {
                         None => self.notify(summary, th::MOSS),
                     }
                 }
-                Msg::Applied(Err(e)) | Msg::RolledBack(Err(e)) => self.notify(e, th::BLOOD_LIT),
-                Msg::RolledBack(Ok(stamp)) => {
-                    self.notify(format!("{} ({stamp})", self.t(Key::RolledBack)), th::MOSS);
-                }
+                Msg::Applied(Err(e)) => self.notify(e, th::BLOOD_LIT),
                 Msg::Done => finished = true,
             }
         }
@@ -560,6 +608,7 @@ impl App {
 impl eframe::App for App {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         self.drain_messages();
+        self.track_game();
         self.auto_refresh(ctx);
         if self.busy() {
             ctx.request_repaint_after(Duration::from_millis(100));
@@ -588,7 +637,7 @@ impl eframe::App for App {
                     });
                     return;
                 }
-                self.server_row(ui);
+                self.action_bar(ui);
                 ui.add_space(12.0);
                 if self.book.servers.is_empty() {
                     self.empty_state(ui);
@@ -601,7 +650,11 @@ impl eframe::App for App {
                 }
             });
 
+        // The window is as tall as what it shows: a server with three mods
+        // must not leave half the plank empty.
+        chrome::fit_to_content(ctx, egui::vec2(720.0, 380.0), egui::vec2(940.0, 900.0));
         chrome::draw_border(ctx);
+        self.mods_dialog(ctx);
         self.add_dialog(ctx);
         self.confirm_dialog(ctx);
         self.settings_dialog(ctx);
@@ -673,7 +726,9 @@ impl App {
             });
     }
 
-    fn server_row(&mut self, ui: &mut egui::Ui) {
+    /// Pick a server, add one, drop one, and the action the whole window is
+    /// built around.
+    fn action_bar(&mut self, ui: &mut egui::Ui) {
         let servers: Vec<(String, String)> = self
             .book
             .servers
@@ -681,6 +736,8 @@ impl App {
             .map(|s| (s.id.clone(), s.name.clone()))
             .collect();
         let before = self.selected.clone();
+        let mut forget = false;
+
         ui.horizontal(|ui| {
             if !servers.is_empty() {
                 let current = servers
@@ -690,7 +747,7 @@ impl App {
                     .to_string();
                 egui::ComboBox::from_id_salt("server")
                     .selected_text(RichText::new(current).strong())
-                    .width(260.0)
+                    .width(240.0)
                     .show_ui(ui, |ui| {
                         for (id, name) in &servers {
                             ui.selectable_value(&mut self.selected, Some(id.clone()), name);
@@ -703,15 +760,144 @@ impl App {
             {
                 self.add_dialog = Some(AddDialog::default());
             }
+            if !servers.is_empty()
+                && ui
+                    .add_enabled(!self.busy(), egui::Button::new("✕"))
+                    .on_hover_text(self.t(Key::ForgetServer))
+                    .clicked()
+            {
+                forget = true;
+            }
+
+            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                self.action_button(ui);
+                self.repair_button(ui);
+            });
         });
+
+        if forget {
+            self.forget_selected();
+        }
         if before != self.selected {
             if let Some(id) = &self.selected {
                 self.book.set_default(id);
                 let _ = self.book.save(&self.paths);
             }
             self.prepared = None;
+            self.mods.clear();
             self.check();
         }
+    }
+
+    /// PLAY, UPDATE, or what the game is doing right now.
+    fn action_button(&mut self, ui: &mut egui::Ui) {
+        let pending = self.prepared.as_ref().is_some_and(|p| !p.is_up_to_date());
+        let ready = matches!(self.status, Status::Ready) && !self.busy();
+
+        let label = match self.game_state {
+            GameState::Launching(since) => {
+                // Three dots that fill and clear once a second.
+                let dots = ".".repeat(1 + (since.elapsed().as_millis() / 400 % 3) as usize);
+                format!("{}{dots}", self.t(Key::Launching2))
+            }
+            GameState::Running => self.t(Key::Launching2).to_string(),
+            GameState::Idle if pending => self.t(Key::Update).to_string(),
+            GameState::Idle => self.t(Key::Play).to_string(),
+        };
+        let enabled = ready && self.game_state == GameState::Idle;
+        let (ink, plate) = if enabled {
+            (th::NIGHT, th::GOLD)
+        } else {
+            (th::BONE_DIM, th::LEATHER)
+        };
+        let button = ui.add_enabled(
+            enabled,
+            egui::Button::new(
+                RichText::new(label)
+                    .font(th::display_font(18.0))
+                    .strong()
+                    .color(ink),
+            )
+            .fill(plate)
+            .corner_radius(4)
+            .min_size(egui::vec2(220.0, 44.0)),
+        );
+        if enabled {
+            let heat = if button.hovered() { 0.30 } else { 0.16 };
+            th::glow(ui.painter(), button.rect, th::GOLD.gamma_multiply(heat));
+            th::brackets(ui.painter(), button.rect.expand(4.0), th::EDGE);
+        }
+        if button.clicked() {
+            self.on_action();
+        }
+    }
+
+    /// The anvil: put everything back the way the server has it.
+    fn repair_button(&mut self, ui: &mut egui::Ui) {
+        let enabled = matches!(self.status, Status::Ready)
+            && !self.busy()
+            && self.game_state == GameState::Idle;
+        let (rect, response) = ui.allocate_exact_size(egui::vec2(44.0, 44.0), egui::Sense::click());
+        let hovered = response.hovered() && enabled;
+        ui.painter().rect(
+            rect,
+            4.0,
+            if hovered { th::EDGE_SOFT } else { th::LEATHER },
+            egui::Stroke::new(1.0, if hovered { th::GOLD } else { th::EDGE_SOFT }),
+            egui::StrokeKind::Inside,
+        );
+        let ink = match (enabled, hovered) {
+            (false, _) => th::BONE_DIM.gamma_multiply(0.5),
+            (true, false) => th::BONE_DIM,
+            (true, true) => th::GOLD_LIT,
+        };
+        th::anvil(ui.painter(), rect.shrink(11.0), ink);
+        let response = response.on_hover_text(format!(
+            "{} — {}",
+            self.t(Key::Repair),
+            self.t(Key::RepairHint)
+        ));
+        if enabled && response.clicked() {
+            self.start_repair();
+        }
+    }
+
+    /// Re-plan with every file enforced, then apply it.
+    fn start_repair(&mut self) {
+        let Some(server) = self.selected_server() else {
+            return;
+        };
+        self.status = Status::Checking;
+        self.last_check = Instant::now();
+        self.start_job(Job::Sync, move |mut rep| {
+            let result = (|| {
+                let mut ctx = Context::discover()?;
+                ctx.repair = true;
+                let prepared = engine::prepare(&ctx, &server, &mut rep)?;
+                engine::apply(&ctx, &prepared, &mut rep)
+            })()
+            .map_err(|e| e.to_string())
+            .map(|applied| (applied, None));
+            rep.send(Msg::Applied(result));
+        });
+    }
+
+    fn forget_selected(&mut self) {
+        let Some(id) = self.selected.clone() else {
+            return;
+        };
+        if let Ok(removed) = self.book.remove(&id) {
+            let _ = self.book.save(&self.paths);
+            self.notify(
+                format!("{}: {}", self.t(Key::Forget), removed.name),
+                th::GOLD_LIT,
+            );
+        }
+        self.selected = self.book.resolve(None).ok().map(|s| s.id.clone());
+        self.prepared = None;
+        self.mods.clear();
+        self.status = Status::NoServer;
+        self.check();
     }
 
     fn empty_state(&mut self, ui: &mut egui::Ui) {
@@ -768,69 +954,40 @@ impl App {
             });
             ui.add_space(10.0);
             self.status_block(ui);
-            ui.add_space(14.0);
-
-            let can_play = matches!(self.status, Status::Ready) && !self.busy();
-            ui.vertical_centered(|ui| {
-                let (ink, plate) = if can_play {
-                    (th::NIGHT, th::GOLD)
-                } else {
-                    (th::BONE_DIM, th::LEATHER)
-                };
-                let play = ui.add_enabled(
-                    can_play,
-                    egui::Button::new(
-                        RichText::new(self.t(Key::Play))
-                            .font(th::display_font(22.0))
-                            .strong()
-                            .color(ink),
-                    )
-                    .fill(plate)
-                    .corner_radius(4)
-                    .min_size(egui::vec2(280.0, 56.0)),
-                );
-                if can_play {
-                    // A brass plate under torchlight: brighter as the pointer
-                    // comes to rest on it.
-                    let heat = if play.hovered() { 0.30 } else { 0.16 };
-                    th::glow(ui.painter(), play.rect, th::GOLD.gamma_multiply(heat));
-                    th::brackets(ui.painter(), play.rect.expand(5.0), th::EDGE);
-                }
-                if play.clicked() {
-                    self.on_play();
-                }
-            });
-            ui.add_space(12.0);
-
-            ui.horizontal_wrapped(|ui| {
+            let set_aside = self
+                .prepared
+                .as_ref()
+                .map(|p| engine::quarantine_dir(&p.install.root))
+                .filter(|q| q.is_dir());
+            if let Some(folder) = set_aside {
+                ui.add_space(8.0);
+                ui.horizontal(|ui| {
+                    valhsync_ui::widgets::dot(ui, th::RUNE);
+                    ui.label(
+                        RichText::new(self.t(Key::SetAsideHint))
+                            .small()
+                            .color(th::BONE_DIM),
+                    );
+                });
                 if ui
-                    .add_enabled(can_play, egui::Button::new(self.t(Key::Rollback)))
+                    .small_button(self.t(Key::SetAside))
+                    .on_hover_text(folder.display().to_string())
                     .clicked()
                 {
-                    self.start_rollback();
+                    open_folder(&folder);
                 }
-                let quarantine = self
-                    .prepared
-                    .as_ref()
-                    .map(|p| engine::quarantine_dir(&p.install.root))
-                    .filter(|q| q.is_dir());
-                let has_quarantine = quarantine.is_some();
-                if ui
-                    .add_enabled(has_quarantine, egui::Button::new(self.t(Key::SetAside)))
-                    .on_hover_text(self.t(Key::SetAsideHint))
-                    .on_disabled_hover_text(self.t(Key::SetAsideNone))
-                    .clicked()
-                    && let Some(q) = quarantine
-                {
-                    open_folder(&q);
-                }
+            }
+
+            ui.add_space(10.0);
+            ui.horizontal(|ui| {
+                let idle = self.game_state == GameState::Idle;
                 let vanilla_label = match self.mods_state {
                     Some(vanilla::ModsState::Off) => self.t(Key::ModsEnabled).trim_end_matches('.'),
                     _ => self.t(Key::PlayVanilla),
                 };
                 if ui
                     .add_enabled(
-                        can_play && self.mods_state.is_some(),
+                        idle && !self.busy() && self.mods_state.is_some(),
                         egui::Button::new(vanilla_label),
                     )
                     .clicked()
@@ -852,8 +1009,8 @@ impl App {
         });
     }
 
-    /// What the selected server ships, and where this machine stands on each
-    /// of them.
+    /// One row per mod, with what the next sync will do to it. Long packs
+    /// are cut off: a launcher with forty mods must not become a wall.
     fn mods_card(&mut self, ui: &mut egui::Ui) {
         th::card().show(ui, |ui| {
             ui.set_width(ui.available_width());
@@ -861,26 +1018,43 @@ impl App {
                 ui,
                 &format!("{} ({})", self.t(Key::ServerMods), self.mods.len()),
             );
-            egui::ScrollArea::vertical()
-                .max_height(150.0)
-                .id_salt("mods")
-                .show(ui, |ui| {
-                    for row in &self.mods {
-                        let (colour, label) = match row.status {
-                            ModStatus::Installed => (th::MOSS, self.t(Key::ModInstalled)),
-                            ModStatus::ToInstall => (th::GOLD, self.t(Key::ModToInstall)),
-                            ModStatus::ToUpdate => (th::GOLD_LIT, self.t(Key::ModToUpdate)),
-                        };
-                        ui.horizontal(|ui| {
-                            valhsync_ui::widgets::dot(ui, colour);
-                            ui.label(RichText::new(&row.name).color(th::BONE));
-                            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                                ui.label(RichText::new(label).small().color(colour));
-                            });
-                        });
-                    }
-                });
+            for row in self.mods.iter().take(MODS_SHOWN) {
+                mod_row(ui, row, self.lang);
+            }
+            if self.mods.len() > MODS_SHOWN {
+                ui.add_space(4.0);
+                if ui
+                    .button(format!("{} ({})", self.t(Key::ShowAll), self.mods.len()))
+                    .clicked()
+                {
+                    self.mods_open = true;
+                }
+            }
         });
+    }
+
+    /// The whole pack, when the player asks for it.
+    fn mods_dialog(&mut self, ctx: &egui::Context) {
+        if !self.mods_open {
+            return;
+        }
+        let mut open = true;
+        egui::Window::new(self.t(Key::ServerMods))
+            .collapsible(false)
+            .resizable(false)
+            .open(&mut open)
+            .anchor(egui::Align2::CENTER_CENTER, egui::vec2(0.0, 0.0))
+            .default_width(520.0)
+            .show(ctx, |ui| {
+                egui::ScrollArea::vertical()
+                    .max_height(420.0)
+                    .show(ui, |ui| {
+                        for row in &self.mods {
+                            mod_row(ui, row, self.lang);
+                        }
+                    });
+            });
+        self.mods_open = open;
     }
 
     #[allow(clippy::too_many_lines)] // one screen region, read top to bottom

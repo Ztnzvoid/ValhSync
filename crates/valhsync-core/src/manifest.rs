@@ -449,7 +449,7 @@ pub(crate) mod tests {
         }
         for ok in [
             "valheim.example.org:2456",
-            "192.168.1.13:2456",
+            "192.168.1.50:2456",
             "[2001:db8::1]:2456",
             "my-server_1.net:2456",
         ] {
@@ -458,7 +458,7 @@ pub(crate) mod tests {
         assert!(!is_clean_text("Evil\u{1b}[2J", 100));
         assert!(!is_clean_text("line\nbreak", 100));
         assert!(!is_clean_text("   ", 100));
-        assert!(is_clean_text("Serveur de Ztnzvoid", 100));
+        assert!(is_clean_text("Serveur de test", 100));
         let mut m = sample();
         m.server_name = "Spoof\u{1b}[1A".into();
         assert!(m.validate(&roots(), &Limits::default()).is_err());
@@ -467,7 +467,7 @@ pub(crate) mod tests {
     #[test]
     fn private_hosts_are_recognised() {
         for p in [
-            "192.168.1.13:2456",
+            "192.168.1.50:2456",
             "10.0.0.5:2456",
             "172.16.4.1:2456",
             "127.0.0.1:2456",

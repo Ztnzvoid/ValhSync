@@ -146,7 +146,7 @@ mod tests {
         let inv = Invite::new(
             "http://valheim.example.org:2470/",
             &kp.public(),
-            "Serveur de Ztnzvoid",
+            "Serveur de test",
         );
         let code = inv.encode().unwrap();
         assert!(code.starts_with(PREFIX));

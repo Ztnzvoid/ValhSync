@@ -26,6 +26,26 @@ pub fn viewport(title: &str, size: [f32; 2], min_size: [f32; 2]) -> egui::Viewpo
         .with_icon(th::icon())
 }
 
+/// Size the window to what it actually shows, between `min` and `max`.
+///
+/// Call at the end of a frame. A few pixels of slack stop the window from
+/// oscillating when a row appears and disappears; a maximised window is left
+/// alone.
+pub fn fit_to_content(ctx: &egui::Context, min: egui::Vec2, max: egui::Vec2) {
+    if ctx.input(|i| i.viewport().maximized.unwrap_or(false)) {
+        return;
+    }
+    let used = ctx.used_rect().size();
+    let want = egui::vec2(
+        used.x.clamp(min.x, max.x),
+        (used.y + 2.0).clamp(min.y, max.y),
+    );
+    let have = ctx.screen_rect().size();
+    if (want.y - have.y).abs() > 8.0 || (want.x - have.x).abs() > 8.0 {
+        ctx.send_viewport_cmd(ViewportCommand::InnerSize(want));
+    }
+}
+
 /// Draw the window's own edge, on top of everything: with the system frame
 /// gone, this hairline is what separates the window from the desktop.
 pub fn draw_border(ctx: &egui::Context) {

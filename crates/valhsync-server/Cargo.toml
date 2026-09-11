@@ -31,7 +31,6 @@ bytes.workspace = true
 time.workspace = true
 sysinfo.workspace = true
 eframe.workspace = true
-sys-locale.workspace = true
 reqwest.workspace = true
 
 
