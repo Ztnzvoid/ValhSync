@@ -101,6 +101,19 @@ pub fn start(launch: &Launch) -> Result<()> {
     };
 
     cmd.current_dir(cwd);
+    // The scripts Iron Gate ships call `valheim_server.exe` by bare name, so
+    // the folder has to be searched. Relying on the current directory is not
+    // enough: `NoDefaultCurrentDirectoryInExePath` switches that off, and
+    // plenty of shells and launchers set it. Put the folder on the child's
+    // PATH instead, which works either way.
+    cmd.env_remove("NoDefaultCurrentDirectoryInExePath");
+    let mut search = vec![cwd.to_path_buf()];
+    if let Some(existing) = std::env::var_os("PATH") {
+        search.extend(std::env::split_paths(&existing));
+    }
+    if let Ok(path) = std::env::join_paths(search) {
+        cmd.env("PATH", path);
+    }
     spawn_in_new_console(&mut cmd);
     cmd.spawn()
         .with_context(|| format!("cannot start {}", launch.describe()))?;
