@@ -39,8 +39,6 @@ pub enum Key {
     AddServer,
     NoServerHint,
     Checking,
-    PackReachable,
-    PackUnreachable,
     GameUp,
     GameDown,
     UpToDate,
@@ -53,9 +51,6 @@ pub enum Key {
     RepairHint,
     ForgetServer,
     SetAsideCount,
-    PlayVanilla,
-    ModsDisabled,
-    ModsEnabled,
     Rollback,
     SetAside,
     SetAsideHint,
@@ -126,8 +121,6 @@ fn fr(key: Key) -> &'static str {
             "Collez le code d'invitation que l'admin vous a envoyé, ou placez son fichier valhsync-invite.txt à côté de valhsync.exe."
         }
         Key::Checking => "Vérification auprès du serveur…",
-        Key::PackReachable => "Pack accessible",
-        Key::PackUnreachable => "Pack injoignable",
         Key::GameUp => "Serveur de jeu en ligne",
         Key::GameDown => "Serveur de jeu arrêté — vous ne pourrez pas vous connecter",
         Key::UpToDate => "À jour",
@@ -142,9 +135,6 @@ fn fr(key: Key) -> &'static str {
         }
         Key::ForgetServer => "Retirer ce serveur de la liste",
         Key::SetAsideCount => "mods mis de côté",
-        Key::PlayVanilla => "Jouer sans mods",
-        Key::ModsDisabled => "Mods désactivés. La prochaine synchronisation les rétablira.",
-        Key::ModsEnabled => "Mods réactivés.",
         Key::Rollback => "Revenir à la version précédente",
         Key::SetAside => "Mods mis de côté",
         Key::SetAsideHint => {
@@ -219,8 +209,6 @@ fn en(key: Key) -> &'static str {
             "Paste the invite code your admin sent you, or drop their valhsync-invite.txt next to valhsync.exe."
         }
         Key::Checking => "Checking with the server…",
-        Key::PackReachable => "Pack reachable",
-        Key::PackUnreachable => "Pack unreachable",
         Key::GameUp => "Game server online",
         Key::GameDown => "Game server stopped — you will not be able to join",
         Key::UpToDate => "Up to date",
@@ -235,9 +223,6 @@ fn en(key: Key) -> &'static str {
         }
         Key::ForgetServer => "Remove this server from the list",
         Key::SetAsideCount => "mods set aside",
-        Key::PlayVanilla => "Play without mods",
-        Key::ModsDisabled => "Mods disabled. The next sync will restore them.",
-        Key::ModsEnabled => "Mods enabled again.",
         Key::Rollback => "Go back to the previous version",
         Key::SetAside => "Mods set aside",
         Key::SetAsideHint => {

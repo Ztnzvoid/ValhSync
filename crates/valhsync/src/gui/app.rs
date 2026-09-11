@@ -15,7 +15,7 @@ use crate::engine::{self, Applied, Context, Event, Prepared, Progress};
 use crate::paths::AppPaths;
 use crate::servers::{KnownServer, ServerBook};
 use crate::settings::Settings;
-use crate::{game, invite_file, vanilla};
+use crate::{game, invite_file};
 use valhsync_ui::frame as chrome;
 use valhsync_ui::theme as th;
 
@@ -279,7 +279,6 @@ pub(super) struct App {
     status: Status,
     prepared: Option<Prepared>,
     mods: Vec<ModRow>,
-    mods_state: Option<vanilla::ModsState>,
     job: Option<(Job, Receiver<Msg>)>,
     progress: Option<ProgressView>,
     notice: Option<(String, Color32, Instant)>,
@@ -334,7 +333,6 @@ impl App {
             status: Status::NoServer,
             prepared: None,
             mods: Vec::new(),
-            mods_state: None,
             job: None,
             progress: None,
             notice: None,
@@ -493,35 +491,6 @@ impl App {
         }
     }
 
-    fn toggle_vanilla(&mut self) {
-        let Some(root) = self.prepared.as_ref().map(|p| p.install.root.clone()) else {
-            return;
-        };
-        if game::is_running() {
-            self.notify(crate::SyncError::GameRunning.to_string(), th::BLOOD_LIT);
-            return;
-        }
-        let want_on = self.mods_state == Some(vanilla::ModsState::Off);
-        match vanilla::set(&root, want_on) {
-            Ok(state) => {
-                self.mods_state = Some(state);
-                let key = if want_on {
-                    Key::ModsEnabled
-                } else {
-                    Key::ModsDisabled
-                };
-                self.notify(self.t(key).to_string(), th::GOLD_LIT);
-                if !want_on
-                    && let Some(p) = &self.prepared
-                    && let Ok(_) = game::launch(&p.install, &p.manifest.game_address)
-                {
-                    self.notify(self.t(Key::Launching).to_string(), th::MOSS);
-                }
-            }
-            Err(e) => self.notify(e.to_string(), th::BLOOD_LIT),
-        }
-    }
-
     fn drain_messages(&mut self) {
         let Some((job, rx)) = &self.job else {
             return;
@@ -556,7 +525,6 @@ impl App {
                 }
                 Msg::Prepared(Ok(prepared)) => {
                     self.mods = mod_rows(&prepared);
-                    self.mods_state = Some(vanilla::state(&prepared.install.root));
                     self.prepared = Some(*prepared);
                     self.status = Status::Ready;
                 }
@@ -969,37 +937,26 @@ impl App {
         };
         th::card().show(ui, |ui| {
             ui.set_width(ui.available_width());
-            ui.label(
-                RichText::new(&server.name)
-                    .size(20.0)
-                    .strong()
-                    .color(th::GOLD_LIT),
-            );
             ui.horizontal(|ui| {
-                // This dot is about the pack, not the game: a player who
-                // reads "online" must not think they can join.
-                let (colour, label) = match &self.status {
-                    Status::Checking => (th::BONE_DIM, self.t(Key::Checking)),
-                    Status::Error(failure) if failure.offline => {
-                        (th::BLOOD_LIT, self.t(Key::PackUnreachable))
-                    }
-                    Status::Error(_) => (th::GOLD, self.t(Key::PackUnreachable)),
-                    _ => (th::MOSS, self.t(Key::PackReachable)),
+                // A lamp beside the name: lit brass when the pack answers,
+                // dull metal when it does not. No word needed.
+                let lamp = match &self.status {
+                    Status::Ready => th::GOLD_LIT,
+                    Status::Checking => th::GOLD.gamma_multiply(0.55),
+                    // Unreachable is the dullest: the server said nothing at
+                    // all. Any other failure means it answered.
+                    Status::Error(failure) if failure.offline => th::GOLD.gamma_multiply(0.18),
+                    _ => th::GOLD.gamma_multiply(0.40),
                 };
-                valhsync_ui::widgets::dot(ui, colour);
-                ui.label(RichText::new(label).small().strong().color(colour));
-                ui.label(RichText::new("·").small().color(th::EDGE));
-                ui.label(RichText::new(&server.url).small().color(th::BONE_DIM));
+                valhsync_ui::widgets::dot(ui, lamp);
                 ui.label(
-                    RichText::new(format!(
-                        "{}: {}",
-                        self.t(Key::KeyFingerprint),
-                        server.fingerprint()
-                    ))
-                    .small()
-                    .color(th::RUNE),
+                    RichText::new(&server.name)
+                        .size(20.0)
+                        .strong()
+                        .color(th::GOLD_LIT),
                 );
             });
+            ui.label(RichText::new(&server.url).small().color(th::BONE_DIM));
             if let Some(up) = self.prepared.as_ref().and_then(|p| p.game_server_up) {
                 let (colour, label) = if up {
                     (th::MOSS, self.t(Key::GameUp))
@@ -1035,24 +992,6 @@ impl App {
                     open_folder(&folder);
                 }
             }
-
-            ui.add_space(10.0);
-            ui.horizontal(|ui| {
-                let idle = self.game_state == GameState::Idle;
-                let vanilla_label = match self.mods_state {
-                    Some(vanilla::ModsState::Off) => self.t(Key::ModsEnabled).trim_end_matches('.'),
-                    _ => self.t(Key::PlayVanilla),
-                };
-                if ui
-                    .add_enabled(
-                        idle && !self.busy() && self.mods_state.is_some(),
-                        egui::Button::new(vanilla_label),
-                    )
-                    .clicked()
-                {
-                    self.toggle_vanilla();
-                }
-            });
 
             if let Some(hint) = self
                 .prepared
