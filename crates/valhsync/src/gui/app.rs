@@ -976,13 +976,15 @@ impl App {
                     .color(th::GOLD_LIT),
             );
             ui.horizontal(|ui| {
+                // This dot is about the pack, not the game: a player who
+                // reads "online" must not think they can join.
                 let (colour, label) = match &self.status {
                     Status::Checking => (th::BONE_DIM, self.t(Key::Checking)),
                     Status::Error(failure) if failure.offline => {
-                        (th::BLOOD_LIT, self.t(Key::Offline))
+                        (th::BLOOD_LIT, self.t(Key::PackUnreachable))
                     }
-                    Status::Error(_) => (th::GOLD, self.t(Key::Offline)),
-                    _ => (th::MOSS, self.t(Key::Online)),
+                    Status::Error(_) => (th::GOLD, self.t(Key::PackUnreachable)),
+                    _ => (th::MOSS, self.t(Key::PackReachable)),
                 };
                 valhsync_ui::widgets::dot(ui, colour);
                 ui.label(RichText::new(label).small().strong().color(colour));
@@ -998,6 +1000,16 @@ impl App {
                     .color(th::RUNE),
                 );
             });
+            if let Some(up) = self.prepared.as_ref().and_then(|p| p.game_server_up) {
+                let (colour, label) = if up {
+                    (th::MOSS, self.t(Key::GameUp))
+                } else {
+                    (th::BLOOD_LIT, self.t(Key::GameDown))
+                };
+                ui.add_space(4.0);
+                valhsync_ui::widgets::status_dot(ui, colour, label);
+            }
+
             ui.add_space(10.0);
             self.status_block(ui);
             let set_aside = self

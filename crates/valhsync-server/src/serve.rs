@@ -33,6 +33,9 @@ struct AppState {
     server_name: String,
     /// Base64url public key, so a player who only has an address can pin it.
     pubkey: String,
+    /// True when this process runs beside the dedicated server, and can
+    /// therefore say whether the game is up.
+    colocated: bool,
 }
 
 impl AppState {
@@ -75,6 +78,9 @@ pub fn prepare(cfg: &Config, keypair: Keypair, data_dir: PathBuf, watch: bool) -
         invite,
         server_name: cfg.server.name.trim().to_string(),
         pubkey: keypair.public().to_b64(),
+        // Only a publisher sitting next to the game server can see it. One
+        // publishing a copy of the pack from elsewhere must not guess.
+        colocated: cfg.pack.server_root.is_some() || cfg.game_server.start_script.is_some(),
     });
 
     let watcher = if watch {
@@ -309,8 +315,18 @@ async fn file(State(st): State<Arc<AppState>>, Path(hash): Path<String>) -> Resp
 
 async fn health(State(st): State<Arc<AppState>>) -> Response {
     let cur = st.current();
+    let game_server = if st.colocated {
+        if crate::gameserver::is_running() {
+            "running"
+        } else {
+            "stopped"
+        }
+    } else {
+        "unknown"
+    };
     let body = serde_json::json!({
         "status": "ok",
+        "game_server": game_server,
         "server_name": cur.manifest.server_name,
         "pack_id": cur.manifest.pack_id,
         "files": cur.manifest.files.len(),

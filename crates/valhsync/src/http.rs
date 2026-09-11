@@ -94,6 +94,22 @@ impl Client {
         })
     }
 
+    /// What the publisher says about the game server, if it is in a position
+    /// to know. Unsigned and purely informational: it decides what a label
+    /// says, never what gets installed.
+    pub fn fetch_game_server_state(&self, base_url: &str) -> Option<bool> {
+        let base = base_url.trim_end_matches('/');
+        let bytes = self
+            .get_limited(&format!("{base}/health"), "the server status", 8192)
+            .ok()?;
+        let json: serde_json::Value = serde_json::from_slice(&bytes).ok()?;
+        match json.get("game_server")?.as_str()? {
+            "running" => Some(true),
+            "stopped" => Some(false),
+            _ => None,
+        }
+    }
+
     /// Manifest and signature, verified against the pinned key before parsing.
     pub fn fetch_manifest(
         &self,

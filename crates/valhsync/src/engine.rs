@@ -129,6 +129,9 @@ pub struct Prepared {
     /// First sync ever, or first sync with this server: the plan should be
     /// shown and confirmed.
     pub needs_confirmation: bool,
+    /// Whether the Valheim dedicated server is up, when the publisher is in a
+    /// position to know. `None` means nobody can say.
+    pub game_server_up: Option<bool>,
 }
 
 impl Prepared {
@@ -232,6 +235,7 @@ pub fn prepare(
     progress.on(Event::Planned(&plan));
     let needs_confirmation = previous.as_ref().is_none_or(|p| p.server_id != server.id);
     Ok(Prepared {
+        game_server_up: ctx.client.fetch_game_server_state(&server.url),
         server: server.clone(),
         install,
         manifest,
