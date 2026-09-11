@@ -199,8 +199,10 @@ pub(super) fn check_link(cfg: &Config, data_dir: &Path) -> Result<Msg> {
 
 /// Ask a public echo service what address the internet sees us as.
 ///
-/// A deliberate outbound call to a third party, so it only ever happens when
-/// the admin presses the button, and the service is named in the interface.
+/// An outbound call to a third party, repeated on a timer by the window: an
+/// admin who had to press a button for it ended up publishing a stale address
+/// after a reboot. It sends nothing but the request, and the service is named
+/// in the interface next to what it answered.
 pub(super) const IP_ECHO_SERVICE: &str = "https://api.ipify.org";
 
 pub(super) fn public_ip() -> Result<Msg> {

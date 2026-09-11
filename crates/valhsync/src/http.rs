@@ -13,9 +13,26 @@ use crate::error::{Result, SyncError};
 pub const MANIFEST_MAX_BYTES: u64 = 8 * 1024 * 1024;
 const CHUNK: usize = 64 * 1024;
 
+/// Long enough for a slow handshake, short enough that a server which has gone
+/// away is reported as away rather than waited on.
+const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
+
+/// Ceiling for the small control requests. A reboot leaves NAT rules that
+/// accept the connection and then answer nothing: `connect_timeout` does not
+/// cover that, only this does. The launcher re-checks every 25s, so anything
+/// longer than that is a check the player watches instead of a status.
+const CONTROL_TIMEOUT: Duration = Duration::from_secs(15);
+
+/// Ceiling for one file download.
+const DOWNLOAD_TIMEOUT: Duration = Duration::from_secs(900);
+
 #[derive(Debug, Clone)]
 pub struct Client {
+    /// Downloads: one file can be large and slow, so the ceiling is high.
     inner: reqwest::blocking::Client,
+    /// Key, health, manifest and signature. These are a few kilobytes and
+    /// answer immediately or not at all, so they get a short leash.
+    control: reqwest::blocking::Client,
 }
 
 fn unreachable(url: &str, e: reqwest::Error) -> SyncError {
@@ -27,25 +44,35 @@ fn unreachable(url: &str, e: reqwest::Error) -> SyncError {
 
 impl Client {
     pub fn new() -> Result<Self> {
-        let inner = reqwest::blocking::Client::builder()
-            .user_agent(concat!("valhsync/", env!("CARGO_PKG_VERSION")))
-            .connect_timeout(Duration::from_secs(10))
-            // A redirect can only lead to another http(s) URL, and not far.
-            .redirect(reqwest::redirect::Policy::limited(3))
-            // Whole-request ceiling: generous enough for a 200 MiB file on a
-            // slow link, finite so a stalled connection cannot hang the launcher.
-            .timeout(Duration::from_secs(900))
-            .build()
-            .map_err(|e| SyncError::Other(format!("cannot create HTTP client: {e}")))?;
-        Ok(Self { inner })
+        Self::with_timeouts(CONTROL_TIMEOUT, DOWNLOAD_TIMEOUT)
     }
 
-    fn get(&self, url: &str, what: &str) -> Result<reqwest::blocking::Response> {
-        let resp = self
-            .inner
-            .get(url)
-            .send()
-            .map_err(|e| unreachable(url, e))?;
+    fn with_timeouts(control: Duration, download: Duration) -> Result<Self> {
+        let base = || {
+            reqwest::blocking::Client::builder()
+                .user_agent(concat!("valhsync/", env!("CARGO_PKG_VERSION")))
+                .connect_timeout(CONNECT_TIMEOUT)
+                // A redirect can only lead to another http(s) URL, and not far.
+                .redirect(reqwest::redirect::Policy::limited(3))
+        };
+        let make = |b: reqwest::blocking::ClientBuilder| {
+            b.build()
+                .map_err(|e| SyncError::Other(format!("cannot create HTTP client: {e}")))
+        };
+        Ok(Self {
+            // Whole-request ceiling: generous enough for a 200 MiB file on a
+            // slow link, finite so a stalled connection cannot hang the launcher.
+            inner: make(base().timeout(download))?,
+            control: make(base().timeout(control))?,
+        })
+    }
+
+    fn get(
+        client: &reqwest::blocking::Client,
+        url: &str,
+        what: &str,
+    ) -> Result<reqwest::blocking::Response> {
+        let resp = client.get(url).send().map_err(|e| unreachable(url, e))?;
         let status = resp.status();
         if !status.is_success() {
             return Err(SyncError::HttpStatus {
@@ -59,7 +86,7 @@ impl Client {
 
     /// Fetch at most `max` bytes; more is an error, not a truncation.
     fn get_limited(&self, url: &str, what: &str, max: u64) -> Result<Vec<u8>> {
-        let mut resp = self.get(url, what)?;
+        let mut resp = Self::get(&self.control, url, what)?;
         if resp.content_length().is_some_and(|len| len > max) {
             return Err(SyncError::Other(format!("{what} is unexpectedly large")));
         }
@@ -150,7 +177,7 @@ impl Client {
             reason,
         };
 
-        let mut resp = self.get(&url, &entry.path)?;
+        let mut resp = Self::get(&self.inner, &url, &entry.path)?;
         if resp.content_length().is_some_and(|len| len != entry.size) {
             return Err(fail(format!(
                 "server announces {} bytes, manifest says {}",
@@ -202,5 +229,57 @@ impl Client {
             )));
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::net::TcpListener;
+    use std::time::Instant;
+
+    /// A port forward that outlived the machine behind it accepts the
+    /// connection and then answers nothing. `connect_timeout` does not cover
+    /// that: the handshake succeeded. The launcher used to wait out the whole
+    /// download ceiling on it, with the automatic re-check blocked behind the
+    /// job the whole time -- fifteen minutes of "contacting the server" for a
+    /// server that was already back up.
+    #[test]
+    fn a_server_that_accepts_and_then_says_nothing_is_given_up_on() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        std::thread::spawn(move || {
+            // Hold every accepted socket open, and answer none of them.
+            let mut held = Vec::new();
+            while let Ok((sock, _)) = listener.accept() {
+                held.push(sock);
+            }
+        });
+
+        let client = Client::with_timeouts(Duration::from_millis(300), DOWNLOAD_TIMEOUT).unwrap();
+        let start = Instant::now();
+        let err = client.fetch_key(&format!("http://{addr}")).unwrap_err();
+        let waited = start.elapsed();
+
+        assert!(
+            waited < Duration::from_secs(30),
+            "the control request used the download ceiling: waited {waited:?}"
+        );
+        assert!(
+            engine_sees_it_as_offline(&err),
+            "a stalled server should read as unreachable, got {err:?}"
+        );
+    }
+
+    fn engine_sees_it_as_offline(e: &SyncError) -> bool {
+        matches!(e, SyncError::Unreachable { .. })
+    }
+
+    /// The two ceilings exist for different things; keeping them apart is the
+    /// whole point of the fix.
+    #[test]
+    fn control_requests_are_not_given_the_download_ceiling() {
+        assert!(CONTROL_TIMEOUT < DOWNLOAD_TIMEOUT);
+        assert!(CONTROL_TIMEOUT > CONNECT_TIMEOUT);
     }
 }

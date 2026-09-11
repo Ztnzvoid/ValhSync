@@ -19,10 +19,23 @@ use crate::config::{self, Config};
 use crate::{detect, gameserver, logs, wizard};
 
 const POLL_GAME_SERVER: Duration = Duration::from_secs(2);
+/// How often the machine's public address is re-checked. A home connection
+/// changes it on a reboot or a lease renewal, not minute to minute.
+const POLL_PUBLIC_IP: Duration = Duration::from_secs(900);
 const NOTICE_TTL: Duration = Duration::from_secs(12);
 /// How often the open log is re-read. Fast enough to watch a start-up, slow
 /// enough that the file is touched once a second and no more.
 const POLL_LOG: Duration = Duration::from_millis(900);
+
+/// Which worker a message came from. They report through the same type but
+/// have different lifetimes: a one-shot job ends, the live server runs on,
+/// and the address check repeats on its own.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Chan {
+    Job,
+    Serve,
+    Ip,
+}
 
 /// The two halves of the window: what the server is doing, and how it is set
 /// up. Everything that changes minute to minute is on the first.
@@ -164,6 +177,16 @@ pub(super) struct App {
     title: String,
     busy: bool,
     rx: Option<Receiver<Msg>>,
+    /// The live server owns its own channel. It outlives the one-shot jobs,
+    /// so sharing `rx` with them let a scan or an export drop the receiver
+    /// the publisher was still reporting through: it then stopped in silence
+    /// and the card kept offering to stop something already gone.
+    serve_rx: Option<Receiver<Msg>>,
+    /// What the internet sees this machine as, checked on its own so the
+    /// admin never has to ask, and never has to wait for a button either.
+    public_ip: Option<String>,
+    ip_checked: Option<Instant>,
+    ip_rx: Option<Receiver<Msg>>,
     notice: Option<(String, Color32, Instant)>,
     egui_ctx: egui::Context,
 }
@@ -207,6 +230,10 @@ impl App {
             invite: String::new(),
             serving_at: None,
             stop_serving: None,
+            serve_rx: None,
+            public_ip: None,
+            ip_checked: None,
+            ip_rx: None,
             game_running: false,
             // Force a process check on the very first frame.
             game_checked: Instant::now()
@@ -509,6 +536,30 @@ impl App {
             .unwrap_or(config::DEFAULT_PORT)
     }
 
+    /// The port the start script says the game listens on.
+    fn game_port(&self) -> u16 {
+        self.scripts
+            .get(self.script_index)
+            .and_then(|s| s.args.port)
+            .unwrap_or(2456)
+    }
+
+    /// Ask what the internet sees us as. Runs on its own channel: it must not
+    /// hold `busy`, and it must not take the slot a real job needs.
+    fn detect_public_ip(&mut self) {
+        if self.ip_rx.is_some() {
+            return;
+        }
+        let (tx, rx) = mpsc::channel();
+        let rep = Reporter {
+            tx,
+            ctx: self.egui_ctx.clone(),
+        };
+        self.ip_checked = Some(Instant::now());
+        self.ip_rx = Some(rx);
+        std::thread::spawn(move || rep.run(worker::public_ip));
+    }
+
     fn refresh_invite(&mut self) {
         self.invite = crate::keys::load(&self.data_dir)
             .ok()
@@ -531,6 +582,46 @@ impl App {
         self.busy = true;
         self.rx = Some(rx);
         std::thread::spawn(move || job(rep));
+    }
+
+    /// Start the live server on its own channel. It is not a one-shot job:
+    /// it reports for as long as it serves, so it must not take the slot the
+    /// short jobs reuse, and it must not hold `busy` while it runs.
+    fn start_serving(&mut self) {
+        if self.serve_rx.is_some() || self.serving_at.is_some() {
+            return;
+        }
+        self.pull_fields();
+        if let Err(e) = self.cfg.validate() {
+            self.notify(format!("{e:#}"), th::BLOOD_LIT);
+            return;
+        }
+        let (tx, rx) = mpsc::channel();
+        let rep = Reporter {
+            tx,
+            ctx: self.egui_ctx.clone(),
+        };
+        let (stop_tx, stop_rx) = tokio::sync::oneshot::channel();
+        self.stop_serving = Some(stop_tx);
+        self.serve_rx = Some(rx);
+        let cfg = self.cfg.clone();
+        let data = self.data_dir.clone();
+        std::thread::spawn(move || {
+            worker::serve_blocking(cfg, data, stop_rx, &rep);
+        });
+    }
+
+    /// Ask the live server to stop, and say so if it is already gone.
+    fn stop_serving(&mut self) {
+        if let Some(stop) = self.stop_serving.take() {
+            let _ = stop.send(());
+        } else {
+            // Nothing left to signal: the worker is gone and only the label
+            // survived it. Clear it here rather than wait for a report that
+            // will never come.
+            self.serving_at = None;
+            self.serve_rx = None;
+        }
     }
 
     fn save(&mut self) -> bool {
@@ -562,87 +653,142 @@ impl App {
         }
     }
 
+    /// Read both channels: the one-shot jobs, and the live server. A worker
+    /// that dies without reporting closes its channel, and that is a report
+    /// too -- otherwise the window waits for a message nobody will send and
+    /// the only way out is to restart it.
     fn drain(&mut self) {
-        let Some(rx) = &self.rx else { return };
-        let mut msgs = Vec::new();
-        while let Ok(m) = rx.try_recv() {
-            msgs.push(m);
+        let mut msgs: Vec<(Msg, Chan)> = Vec::new();
+        let job_gone = Self::collect(self.rx.as_ref(), &mut msgs, Chan::Job);
+        let serve_gone = Self::collect(self.serve_rx.as_ref(), &mut msgs, Chan::Serve);
+        let ip_gone = Self::collect(self.ip_rx.as_ref(), &mut msgs, Chan::Ip);
+        for (msg, chan) in msgs {
+            self.apply(msg, chan);
         }
-        for msg in msgs {
-            match msg {
-                Msg::Scanned {
+        if job_gone {
+            self.busy = false;
+            self.checking_link = false;
+            self.rx = None;
+        }
+        if ip_gone {
+            self.ip_rx = None;
+        }
+        if serve_gone {
+            self.serve_rx = None;
+            if self.serving_at.take().is_some() {
+                self.stop_serving = None;
+                let msg = self
+                    .t(
+                        "Le serveur local s'est arrêté.",
+                        "The live server has stopped.",
+                    )
+                    .to_string();
+                self.notify(msg, th::GOLD);
+            }
+        }
+    }
+
+    /// Act on one message from `chan`.
+    #[allow(clippy::too_many_lines)] // one arm per message, read top to bottom
+    fn apply(&mut self, msg: Msg, chan: Chan) {
+        match msg {
+            Msg::Scanned {
+                files,
+                bytes,
+                invite,
+                skipped,
+            } => {
+                self.invite = invite;
+                self.summary = Some(PackSummary {
                     files,
                     bytes,
-                    invite,
                     skipped,
-                } => {
-                    self.invite = invite;
-                    self.summary = Some(PackSummary {
-                        files,
-                        bytes,
-                        skipped,
-                    });
-                    let msg = format!(
-                        "{} {files} {} · {}",
-                        self.t("Pack construit :", "Pack built:"),
-                        self.t("fichiers", "files"),
-                        human_bytes(bytes)
-                    );
-                    self.notify(msg, th::MOSS);
+                });
+                let msg = format!(
+                    "{} {files} {} · {}",
+                    self.t("Pack construit :", "Pack built:"),
+                    self.t("fichiers", "files"),
+                    human_bytes(bytes)
+                );
+                self.notify(msg, th::MOSS);
+            }
+            Msg::Exported { dir, files, copied } => {
+                let msg = format!(
+                    "{} {files} {} → {} ({copied} {})",
+                    self.t("Export :", "Export:"),
+                    self.t("fichiers", "files"),
+                    dir.display(),
+                    self.t("copiés", "copied")
+                );
+                self.notify(msg, th::MOSS);
+            }
+            Msg::Serving(url) => self.serving_at = Some(url),
+            Msg::ServeStopped(err) => {
+                self.serving_at = None;
+                self.stop_serving = None;
+                if let Some(e) = err {
+                    self.notify(e, th::BLOOD_LIT);
                 }
-                Msg::Exported { dir, files, copied } => {
-                    let msg = format!(
-                        "{} {files} {} → {} ({copied} {})",
-                        self.t("Export :", "Export:"),
-                        self.t("fichiers", "files"),
-                        dir.display(),
-                        self.t("copiés", "copied")
-                    );
-                    self.notify(msg, th::MOSS);
-                }
-                Msg::Serving(url) => {
-                    self.serving_at = Some(url);
-                    self.busy = false;
-                }
-                Msg::ServeStopped(err) => {
-                    self.serving_at = None;
-                    self.stop_serving = None;
-                    if let Some(e) = err {
-                        self.notify(e, th::BLOOD_LIT);
-                    }
-                }
-                Msg::PublicIp(ip) => {
-                    let port = self
-                        .scripts
-                        .get(self.script_index)
-                        .and_then(|s| s.args.port)
-                        .unwrap_or(2456);
-                    self.game_address = format!("{ip}:{port}");
+            }
+            Msg::PublicIp(ip) => {
+                self.public_ip = Some(ip.clone());
+                // Only write it into the address when what is there
+                // cannot work anyway: an empty field, or a LAN address
+                // no outside player can reach. A deliberate hostname is
+                // the admin's, and gets left alone.
+                let addr = self.game_address.trim();
+                if addr.is_empty() || valhsync_core::manifest::is_private_host(addr) {
+                    self.game_address = format!("{ip}:{}", self.game_port());
                     let msg = format!(
                         "{} {ip}",
                         self.t("Adresse publique détectée :", "Public address detected:")
                     );
                     self.notify(msg, th::MOSS);
                 }
-                Msg::LinkChecked(detail) => {
-                    self.link_ok = Some(true);
-                    let msg = format!("{} {detail}", self.t("Lien joignable :", "Link reachable:"));
-                    self.notify(msg, th::MOSS);
+            }
+            Msg::LinkChecked(detail) => {
+                self.link_ok = Some(true);
+                let msg = format!("{} {detail}", self.t("Lien joignable :", "Link reachable:"));
+                self.notify(msg, th::MOSS);
+            }
+            Msg::Error(e) => {
+                // The address check runs by itself every so often. A
+                // provider hiccup there is not news the admin asked for.
+                if chan == Chan::Ip {
+                    return;
                 }
-                Msg::Error(e) => {
-                    if self.checking_link {
-                        self.link_ok = Some(false);
-                    }
-                    self.notify(e, th::BLOOD_LIT);
+                if self.checking_link {
+                    self.link_ok = Some(false);
                 }
-                Msg::Idle => {
-                    // A live server reports Idle only once it has stopped.
-                    if self.serving_at.is_none() {
-                        self.busy = false;
-                    }
+                self.notify(e, th::BLOOD_LIT);
+            }
+            Msg::Idle => {
+                if chan == Chan::Ip {
+                    self.ip_rx = None;
+                } else if chan == Chan::Serve {
+                    self.serving_at = None;
+                    self.stop_serving = None;
+                    self.serve_rx = None;
+                } else {
+                    // A one-shot job is over. Whether the live server is
+                    // up has nothing to do with it: tying the two left
+                    // every button disabled for the rest of the session.
+                    self.busy = false;
                     self.checking_link = false;
                     self.rx = None;
                 }
+            }
+        }
+    }
+
+    /// Drain one channel into `out`. Returns true when the sender is gone.
+    fn collect(rx: Option<&Receiver<Msg>>, out: &mut Vec<(Msg, Chan)>, chan: Chan) -> bool {
+        let Some(rx) = rx else { return false };
+        loop {
+            match rx.try_recv() {
+                Ok(m) => out.push((m, chan)),
+                Err(mpsc::TryRecvError::Empty) => return false,
+                Err(mpsc::TryRecvError::Disconnected) => return true,
             }
         }
     }
@@ -661,6 +807,12 @@ fn exclude_pattern(name: &str, loose: bool) -> String {
 impl eframe::App for App {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         self.drain();
+        if self
+            .ip_checked
+            .is_none_or(|at| at.elapsed() >= POLL_PUBLIC_IP)
+        {
+            self.detect_public_ip();
+        }
         if self.game_checked.elapsed() >= POLL_GAME_SERVER {
             let was = self.game_running;
             self.game_running = gameserver::is_running();
@@ -881,9 +1033,15 @@ impl App {
                 });
             });
 
+            ui.add_space(6.0);
             if self.game_running {
-                ui.add_space(6.0);
                 self.session_facts(ui);
+            } else if let Some(ip) = self.public_ip.clone() {
+                ui.label(
+                    RichText::new(format!("{} {ip}", self.t("IP publique", "public IP")))
+                        .text_style(th::label_style())
+                        .color(th::RUNE),
+                );
             }
             ui.add_space(8.0);
             if self.scripts.is_empty() {
@@ -935,6 +1093,9 @@ impl App {
         if let Some(version) = &self.game_version {
             facts.push(format!("Valheim {version}"));
         }
+        if let Some(ip) = &self.public_ip {
+            facts.push(format!("{} {ip}", self.t("IP publique", "public IP")));
+        }
         if let Some(saved) = self.world_saved {
             facts.push(format!(
                 "{} {}",
@@ -959,34 +1120,42 @@ impl App {
         }
     }
 
-    /// Start and stop side by side, so the pair reads as one control.
+    /// One button. Which one it is, the lamp beside it has already said.
     fn server_buttons(&mut self, ui: &mut egui::Ui, stopping: bool) {
-        let can_stop = self.game_running && !stopping;
-        if ui
-            .add_enabled(
-                can_stop,
+        if stopping {
+            ui.add_enabled(
+                false,
                 egui::Button::new(
-                    RichText::new(self.t("Arrêter et sauvegarder", "Stop and save"))
-                        .color(if can_stop { th::BONE } else { th::BONE_DIM }),
+                    RichText::new(self.t("Arrêt en cours…", "Stopping…")).color(th::BONE_DIM),
                 ),
-            )
-            .clicked()
-        {
-            match gameserver::stop() {
-                Ok(()) => {
-                    self.stop_requested = Some(Instant::now());
-                    let msg = self
-                        .t(
-                            "Ctrl+C envoyé. Valheim sauvegarde le monde puis quitte.",
-                            "Ctrl+C sent. Valheim saves the world, then quits.",
-                        )
-                        .to_string();
-                    self.notify(msg, th::MOSS);
-                }
-                Err(e) => self.notify(format!("{e:#}"), th::BLOOD_LIT),
-            }
+            );
+            return;
         }
-        let can_start = !self.game_running && !self.scripts.is_empty();
+        if self.game_running {
+            if ui
+                .add(egui::Button::new(
+                    RichText::new(self.t("Arrêter et sauvegarder", "Stop and save"))
+                        .color(th::BONE),
+                ))
+                .clicked()
+            {
+                match gameserver::stop() {
+                    Ok(()) => {
+                        self.stop_requested = Some(Instant::now());
+                        let msg = self
+                            .t(
+                                "Ctrl+C envoyé. Valheim sauvegarde le monde puis quitte.",
+                                "Ctrl+C sent. Valheim saves the world, then quits.",
+                            )
+                            .to_string();
+                        self.notify(msg, th::MOSS);
+                    }
+                    Err(e) => self.notify(format!("{e:#}"), th::BLOOD_LIT),
+                }
+            }
+            return;
+        }
+        let can_start = !self.scripts.is_empty();
         if ui
             .add_enabled(
                 can_start,
@@ -1016,6 +1185,36 @@ impl App {
                 }
                 Err(e) => self.notify(format!("{e:#}"), th::BLOOD_LIT),
             }
+        }
+    }
+
+    /// The live server's one button, the twin of the game server's.
+    fn publish_button(&mut self, ui: &mut egui::Ui) {
+        if self.serving_at.is_some() {
+            if ui
+                .add(egui::Button::new(
+                    RichText::new(self.t("Arrêter", "Stop")).color(th::BONE),
+                ))
+                .clicked()
+            {
+                self.stop_serving();
+            }
+            return;
+        }
+        let can = !self.busy && self.serve_rx.is_none();
+        if ui
+            .add_enabled(
+                can,
+                egui::Button::new(
+                    RichText::new(self.t("Démarrer", "Start"))
+                        .strong()
+                        .color(if can { th::NIGHT } else { th::BONE_DIM }),
+                )
+                .fill(if can { th::GOLD } else { th::LEATHER }),
+            )
+            .clicked()
+        {
+            self.start_serving();
         }
     }
 
@@ -1184,17 +1383,38 @@ impl App {
                         .desired_width(width - 200.0)
                         .font(egui::TextStyle::Monospace),
                 );
-                if ui
-                    .add_enabled(
-                        !self.busy,
-                        egui::Button::new(
-                            self.t("Détecter mon IP publique", "Detect my public IP"),
-                        ),
-                    )
-                    .on_hover_text(worker::IP_ECHO_SERVICE)
-                    .clicked()
-                {
-                    self.start_job(|rep| rep.run(worker::public_ip));
+                let detected = self
+                    .public_ip
+                    .clone()
+                    .map(|ip| format!("{ip}:{}", self.game_port()));
+                match detected {
+                    Some(addr) if addr != self.game_address.trim() => {
+                        if ui
+                            .button(self.t("Utiliser l'IP détectée", "Use detected IP"))
+                            .on_hover_text(format!("{addr}  ·  {}", worker::IP_ECHO_SERVICE))
+                            .clicked()
+                        {
+                            self.game_address = addr;
+                        }
+                    }
+                    Some(_) => {
+                        ui.label(
+                            RichText::new(
+                                self.t("Correspond à votre IP publique", "Matches your public IP"),
+                            )
+                            .small()
+                            .color(th::MOSS),
+                        )
+                        .on_hover_text(worker::IP_ECHO_SERVICE);
+                    }
+                    None => {
+                        ui.label(
+                            RichText::new(self.t("Détection de l'IP…", "Detecting your IP…"))
+                                .small()
+                                .color(th::BONE_DIM),
+                        )
+                        .on_hover_text(worker::IP_ECHO_SERVICE);
+                    }
                 }
             });
 
@@ -1411,6 +1631,52 @@ impl App {
                     );
                 }
                 PublishMode::Live => {
+                    let serving = self.serving_at.is_some();
+                    ui.horizontal(|ui| {
+                        w::status_dot_lit(
+                            ui,
+                            if serving {
+                                th::MOSS
+                            } else {
+                                th::GOLD.gamma_multiply(0.25)
+                            },
+                            if serving {
+                                self.t("En ligne", "Online")
+                            } else {
+                                self.t("Hors ligne", "Offline")
+                            },
+                        );
+                        ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                            self.publish_button(ui);
+                        });
+                    });
+                    ui.add_space(6.0);
+                    match self.serving_at.clone() {
+                        Some(url) => {
+                            ui.label(RichText::new(url).monospace().small().color(th::MOSS));
+                        }
+                        None => {
+                            ui.horizontal(|ui| {
+                                ui.label(
+                                    RichText::new(self.t("Port", "Port"))
+                                        .small()
+                                        .color(th::BONE_DIM),
+                                );
+                                let mut port = self.bind_port();
+                                if ui
+                                    .add(egui::DragValue::new(&mut port).range(1024..=65_533))
+                                    .on_hover_text(self.t(
+                                        "Celui du jeu par défaut. Le changer voudrait dire ouvrir un port de plus.",
+                                        "The game's, by default. Changing it would mean opening one more port.",
+                                    ))
+                                    .changed()
+                                {
+                                    self.bind = format!("0.0.0.0:{port}");
+                                }
+                            });
+                        }
+                    }
+                    ui.add_space(6.0);
                     w::hint(
                         ui,
                         self.t(
@@ -1418,60 +1684,6 @@ impl App {
                             "ValhSync serves the pack from this machine, on the game's port but in TCP: Valheim only uses it in UDP, so there is no new port to open. Just check that your router rule covers TCP as well as UDP.",
                         ),
                     );
-                    ui.horizontal(|ui| {
-                        ui.label(
-                            RichText::new(self.t("Port", "Port"))
-                                .small()
-                                .color(th::BONE_DIM),
-                        );
-                        let mut port = self.bind_port();
-                        if ui
-                            .add_enabled(
-                                self.serving_at.is_none(),
-                                egui::DragValue::new(&mut port).range(1024..=65_533),
-                            )
-                            .on_hover_text(self.t(
-                                "Celui du jeu par défaut. Le changer voudrait dire ouvrir un port de plus.",
-                                "The game's, by default. Changing it would mean opening one more port.",
-                            ))
-                            .changed()
-                        {
-                            self.bind = format!("0.0.0.0:{port}");
-                        }
-                        match self.serving_at.clone() {
-                            None => {
-                                if ui
-                                    .add_enabled(
-                                        !self.busy,
-                                        egui::Button::new(self.t("Démarrer", "Start")),
-                                    )
-                                    .clicked()
-                                {
-                                    self.pull_fields();
-                                    if self.cfg.validate().is_err() {
-                                        let e = self.cfg.validate().unwrap_err();
-                                        self.notify(format!("{e:#}"), th::BLOOD_LIT);
-                                    } else {
-                                        let (tx, rx) = tokio::sync::oneshot::channel();
-                                        self.stop_serving = Some(tx);
-                                        let cfg = self.cfg.clone();
-                                        let data = self.data_dir.clone();
-                                        self.start_job(move |rep| {
-                                            worker::serve_blocking(cfg, data, rx, &rep);
-                                        });
-                                    }
-                                }
-                            }
-                            Some(url) => {
-                                if ui.button(self.t("Arrêter", "Stop")).clicked()
-                                    && let Some(stop) = self.stop_serving.take()
-                                {
-                                    let _ = stop.send(());
-                                }
-                                ui.label(RichText::new(url).monospace().small().color(th::MOSS));
-                            }
-                        }
-                    });
                 }
             }
 
