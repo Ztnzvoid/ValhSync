@@ -877,6 +877,17 @@ impl App {
             .default_width(520.0)
             .show(ctx, |ui| {
                 ui.label(RichText::new(self.t(Key::ConfirmBody)).color(th::BONE_DIM));
+                ui.add_space(6.0);
+                ui.label(
+                    RichText::new(format!(
+                        "{} {}: {}",
+                        self.t(Key::TrustLine),
+                        self.t(Key::KeyFingerprint),
+                        p.server.fingerprint()
+                    ))
+                    .small()
+                    .color(th::RUNE),
+                );
                 ui.add_space(8.0);
                 egui::ScrollArea::vertical()
                     .max_height(220.0)

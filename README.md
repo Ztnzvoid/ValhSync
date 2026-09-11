@@ -78,10 +78,22 @@ version as `Valheim version: 1.0.7 (network version 39)` and the handshake as
 `Network version check, their:39, mine:39`, which a later version can use to
 warn about a game-version mismatch.
 
+## Nothing to open, nothing to install
+
+- **Players** run one executable, no installer, no administrator rights, and
+  make outbound HTTP requests only. Their router and firewall are never
+  touched; the game connects to the server exactly as it did before.
+- **Admins** do not need an open port either. The recommended way to publish
+  is `valsync-server export`: it writes the pack as plain files that any web
+  space serves (GitHub Pages, S3/R2, Cloudflare Pages, your host's FTP). The
+  signature travels with the files, so the host is irrelevant to integrity.
+  Running `valsync-server serve` on your own machine (TCP 2470) is the LAN and
+  advanced option, not the default.
+
 ## Quick start: admin
 
 ```bash
-valsync-server init --name "My server" --game-address valheim.example.org:2456 --public-url http://valheim.example.org:2470
+valsync-server init --name "My server" --game-address valheim.example.org:2456 --public-url https://you.github.io/valheim-pack
 ```
 
 `init` finds the dedicated server (Steam app 896660), writes a commented
@@ -89,13 +101,19 @@ valsync-server init --name "My server" --game-address valheim.example.org:2456 -
 Then:
 
 ```bash
-valsync-server scan     # review what would be published
-valsync-server serve    # publish; rebuilds automatically when a mod changes
+valsync-server scan                    # review what would be published
+valsync-server export ./pack-site      # static files: manifest.json, manifest.sig, files/<hash>
 ```
 
-Open TCP 2470 on the firewall (and router, for internet players). Hand players
-the invite code, or better, a zip of `valsync.exe` plus a `valsync-invite.txt`
-containing the code: the launcher imports it on first start.
+Upload `pack-site/` to the web space `public_url` points at. `export --watch`
+keeps the folder current whenever a mod changes, so pair it with whatever
+already uploads for you (rclone, a git push, the Nextcloud client). Prefer a
+live server on your machine? `valsync-server serve` does the same over TCP
+2470, with automatic rebuilds; that one needs the port open.
+
+Hand players the invite code, or better, a zip of `valsync.exe` plus a
+`valsync-invite.txt` containing the code: the launcher imports it on first
+start.
 
 Server-only mods (DiscordConnector...) go in `[pack] exclude`; client-only mods
 (Unshamed, ConfigManager...) go in the `client-extras/` folder laid out like the
@@ -180,10 +198,19 @@ compare, télécharge ce qui manque, met en quarantaine ce qui n'a rien à faire
 là, puis lance le jeu via Steam. Plus de « Incompatible version », plus de zip
 de DLL à renvoyer à chaque mise à jour.
 
+**Rien à ouvrir, rien à installer.** Le joueur lance un exécutable, sans
+installation ni droits admin, et ne fait que des connexions sortantes : sa box
+n'est jamais touchée. L'admin non plus n'a pas de port à ouvrir : la voie
+recommandée est `valsync-server export`, qui produit des fichiers statiques à
+déposer sur n'importe quel espace web (GitHub Pages, S3, l'hébergement de ton
+FAI) ; la signature voyage avec les fichiers, l'hébergeur n'a aucune prise sur
+l'intégrité. `serve` sur ta machine (TCP 2470) reste l'option LAN/avancée.
+
 **Côté admin** : `valsync-server init` détecte le serveur dédié installé par
 Steam, écrit une configuration commentée, génère la clé de signature et affiche
-le code d'invitation. `valsync-server serve` publie le pack et le reconstruit
-tout seul quand un mod change. Les mods serveur seuls vont dans `exclude`, les
+le code d'invitation. `valsync-server export <dossier>` (ou `export --watch`
+pour le tenir à jour tout seul) produit le pack à uploader ; `serve` le publie
+en direct et le reconstruit quand un mod change. Les mods serveur seuls vont dans `exclude`, les
 mods client seuls dans le dossier `client-extras/`. Un serveur hébergé en ligne
 (G-Portal, Nitrado…) fonctionne aussi : le publieur tourne où tu veux avec une
 copie du pack, seul `game_address` pointe vers l'hébergeur. Ouvre le port TCP

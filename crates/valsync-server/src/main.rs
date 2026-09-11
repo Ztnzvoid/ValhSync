@@ -57,8 +57,12 @@ enum Cmd {
     /// Write the pack as static files (manifest.json, manifest.sig, files/<hash>)
     /// to upload on any web space. No port to open.
     Export {
-        /// Output folder, e.g. a GitHub Pages checkout or a folder you rsync.
+        /// Output folder, e.g. a GitHub Pages checkout or a folder your
+        /// uploader (rclone, git, FTP sync, Nextcloud client) picks up.
         dir: PathBuf,
+        /// Keep running and re-export whenever the pack changes.
+        #[arg(long)]
+        watch: bool,
     },
     /// Print the invite code again.
     Invite,
@@ -117,22 +121,17 @@ fn main() -> Result<()> {
             let kp = keys::load(&data_dir)?;
             tokio::runtime::Runtime::new()?.block_on(serve::run(cfg, kp, data_dir))
         }
-        Cmd::Export { dir } => {
+        Cmd::Export { dir, watch } => {
             let cfg = Config::load(&cli.config)?;
             let kp = keys::load(&data_dir)?;
-            let outcome = pack::build(&cfg, &kp, &data_dir)?;
-            let report = pack::export_static(&outcome.published, &data_dir, &dir)?;
-            println!(
-                "Exported {} files to {} ({} copied, {} stale removed).",
-                report.files,
-                dir.display(),
-                report.copied,
-                report.removed
-            );
+            export_once(&cfg, &kp, &data_dir, &dir)?;
             println!(
                 "Upload that folder as-is. Set [server] public_url to the URL where \
                  manifest.json ends up (without the file name), then `valsync-server invite`."
             );
+            if watch {
+                watch_and_export(&cfg, &kp, &data_dir, &dir)?;
+            }
             Ok(())
         }
         Cmd::Invite => {
@@ -237,12 +236,72 @@ fn cmd_init(config_path: &Path, data_dir: &Path, args: InitArgs) -> Result<()> {
         "  1. Check [pack] and [server] in {}",
         config_path.display()
     );
+    println!("  2. `valsync-server scan` to review the pack");
+    println!("  3. Publish it, one of:");
     println!(
-        "  2. Open TCP {} in the firewall (and router, for internet players)",
+        "     - `valsync-server export <folder>` and upload the folder to any web space \
+         (GitHub Pages, S3, your host): nothing to open on the router"
+    );
+    println!(
+        "     - `valsync-server serve` on this machine: needs TCP {} open in the firewall \
+         and router\n",
         cfg.bind_addr()?.port()
     );
-    println!("  3. `valsync-server scan` to review the pack, then `valsync-server serve`\n");
     print_invite(&cfg, &kp)
+}
+
+fn export_once(cfg: &Config, kp: &Keypair, data_dir: &Path, dir: &Path) -> Result<()> {
+    let outcome = pack::build(cfg, kp, data_dir)?;
+    let report = pack::export_static(&outcome.published, data_dir, dir)?;
+    println!(
+        "Exported {} files to {} ({} copied, {} stale removed).",
+        report.files,
+        dir.display(),
+        report.copied,
+        report.removed
+    );
+    Ok(())
+}
+
+/// Re-export after every change to the pack folders, with the same settle
+/// delay as `serve`. Blocks until Ctrl+C.
+fn watch_and_export(cfg: &Config, kp: &Keypair, data_dir: &Path, dir: &Path) -> Result<()> {
+    use notify::Watcher;
+    use std::sync::mpsc;
+    use std::time::{Duration, Instant};
+
+    let (tx, rx) = mpsc::channel();
+    let mut watcher = notify::recommended_watcher(move |res: notify::Result<notify::Event>| {
+        if res.is_ok() {
+            let _ = tx.send(());
+        }
+    })
+    .context("cannot create the folder watcher")?;
+    for path in cfg.watch_paths() {
+        watcher
+            .watch(&path, notify::RecursiveMode::Recursive)
+            .with_context(|| format!("cannot watch {}", path.display()))?;
+        println!("Watching {}", path.display());
+    }
+    println!("Re-exporting on change. Press Ctrl+C to stop.");
+
+    let settle = Duration::from_secs(2);
+    loop {
+        // Block for the first event, then absorb the burst that follows it.
+        if rx.recv().is_err() {
+            return Ok(());
+        }
+        let mut last = Instant::now();
+        while last.elapsed() < settle {
+            if rx.recv_timeout(settle - last.elapsed()).is_ok() {
+                last = Instant::now();
+            }
+        }
+        match export_once(cfg, kp, data_dir, dir) {
+            Ok(()) => {}
+            Err(e) => eprintln!("export failed, previous export kept: {e:#}"),
+        }
+    }
 }
 
 fn print_invite(cfg: &Config, kp: &Keypair) -> Result<()> {

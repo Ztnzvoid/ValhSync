@@ -103,14 +103,48 @@ folders do not: `serve` watches them and republishes after two quiet seconds.
 ## 4. Publish
 
 ```bash
-valsync-server scan     # builds the manifest, prints what changed, publishes nothing new to players yet
-valsync-server serve    # serves it; Ctrl+C to stop
+valsync-server scan     # builds the manifest, prints what changed, publishes nothing to players yet
 ```
 
-`serve` listens on `bind`, logs each rebuild, and keeps the previous
-generation's files available for a launcher that fetched the old manifest a
-moment ago. Visit `http://<host>:2470/` in a browser: it shows the invite code
-and the pack summary. `/health` returns JSON for monitoring.
+Then pick one of the two publishing modes.
+
+### 4a. Static files (recommended: no port to open)
+
+```bash
+valsync-server export ./pack-site           # once
+valsync-server export ./pack-site --watch   # keeps it current while it runs
+```
+
+`pack-site/` contains `manifest.json`, `manifest.sig` and `files/<blake3>`,
+the exact layout the launcher fetches. Upload it to any place that serves files
+over HTTP(S) and set `public_url` to that folder's URL (the one where
+`manifest.json` ends up). Examples:
+
+- **GitHub Pages**: a repository with the folder at its root, Pages enabled;
+  `public_url = "https://you.github.io/valheim-pack"`. `export --watch` into
+  the checkout plus a `git push` after changes.
+- **Cloudflare Pages / Netlify**: drag-and-drop upload of the folder, free,
+  HTTPS.
+- **S3 / R2 / Backblaze**: `rclone sync pack-site remote:bucket`.
+- **Your ISP's web space**: any FTP/SFTP sync tool.
+
+Integrity does not depend on the host: even a compromised web space cannot
+make players install something you did not sign. What it can do is serve an
+old copy; the launcher refuses a manifest older than the one it last applied.
+Mind mod licenses before hosting DLLs on a public site.
+
+### 4b. Live server on your machine (needs TCP 2470)
+
+```bash
+valsync-server serve    # Ctrl+C to stop
+```
+
+`serve` listens on `bind`, rebuilds automatically when a mod changes, and
+keeps the previous generation's files available for a launcher that fetched
+the old manifest a moment ago. Visit `http://<host>:2470/` in a browser: it
+shows the invite code and the pack summary. `/health` returns JSON for
+monitoring. Internet players need TCP 2470 forwarded to this machine, or an
+outbound tunnel (Cloudflare Tunnel, ngrok) in front of it.
 
 Run it as a service: see [deploy/](deploy/).
 
@@ -146,30 +180,12 @@ your own PC or a VPS with a local copy of the pack in `client_extras`, leave
 `server_root` out, and set `game_address` to the hosted server. Keep that copy
 in sync with what you upload to the host.
 
-## 7b. No port to open: static hosting or a tunnel
+## 7b. Reusing the game's port rule
 
-The launcher only ever downloads files. Two ways to publish without touching
-the router:
-
-**Static hosting.** `valsync-server export <folder>` writes the pack as plain
-files in the exact layout the launcher expects (`manifest.json`,
-`manifest.sig`, `files/<blake3>`). Upload that folder anywhere that serves
-files over HTTP(S): GitHub Pages, S3/R2, the web space of your ISP, a
-Nextcloud public folder. Set `public_url` to the URL of that folder and hand
-out the invite. Integrity does not depend on the host: the manifest is signed
-and every file is verified by digest, so even a compromised web space cannot
-make players install something you did not sign. Re-run `export` (and upload)
-after each mod change; `serve` is not needed at all in this mode. Mind mod
-licenses before hosting DLLs on a public site.
-
-**Outbound tunnel.** Keep `serve` running locally and expose it through
-Cloudflare Tunnel, ngrok or similar: the tunnel opens an outbound connection,
-so no inbound port is needed. Set `public_url` to the tunnel's `https://` URL.
-
-**Reuse the game's rule.** If your router forwards 2456 as "TCP+UDP" (many do
-by default), bind ValSync on TCP 2456: `bind = "0.0.0.0:2456"`. Valheim only
-uses UDP on that port, so the two do not collide. Check the rule before
-relying on it.
+If you do run `serve` and your router already forwards 2456 as "TCP+UDP"
+(many do by default), you can bind ValSync on TCP 2456: `bind = "0.0.0.0:2456"`.
+Valheim only uses UDP on that port, so the two do not collide. Check the rule
+before relying on it. Static export (4a) remains the simpler answer.
 
 ## 8. Network and reverse proxies
 

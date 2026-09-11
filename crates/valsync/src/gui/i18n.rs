@@ -80,6 +80,7 @@ pub enum Key {
     Language,
     Busy,
     KeyFingerprint,
+    TrustLine,
     Installed,
     Nothing,
 }
@@ -139,6 +140,9 @@ fn fr(key: Key) -> &'static str {
         Key::Language => "Langue",
         Key::Busy => "Opération en cours…",
         Key::KeyFingerprint => "Empreinte de la clé",
+        Key::TrustLine => {
+            "Fichiers signés par ce serveur et vérifiés un par un. ValSync n'écrit que dans le dossier du jeu (BepInEx) et n'exécute rien lui-même : c'est Steam qui lance Valheim."
+        }
         Key::Installed => "installés",
         Key::Nothing => "Rien à faire.",
     }
@@ -192,6 +196,9 @@ fn en(key: Key) -> &'static str {
         Key::Language => "Language",
         Key::Busy => "Working…",
         Key::KeyFingerprint => "Key fingerprint",
+        Key::TrustLine => {
+            "Files are signed by this server and verified one by one. ValSync only writes inside the game folder (BepInEx) and runs nothing itself: Steam starts Valheim."
+        }
         Key::Installed => "installed",
         Key::Nothing => "Nothing to do.",
     }

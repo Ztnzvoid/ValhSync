@@ -4,6 +4,10 @@
 
 ## Install
 
+There is nothing to install, nothing to open on your router, and no
+administrator rights needed. ValSync only makes outgoing connections, like a
+browser, and only writes inside the Valheim folder.
+
 There is nothing to install. Put `valsync.exe` anywhere (your Desktop is
 fine). If your admin gave you a zip, keep `valsync-invite.txt` next to the
 executable.
@@ -88,6 +92,10 @@ without touching the game.
 ## En français
 
 ### Installation
+
+Rien à installer, rien à ouvrir sur ta box, pas de droits administrateur.
+ValSync ne fait que des connexions sortantes, comme un navigateur, et n'écrit
+que dans le dossier de Valheim.
 
 Rien à installer. Mets `valsync.exe` où tu veux. Si ton admin t'a donné un
 zip, garde `valsync-invite.txt` à côté de l'exécutable.
