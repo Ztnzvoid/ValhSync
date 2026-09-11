@@ -1,0 +1,28 @@
+[package]
+name = "valhsync-core"
+description = "Manifest model, path validation, hashing, signing and sync planning for ValhSync. No network I/O."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish.workspace = true
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+blake3.workspace = true
+ed25519-dalek.workspace = true
+rand_core.workspace = true
+base64.workspace = true
+walkdir.workspace = true
+globset.workspace = true
+thiserror.workspace = true
+time.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+
+[lints]
+workspace = true

@@ -40,10 +40,10 @@ jobs:
         run: |
           set -euo pipefail
           version="${GITHUB_REF_NAME#v}"
-          name="valsync-${version}-${{ matrix.target }}"
+          name="valhsync-${version}-${{ matrix.target }}"
           mkdir -p "dist/$name"
-          cp "target/${{ matrix.target }}/release/valsync${{ matrix.ext }}" "dist/$name/"
-          cp "target/${{ matrix.target }}/release/valsync-server${{ matrix.ext }}" "dist/$name/"
+          cp "target/${{ matrix.target }}/release/valhsync${{ matrix.ext }}" "dist/$name/"
+          cp "target/${{ matrix.target }}/release/valhsync-server${{ matrix.ext }}" "dist/$name/"
           cp README.md LICENSE-MIT LICENSE-APACHE "dist/$name/"
           cp -r docs/admin-guide.md docs/player-guide.md docs/deploy "dist/$name/"
           cd dist

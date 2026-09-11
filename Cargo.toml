@@ -1,10 +1,10 @@
 [workspace]
 resolver = "3"
 members = [
-  "crates/valsync-core",
-  "crates/valsync-ui",
-  "crates/valsync-server",
-  "crates/valsync",
+  "crates/valhsync-core",
+  "crates/valhsync-ui",
+  "crates/valhsync-server",
+  "crates/valhsync",
 ]
 
 [workspace.package]
@@ -12,13 +12,13 @@ version = "0.1.0"
 edition = "2024"
 rust-version = "1.88"
 license = "MIT OR Apache-2.0"
-repository = "https://github.com/ztnzvoid/valsync"
+repository = "https://github.com/ztnzvoid/valhsync"
 authors = ["Ztnzvoid"]
 publish = false
 
 [workspace.dependencies]
-valsync-core = { path = "crates/valsync-core" }
-valsync-ui = { path = "crates/valsync-ui" }
+valhsync-core = { path = "crates/valhsync-core" }
+valhsync-ui = { path = "crates/valhsync-ui" }
 
 # serialization
 serde = { version = "1", features = ["derive"] }

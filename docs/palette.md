@@ -1,4 +1,4 @@
-# ValSync palette
+# ValhSync palette
 
 Derived from Valheim's in-game UI: burnt wood, polished bone, worn brass,
 northern mist. Used by `docs/cahier-des-charges.html` today and by the egui

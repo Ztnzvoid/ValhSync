@@ -1,0 +1,39 @@
+# systemd unit for valhsync-server (Linux).
+#
+#   sudo useradd --system --home /opt/valhsync --shell /usr/sbin/nologin valhsync
+#   sudo mkdir -p /opt/valhsync && sudo chown valhsync: /opt/valhsync
+#   sudo -u valhsync /opt/valhsync/valhsync-server --config /opt/valhsync/valhsync-server.toml init \
+#        --server-root /home/steam/valheim --name "My server" \
+#        --game-address valheim.example.org:2456 --public-url http://valheim.example.org:2470
+#   sudo cp valhsync-server.service /etc/systemd/system/
+#   sudo systemctl daemon-reload && sudo systemctl enable --now valhsync-server
+#   journalctl -u valhsync-server -f
+#
+# The service user needs read access to the dedicated server's BepInEx folder
+# (it never writes there) and write access to /opt/valhsync.
+
+[Unit]
+Description=ValhSync mod pack publisher for Valheim
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=valhsync
+Group=valhsync
+WorkingDirectory=/opt/valhsync
+ExecStart=/opt/valhsync/valhsync-server --config /opt/valhsync/valhsync-server.toml serve
+Restart=on-failure
+RestartSec=5
+Environment=RUST_LOG=info
+
+# Hardening: read-only system, private tmp, no new privileges. Add the game
+# server's folder to ReadOnlyPaths if it lives outside /home.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/opt/valhsync
+
+[Install]
+WantedBy=multi-user.target

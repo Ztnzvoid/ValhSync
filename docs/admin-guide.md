@@ -1,4 +1,4 @@
-# ValSync admin guide
+# ValhSync admin guide
 
 You run a modded Valheim server and want every player to have exactly the
 right mods, in the right versions, without sending zips around. This is the
@@ -37,11 +37,11 @@ any other path, whatever the manifest says.
 
 ## 2. Install
 
-Download the release for the server's OS and put `valsync-server(.exe)`
+Download the release for the server's OS and put `valhsync-server(.exe)`
 somewhere convenient, for example next to the dedicated server's `.bat`. Then:
 
 ```bash
-valsync-server init --name "My server" \
+valhsync-server init --name "My server" \
                     --game-address valheim.example.org:2456 \
                     --public-url http://valheim.example.org:2470
 ```
@@ -49,12 +49,12 @@ valsync-server init --name "My server" \
 `init`:
 
 1. looks for the dedicated server (Steam app 896660, then common folders);
-2. writes `valsync-server.toml` next to itself, fully commented;
+2. writes `valhsync-server.toml` next to itself, fully commented;
 3. creates `client-extras/`;
-4. generates the Ed25519 signing key under `valsync-server-data/keys/`;
+4. generates the Ed25519 signing key under `valhsync-server-data/keys/`;
 5. prints the invite code.
 
-**Back up `valsync-server-data/keys/server.key`.** Losing it means every
+**Back up `valhsync-server-data/keys/server.key`.** Losing it means every
 player has to import a new invite code. Leaking it means anyone can publish a
 pack in your server's name.
 
@@ -63,7 +63,7 @@ the machine's LAN address, which only works for players on your network.
 
 ## 3. Configure
 
-Open `valsync-server.toml`. The sections that matter:
+Open `valhsync-server.toml`. The sections that matter:
 
 ```toml
 [server]
@@ -78,7 +78,7 @@ exclude = [
   "BepInEx/LogOutput.log", "BepInEx/cache/**",
   "BepInEx/plugins/DiscordConnector/**",  # server only
 ]
-client_extras = 'C:\valsync\client-extras'
+client_extras = 'C:\valhsync\client-extras'
 managed_roots = ["BepInEx/plugins", "BepInEx/patchers"]
 
 [policy]
@@ -87,9 +87,9 @@ seed = ["BepInEx/config/**"]             # installed once, then the player's
 enforce = ["BepInEx/config/BepInEx.cfg"] # except these
 ```
 
-- `managed_roots` are the folders ValSync owns on the player's side. A DLL
+- `managed_roots` are the folders ValhSync owns on the player's side. A DLL
   found there that the manifest does not know (a leftover of another mod
-  pack) is moved to `BepInEx/_valsync_quarantine/<date>/` before the game
+  pack) is moved to `BepInEx/_valhsync_quarantine/<date>/` before the game
   starts. Files that mods generate next to their own DLL (translations,
   caches) are left alone. `BepInEx/config` is deliberately not a managed
   root: mods create their config files at runtime.
@@ -103,7 +103,7 @@ folders do not: `serve` watches them and republishes after two quiet seconds.
 ## 4. Publish
 
 ```bash
-valsync-server scan     # builds the manifest, prints what changed, publishes nothing to players yet
+valhsync-server scan     # builds the manifest, prints what changed, publishes nothing to players yet
 ```
 
 Then pick one of the two publishing modes.
@@ -111,8 +111,8 @@ Then pick one of the two publishing modes.
 ### 4a. Static files (recommended: no port to open)
 
 ```bash
-valsync-server export ./pack-site           # once
-valsync-server export ./pack-site --watch   # keeps it current while it runs
+valhsync-server export ./pack-site           # once
+valhsync-server export ./pack-site --watch   # keeps it current while it runs
 ```
 
 `pack-site/` contains `manifest.json`, `manifest.sig` and `files/<blake3>`,
@@ -136,7 +136,7 @@ Mind mod licenses before hosting DLLs on a public site.
 ### 4b. Live server on your machine (needs TCP 2470)
 
 ```bash
-valsync-server serve    # Ctrl+C to stop
+valhsync-server serve    # Ctrl+C to stop
 ```
 
 `serve` listens on `bind`, rebuilds automatically when a mod changes, and
@@ -153,8 +153,8 @@ Run it as a service: see [deploy/](deploy/).
 Two options, the second is friendlier:
 
 1. Send players the invite code; they paste it into "Add a server".
-2. Make a zip containing `valsync.exe` and a text file named
-   `valsync-invite.txt` whose content is the invite code. On first start the
+2. Make a zip containing `valhsync.exe` and a text file named
+   `valhsync-invite.txt` whose content is the invite code. On first start the
    launcher imports it: players see your server immediately.
 
 The invite code contains the URL, the server name and the **public key**. It
@@ -170,12 +170,12 @@ from a random link.
   they had installed (they go to the player's backup, not the trash).
 - **Checking who is in sync**: not in v1. The server log shows requests; the
   launcher shows the pack id on the player's side.
-- **Rotating the key** (`valsync-server rotate-key --yes`): only if the key
+- **Rotating the key** (`valhsync-server rotate-key --yes`): only if the key
   leaked. Every player must import the new invite code.
 
 ## 7. Hosted servers (G-Portal, Nitrado, ...)
 
-You cannot run `valsync-server` on the game host. You do not need to: run it on
+You cannot run `valhsync-server` on the game host. You do not need to: run it on
 your own PC or a VPS with a local copy of the pack in `client_extras`, leave
 `server_root` out, and set `game_address` to the hosted server. Keep that copy
 in sync with what you upload to the host.
@@ -183,7 +183,7 @@ in sync with what you upload to the host.
 ## 7b. Reusing the game's port rule
 
 If you do run `serve` and your router already forwards 2456 as "TCP+UDP"
-(many do by default), you can bind ValSync on TCP 2456: `bind = "0.0.0.0:2456"`.
+(many do by default), you can bind ValhSync on TCP 2456: `bind = "0.0.0.0:2456"`.
 Valheim only uses UDP on that port, so the two do not collide. Check the rule
 before relying on it. Static export (4a) remains the simpler answer.
 
@@ -198,7 +198,7 @@ address or a loopback IP address."*
 So `game_address` must be your **public** IP or a DNS name, even for players
 sitting on the same LAN as the server. A `192.168.x` address produces
 `Timed out attempting to connect` in the client log, with nothing at all in the
-server log. `valsync-server` prints a warning when it sees a local address
+server log. `valhsync-server` prints a warning when it sees a local address
 there.
 
 Without `-crossplay` (the Steam backend), the opposite is true for LAN play: a
@@ -206,12 +206,12 @@ local address works, and internet players need UDP 2456-2457 forwarded.
 
 ## 8. Network and reverse proxies
 
-`valsync-server` speaks plain HTTP. Integrity does not depend on the transport
+`valhsync-server` speaks plain HTTP. Integrity does not depend on the transport
 (the manifest is signed, every file is verified by digest), so HTTP is fine.
 If you want HTTPS anyway, put it behind Caddy, nginx or a Cloudflare tunnel
 and set `public_url` to the `https://` address. The launcher accepts both.
 
-Ports: TCP 2470 for ValSync (configurable), UDP 2456-2457 for the game itself,
+Ports: TCP 2470 for ValhSync (configurable), UDP 2456-2457 for the game itself,
 as before.
 
 ## 9. Things to say to your players

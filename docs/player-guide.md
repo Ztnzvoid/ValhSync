@@ -1,22 +1,22 @@
-# ValSync player guide
+# ValhSync player guide
 
 *Version française plus bas.*
 
 ## Install
 
 There is nothing to install, nothing to open on your router, and no
-administrator rights needed. ValSync only makes outgoing connections, like a
+administrator rights needed. ValhSync only makes outgoing connections, like a
 browser, and only writes inside the Valheim folder.
 
-Put `valsync.exe` anywhere (your Desktop is
-fine). If your admin gave you a zip, keep `valsync-invite.txt` next to the
+Put `valhsync.exe` anywhere (your Desktop is
+fine). If your admin gave you a zip, keep `valhsync-invite.txt` next to the
 executable.
 
 ## First start
 
-1. Double-click `valsync.exe`.
+1. Double-click `valhsync.exe`.
 2. If your server is not listed, click **Add a server** and paste the invite
-   code your admin sent you (it starts with `valsync1:`).
+   code your admin sent you (it starts with `valhsync1:`).
 3. The launcher contacts the server and shows what it will do: files to
    install, to update, and any unknown mod files it will move to a quarantine
    folder (never deleted).
@@ -36,8 +36,8 @@ changed. If nothing changed, it just starts the game.
   backup taken before it. Useful if a mod update breaks something and you want
   to play elsewhere while the admin fixes it.
 - **Open quarantine**: shows the folder where unknown mod files were moved
-  (`BepInEx/_valsync_quarantine/` inside the game folder). Nothing there is
-  deleted by ValSync.
+  (`BepInEx/_valhsync_quarantine/` inside the game folder). Nothing there is
+  deleted by ValhSync.
 - **Play without mods**: disables BepInEx (renames `winhttp.dll`) and starts the
   vanilla game. The next PLAY re-enables it.
 - **Settings**: set the game folder by hand if Steam detection fails (the
@@ -62,29 +62,29 @@ The launcher shows the right line for your install.
 The same executable works in a terminal:
 
 ```
-valsync join <code>      add a server
-valsync status           show what a sync would do
-valsync sync             sync without starting the game
-valsync play             sync and start the game
-valsync rollback         undo the last sync
-valsync vanilla on|off   toggle BepInEx
-valsync doctor           show what ValSync detected on this machine
+valhsync join <code>      add a server
+valhsync status           show what a sync would do
+valhsync sync             sync without starting the game
+valhsync play             sync and start the game
+valhsync rollback         undo the last sync
+valhsync vanilla on|off   toggle BepInEx
+valhsync doctor           show what ValhSync detected on this machine
 ```
 
 ## When something goes wrong
 
 Every error message says what happened and what to do. The common ones:
 
-- *cannot reach the server*: the admin's `valsync-server` is not running, or
+- *cannot reach the server*: the admin's `valhsync-server` is not running, or
   the port is closed. Tell the admin.
 - *key does not match*: the server's key changed. Do not accept a new code
   from anywhere but the admin directly; then `Add a server` again.
 - *Valheim is running*: close the game first.
 - *Valheim was not found*: set the folder in Settings.
 
-ValSync keeps its state in `%APPDATA%\valsync` and its backups in
-`%LOCALAPPDATA%\valsync\backups` (Linux: `~/.config/valsync`,
-`~/.local/share/valsync/backups`). Deleting those folders resets the launcher
+ValhSync keeps its state in `%APPDATA%\valhsync` and its backups in
+`%LOCALAPPDATA%\valhsync\backups` (Linux: `~/.config/valhsync`,
+`~/.local/share/valhsync/backups`). Deleting those folders resets the launcher
 without touching the game.
 
 ---
@@ -94,17 +94,17 @@ without touching the game.
 ### Installation
 
 Rien à installer, rien à ouvrir sur ta box, pas de droits administrateur.
-ValSync ne fait que des connexions sortantes, comme un navigateur, et n'écrit
+ValhSync ne fait que des connexions sortantes, comme un navigateur, et n'écrit
 que dans le dossier de Valheim.
 
-Mets `valsync.exe` où tu veux. Si ton admin t'a donné un
-zip, garde `valsync-invite.txt` à côté de l'exécutable.
+Mets `valhsync.exe` où tu veux. Si ton admin t'a donné un
+zip, garde `valhsync-invite.txt` à côté de l'exécutable.
 
 ### Premier lancement
 
-1. Double-clic sur `valsync.exe`.
+1. Double-clic sur `valhsync.exe`.
 2. Si ton serveur n'apparaît pas, clique **Ajouter un serveur** et colle le
-   code d'invitation reçu de l'admin (il commence par `valsync1:`).
+   code d'invitation reçu de l'admin (il commence par `valhsync1:`).
 3. Le launcher interroge le serveur et affiche ce qu'il va faire : fichiers à
    installer, à mettre à jour, et les fichiers de mods inconnus qu'il va
    déplacer en quarantaine (jamais supprimés).
@@ -122,7 +122,7 @@ téléchargé. Sinon, le jeu démarre directement.
 
 - **Revenir à la version précédente** : annule exactement la dernière synchro.
 - **Voir la quarantaine** : ouvre le dossier où les fichiers inconnus ont été
-  déplacés (`BepInEx/_valsync_quarantine/` dans le dossier du jeu).
+  déplacés (`BepInEx/_valhsync_quarantine/` dans le dossier du jeu).
 - **Jouer sans mods** : désactive BepInEx et lance le jeu vanilla. Le prochain
   JOUER le réactive.
 - **Réglages** : dossier du jeu à la main si Steam n'est pas détecté, oublier
@@ -141,7 +141,7 @@ affiche la bonne ligne.
 ### En cas de problème
 
 Chaque message d'erreur dit ce qui s'est passé et quoi faire. *Serveur
-injoignable* : le serveur ValSync de l'admin ne tourne pas ou le port est
+injoignable* : le serveur ValhSync de l'admin ne tourne pas ou le port est
 fermé. *La clé ne correspond pas* : n'accepte un nouveau code que de l'admin
 directement. *Valheim est lancé* : ferme le jeu. *Valheim introuvable* :
 indique le dossier dans Réglages.

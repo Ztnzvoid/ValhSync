@@ -82,8 +82,8 @@ jobs:
       - run: cargo build --workspace --release --locked --target ${{ matrix.target }}
       - uses: actions/upload-artifact@v4
         with:
-          name: valsync-${{ matrix.target }}
+          name: valhsync-${{ matrix.target }}
           path: |
-            target/${{ matrix.target }}/release/valsync${{ matrix.ext }}
-            target/${{ matrix.target }}/release/valsync-server${{ matrix.ext }}
+            target/${{ matrix.target }}/release/valhsync${{ matrix.ext }}
+            target/${{ matrix.target }}/release/valhsync-server${{ matrix.ext }}
           if-no-files-found: error

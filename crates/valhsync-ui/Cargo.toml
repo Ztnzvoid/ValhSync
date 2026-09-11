@@ -1,0 +1,19 @@
+[package]
+name = "valhsync-ui"
+description = "Shared egui look for the ValhSync launcher and server windows."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish.workspace = true
+
+[dependencies]
+eframe.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+windows-sys.workspace = true
+
+[lints]
+workspace = true

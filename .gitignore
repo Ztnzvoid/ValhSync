@@ -4,6 +4,6 @@
 /.vscode
 *.swp
 # local server data (keys, store, published manifest) must never be committed
-/valsync-server-data
+/valhsync-server-data
 # packaged releases built locally
 /dist
