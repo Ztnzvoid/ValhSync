@@ -29,6 +29,28 @@ Notable changes, newest first. Dates are ISO 8601.
   nothing.
 - The launcher says "server offline" rather than quoting a transport error at
   someone who cannot act on it.
+- **Drop a mod on the window.** The Mods tab takes a `.zip` from Thunderstore,
+  Nexus, a release page or anywhere else, a mod folder, or a bare `.dll`. It
+  works out whether the files sit at the archive's root, under `plugins/` or
+  under a whole `BepInEx/` tree, names the folder from the manifest when there
+  is one, and clears the previous version out first so BepInEx is never asked
+  to load two. Nothing is written outside `BepInEx/plugins`, whatever paths the
+  archive claims. Stored, deflate and deflate64 are read; an archive packed
+  with bzip2, LZMA, zstandard or xz is refused by the name of its compression
+  rather than half-read, so the answer is "extract it and drop the folder"
+  rather than a decoder error nobody can act on.
+- **Eight languages**, chosen from a menu on either window and remembered:
+  English, French, German, Spanish, Italian, Polish, Portuguese, Russian.
+  English is the default, and the language the system asks for is offered
+  first. The server window was half-translated by hand; every string in both
+  windows now goes through one table, so a missing translation is a build
+  error rather than a sentence in the wrong language.
+- **The invite code has a button** that copies it, instead of asking an admin
+  to select a long line of base64 out of a panel by hand.
+- The documentation is three pages under `docs/`: what ValhSync is, a server
+  guide for Windows and Linux, and a player guide. Each is one self-contained
+  file, so it can be opened from a folder or sent to somebody without breaking.
+  They travel inside the release archives too.
 - Scrollbars, and the mark behind the windows, belong to the theme.
 
 ## 0.1.0 — 2026-09-12
