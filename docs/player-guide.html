@@ -383,7 +383,6 @@ nav.toc a.here .n { color: var(--gold); }
     <li><a href="#s8"><span class="n">§8</span>Linux and Steam Deck</a></li>
     <li><a href="#s9"><span class="n">§9</span>Command line</a></li>
     <li><a href="#s10"><span class="n">§10</span>When it goes wrong</a></li>
-    <li><a href="#s11"><span class="n">§11</span>En français</a></li>
   </ol>
   <a class="back" href="index.html">← ValhSync</a>
 </nav>
@@ -587,35 +586,6 @@ valhsync doctor           show what ValhSync found on this machine</code></pre>
   named <strong><code>valhsync-data</code></strong> next to <code>valhsync.exe</code> and
   everything lives there instead. It is used only if you made it, so nothing changes for anyone
   who does not. <code>valhsync doctor</code> says which of the two is in use.</p>
-</section>
-
-<section id="s11">
-  <h2><span class="n">§11</span>En français</h2>
-  <p><strong>Installation.</strong> Rien à installer, aucun port à ouvrir, aucun droit
-  administrateur. Posez <code>valhsync.exe</code> où vous voulez ; si votre admin vous a envoyé un
-  zip, gardez <code>valhsync-invite.txt</code> à côté.</p>
-  <p>Windows affichera « Windows a protégé votre ordinateur » au premier lancement : le programme
-  n'est pas signé avec un certificat payant. <em>Informations complémentaires</em> →
-  <em>Exécuter quand même</em>. Pour vous assurer que le fichier est bien celui que votre admin a
-  envoyé, comparez son empreinte SHA256 avec celle qu'il vous donne.</p>
-  <p><strong>Ajouter le serveur.</strong> Soit un code d'invitation (il commence par
-  <code>valhsync1:</code>), soit simplement l'adresse du serveur, la même que dans Valheim. Dans
-  le second cas le launcher va chercher la clé et vous montre son <strong>empreinte</strong> :
-  comparez-la avec celle de votre admin avant d'accepter. C'est ce qui distingue son serveur de
-  quelqu'un d'autre qui répondrait à cette adresse.</p>
-  <p><strong>Jouer.</strong> Appuyez sur <strong>JOUER</strong>. La première fois, le launcher
-  montre ce qu'il va faire et demande confirmation. Ensuite il ne télécharge que ce qui a changé,
-  puis lance Valheim via Steam. Fermez le jeu avant de synchroniser.</p>
-  <p><strong>Les nouveautés.</strong> Quand quelque chose change, un encadré doré liste les mods
-  ajoutés, mis à jour et retirés, par leur nom — et au-dessus, le mot de votre admin sur cette
-  mise à jour. Lisez-le avant de valider. Le bouton <em>Nouveautés</em> garde l'historique.</p>
-  <p><strong>Rien n'est jamais supprimé.</strong> Un fichier remplacé part en sauvegarde, un mod
-  que vous aviez installé et que le pack ne connaît pas est mis de côté dans un dossier du jeu, et
-  la dernière synchronisation peut être annulée exactement. Il y a aussi un mode « jouer sans
-  mods » qui désactive BepInEx sans rien désinstaller.</p>
-  <p><strong>Si ça coince</strong> : « Serveur hors ligne » veut dire que le serveur de votre
-  admin ne répond pas — le launcher réessaie tout seul. « La clé ne correspond pas » veut dire que
-  la clé du serveur a changé : n'acceptez un nouveau code que de votre admin, directement.</p>
 </section>
 
 <footer>

@@ -6,8 +6,6 @@
 the game starts. No more "Incompatible version", no more zips of DLLs sent by
 hand after every mod update.
 
-> Version française plus bas : [En français](#en-français).
-
 > **Early version.** 0.2.0 is the second release there has ever been. One
 > server has actually run it — Windows, a dedicated server beside it, a handful
 > of players — and the whole chain works there. Linux, hosted providers, Proton
@@ -115,21 +113,30 @@ warn about a game-version mismatch.
 
 ## Quick start: admin
 
-Run `valhsync-server` with no arguments and you get a window: three tabs, and
+Run `valhsync-server` with no arguments and you get a window: four tabs, and
 everything below available from it.
 
-- **Server** — start and stop the dedicated server (stopping sends Ctrl+C to
-  its console, so Valheim writes the world before it exits; the process is
-  never killed), watch its log, read players online, join code and version, and
-  type a line into its console. Starting also fills in your public address if
-  what is in the field cannot work, and brings publishing online behind it.
-  Publishing follows the game server from then on, however it was started.
+- **Server** — start, restart and stop the dedicated server (stopping sends
+  Ctrl+C to its console, so Valheim writes the world before it exits; the
+  process is never killed), follow its log, read players online, join code and
+  version. Starting also fills in your public address if what is in the field
+  cannot work, and brings publishing online behind it. Publishing follows the
+  game server from then on, however it was started. There is no command prompt:
+  a Valheim dedicated server does not read its console, whatever its start-up
+  banner says, so admin actions go through `adminlist.txt` and
+  `bannedlist.txt`, or through an admin in-game. What the server does print to
+  its console is lifted out of the log and shown on the bar.
 - **Mods** — one row per mod in the server's BepInEx folder, each either *sent
   to players* or *server only*. Admin tools and DiscordConnector belong in the
-  second; there is no reason to push them down everyone's connection.
+  second; there is no reason to push them down everyone's connection. Drop a
+  `.zip` from anywhere, a mod folder or a bare `.dll` on the window to install
+  one; an update replaces the version that was there.
+- **Patch notes** — published signed with the pack. What was added, updated and
+  removed writes itself; you add why it matters. Players read it before they
+  agree to install, and keep it afterwards.
 - **Settings** — where the dedicated server lives, the name and address players
   see, publishing (a static folder you upload, or the live server), and the
-  invite code.
+  invite code. Nothing to save: what is on screen is what the server publishes.
 
 The command line does the same things and is what a service unit runs:
 
@@ -221,18 +228,23 @@ backups, rollback). The whole of it is in
 
 ## Languages
 
-The launcher speaks English, Français, Deutsch, Español, Italiano, Polski,
-Português and Русский, chosen from a menu in its header and remembered.
-English is the default and the fallback for anything else.
+Both windows speak English, Français, Deutsch, Español, Italiano, Polski,
+Português and Русский, chosen from a menu in the header and remembered.
+English is the default and the fallback for anything else; the language the
+system asks for is offered first.
+
+Every string in both windows goes through one table per window, so a missing
+translation is a build error rather than a sentence in the wrong language:
+[`crates/valhsync/src/gui/i18n.rs`](crates/valhsync/src/gui/i18n.rs) and
+[`crates/valhsync-server/src/gui/i18n.rs`](crates/valhsync-server/src/gui/i18n.rs).
 
 Translations other than English and French were written to be idiomatic rather
 than literal and have not been reviewed by native speakers — corrections are
-very welcome, and they are one row each in
-[`crates/valhsync/src/gui/i18n.rs`](crates/valhsync/src/gui/i18n.rs).
+very welcome, and each is one row. The places most likely to read oddly are
+the strings that follow a numeral, where Polish and Russian inflect and the
+table currently carries one form.
 
-The admin window is English and French only: its strings sit inline at 172
-call sites rather than in a table, and that wants restructuring before it can
-carry more.
+The documentation is English only. The software is not.
 
 ## What has been tested
 
@@ -305,61 +317,3 @@ Font License 1.1. Its licence travels with the source in
 `crates/valhsync-ui/assets/OFL-Cinzel.txt` and with every release package.
 The body text is **Source Serif 4** by Frank Grießhammer, under the same
 licence (`crates/valhsync-ui/assets/OFL-SourceSerif.txt`).
-
----
-
-## En français
-
-> **Version très précoce.** La 0.2.0 est la deuxième version qui ait jamais
-> existé. Un seul serveur l'a réellement fait tourner — une machine Windows, un
-> serveur dédié à côté, une poignée de joueurs — et toute la chaîne y fonctionne.
-> Linux, les hébergeurs, Proton et tout ce qui n'est pas cette configuration sont
-> testés mais n'ont pas encore rencontré de vrai serveur. Sauvegardez le dossier
-> `BepInEx` du serveur avant d'y pointer ValhSync, et ouvrez une issue quand
-> quelque chose casse : c'est à ça que sert ce stade.
-
-ValhSync synchronise les mods d'un serveur Valheim avec ceux des joueurs. Le
-serveur publie un manifeste signé de son pack BepInEx ; le launcher du joueur
-compare, télécharge ce qui manque, met en quarantaine ce qui n'a rien à faire
-là, puis lance le jeu via Steam. Plus de « Incompatible version », plus de zip
-de DLL à renvoyer à chaque mise à jour.
-
-**Rien à ouvrir, rien à installer.** Le joueur lance un exécutable, sans
-installation ni droits admin, et ne fait que des connexions sortantes : sa box
-n'est jamais touchée. L'admin non plus n'a pas de port à ouvrir : la voie
-recommandée est `valhsync-server export`, qui produit des fichiers statiques à
-déposer sur n'importe quel espace web (GitHub Pages, S3, l'hébergement de ton
-FAI) ; la signature voyage avec les fichiers, l'hébergeur n'a aucune prise sur
-l'intégrité. `serve` sur ta machine reste l'option LAN/avancée : il écoute sur
-le port du jeu, en TCP, donc aucun nouveau port à ouvrir.
-
-**Côté admin** : `valhsync-server init` détecte le serveur dédié installé par
-Steam, écrit une configuration commentée, génère la clé de signature et affiche
-le code d'invitation. `valhsync-server export <dossier>` (ou `export --watch`
-pour le tenir à jour tout seul) produit le pack à uploader ; `serve` le publie
-en direct et le reconstruit quand un mod change. Les mods serveur seuls vont dans `exclude`, les
-mods client seuls dans le dossier `client-extras/`. Un serveur hébergé en ligne
-(G-Portal, Nitrado…) fonctionne aussi : le publieur tourne où tu veux avec une
-copie du pack, seul `game_address` pointe vers l'hébergeur. Ouvre le port TCP
-le port du jeu. Guide complet : [docs/admin-guide.md](docs/admin-guide.md).
-
-**Côté joueur** : double-clic sur `valhsync.exe`, coller le code (ou avoir le
-fichier `valhsync-invite.txt` à côté de l'exe), bouton **JOUER**. La première
-fois, le launcher montre ce qu'il va faire et demande confirmation. Ensuite,
-JOUER synchronise et lance. « Revenir à la version précédente » annule
-exactement la dernière synchro ; « Jouer sans mods » désactive BepInEx sans
-rien supprimer. Linux et Steam Deck : la synchro est identique, mais BepInEx ne
-se charge que si les options de lancement Steam sont réglées ; le launcher
-l'indique, il ne modifie pas Steam. Les consoles ne chargent aucun mod.
-
-**Sécurité** : rejoindre un serveur, c'est faire confiance à son admin, comme
-en acceptant son zip. Contre tout le reste (altération en transit, clé
-changée, chemins piégés, packs démesurés, bugs du launcher), ValhSync se
-protège : signature Ed25519, hachage BLAKE3 de chaque fichier, clé épinglée,
-rejet du manifeste entier au moindre chemin douteux, limites de taille,
-sauvegardes journalisées et retour arrière.
-
-Reste à vérifier sur le vrai serveur : les arguments exacts de lancement
-acceptés par Valheim 1.0 via Steam, et le contenu exact du pack BepInEx
-5.4.2350 à la racine du jeu. Le TLS côté serveur n'est pas intégré (reverse
-proxy si besoin ; l'intégrité ne dépend pas du transport).

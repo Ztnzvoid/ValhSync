@@ -382,7 +382,6 @@ nav.toc a.here .n { color: var(--gold); }
     <li><a href="#s7"><span class="n">§7</span>Licences</a></li>
     <li><a href="#s8"><span class="n">§8</span>What has been tested</a></li>
     <li><a href="#s9"><span class="n">§9</span>Building it</a></li>
-    <li><a href="#s10"><span class="n">§10</span>En français</a></li>
   </ol>
 </nav>
 
@@ -469,7 +468,11 @@ nav.toc a.here .n { color: var(--gold); }
         <li>Start, restart and stop the dedicated server. Stopping sends Ctrl+C to its console,
         so Valheim writes the world before it exits; the process is never killed.</li>
         <li>Players online, join code, Valheim version, public address, process id.</li>
-        <li>Its console, followed live, and a prompt to type into it.</li>
+        <li>Its log, followed live, with the lines the server prints to its own console lifted
+        out of it. There is no command prompt: a Valheim dedicated server does not read its
+        console, whatever its start-up banner claims, so admin actions go through
+        <code>adminlist.txt</code> and <code>bannedlist.txt</code>, or through an admin
+        in-game.</li>
         <li>A warning when Steam has an update waiting for the dedicated server: the game and the
         server are separate Steam applications, and one updating without the other refuses every
         connection.</li>
@@ -483,11 +486,15 @@ nav.toc a.here .n { color: var(--gold); }
         Discord bridges have no reason to travel.</li>
         <li>Drop a zip from anywhere, a mod folder or a bare .dll on the window to install it;
         an update replaces the version that was there.</li>
-        <li>Patch notes on their own tab, published signed with the pack. The list of mods
-        added, updated and removed writes itself; you add why it matters.</li>
       </ul>
     </div>
   </div>
+  <h3>Patch notes</h3>
+  <p>Its own tab, published signed with the pack. The list of mods added, updated and removed
+  writes itself from the plan, so no version number is ever retyped; what you add is the half a
+  diff cannot produce — that a mod resets its own config, that this update only matters to the
+  people who were crashing on the boat. Players read it before they agree to install, and keep
+  it afterwards.</p>
   <h3>Settings</h3>
   <p>Where the dedicated server lives, the name and address players see, publishing — a static
   folder to upload, or the live server — and the invite code to hand out. Everything writes
@@ -495,6 +502,9 @@ nav.toc a.here .n { color: var(--gold); }
   server nobody can reach.</p>
   <p>Publishing follows the game server. Bring the game up, however you bring it up, and the pack
   goes online behind it.</p>
+  <p>The window speaks eight languages — English, French, German, Spanish, Italian, Polish,
+  Portuguese, Russian — chosen from the menu at the top right and remembered. English is the
+  default; the language the system asks for is offered first.</p>
   <p>The command line does all of the same things, and is what a service unit runs — which is
   the path on a headless Linux box. Setting the whole thing up, on either platform, is the
   <a href="server-guide.html">server guide</a>.</p>
@@ -649,31 +659,6 @@ cargo run -p valhsync            # the player's launcher</code></pre>
   local filesystem, no network, where most of the tests live), <code>valhsync-server</code>,
   <code>valhsync</code> (CLI and window in one executable), and <code>valhsync-ui</code> (the
   shared theme).</p>
-</section>
-
-<section id="s10">
-  <h2><span class="n">§10</span>En français</h2>
-  <p><strong>Le serveur fait autorité sur le pack de mods.</strong> L'administrateur lance
-  <code>valhsync-server</code> à côté du serveur dédié : il pilote le serveur de jeu, choisit
-  quels mods partent chez les joueurs, et publie le pack sous forme de manifeste signé. Le joueur
-  lance <code>valhsync</code>, appuie sur <strong>Jouer</strong>, et son dossier BepInEx est
-  aligné sur celui du serveur avant que Valheim démarre. Plus de « Version incompatible », plus
-  de zip de DLL à installer à la main après chaque changement.</p>
-  <p>Rien n'est jamais supprimé : les fichiers remplacés partent en sauvegarde, les mods inconnus
-  sont mis de côté dans un dossier du jeu, et la dernière synchronisation peut être annulée
-  exactement. Le launcher montre ce qui va changer, mod par mod et par son nom, avant de rien
-  faire.</p>
-  <p>La publication passe par le port du jeu, en TCP : Valheim ne l'utilise qu'en UDP, donc la
-  règle de routeur qui existe déjà couvre les deux. <strong>ValhSync ne demande jamais d'ouvrir
-  un port que le jeu n'utilise pas déjà.</strong></p>
-  <p><strong>Testé où ?</strong> Sur un PC Windows 11 faisant tourner le serveur dédié Valheim
-  avec le publisher à côté, et sur les machines de plusieurs joueurs qui ont synchronisé depuis
-  lui et rejoint la partie — en 0.1.0. Linux compile et passe ses tests à chaque commit, mais
-  aucune fenêtre n'y a jamais été ouverte. Proton, Steam Deck, Docker, serveurs hébergés et
-  macOS : jamais essayés. Le <a href="#s8">§8</a> détaille.</p>
-  <p>Guides détaillés :
-  <a href="server-guide.html">administrateur</a>,
-  <a href="https://github.com/Ztnzvoid/ValhSync/blob/main/docs/player-guide.html">joueur</a>.</p>
 </section>
 
 <footer>
