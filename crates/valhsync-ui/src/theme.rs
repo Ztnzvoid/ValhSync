@@ -123,6 +123,19 @@ pub fn apply(ctx: &egui::Context) {
     w.open.bg_stroke = Stroke::new(1.0, GOLD);
     w.open.fg_stroke = Stroke::new(1.0, BONE);
 
+    // A scrollbar the colour of everything else. egui's default is a grey
+    // slab wide enough to read as a second border down the side of a card;
+    // this is a hairline of brass that brightens under the hand, floating
+    // over the content instead of taking a column from it.
+    let scroll = &mut style.spacing.scroll;
+    scroll.floating = true;
+    scroll.bar_width = 5.0;
+    scroll.floating_allocated_width = 0.0;
+    scroll.bar_inner_margin = 3.0;
+    scroll.bar_outer_margin = 1.0;
+    scroll.handle_min_length = 24.0;
+    scroll.foreground_color = true;
+
     style.spacing.button_padding = egui::vec2(14.0, 7.0);
     style.spacing.item_spacing = egui::vec2(10.0, 9.0);
     style.spacing.window_margin = egui::Margin::same(18);

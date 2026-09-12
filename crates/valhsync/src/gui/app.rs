@@ -1315,7 +1315,17 @@ impl App {
             });
             if let Some(notes) = &notes {
                 ui.add_space(4.0);
-                ui.label(RichText::new(notes).color(th::BONE));
+                // Bounded, and scrolled past that. An admin is allowed two
+                // thousand characters, and a note that long would otherwise
+                // push the mod list, the button and the whole point of the
+                // screen off the bottom of the window.
+                egui::ScrollArea::vertical()
+                    .id_salt("pack-notes")
+                    .max_height(170.0)
+                    .auto_shrink([false, true])
+                    .show(ui, |ui| {
+                        ui.label(RichText::new(notes).color(th::BONE));
+                    });
             }
             if !changes.is_empty() {
                 ui.add_space(4.0);
