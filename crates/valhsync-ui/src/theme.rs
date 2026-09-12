@@ -265,15 +265,99 @@ fn watermark(ctx: &egui::Context, rect: Rect) {
             Color32::from_rgba_unmultiplied(0xC7, 0xA4, 0x55, MARK_BLOOM),
         ),
     );
-    rune(
+    painted_rune(
         &painter,
         centre,
         radius,
-        Stroke::new(
-            MARK_CORE_WIDTH,
-            Color32::from_rgba_unmultiplied(0xE8, 0xCD, 0x8B, MARK_CORE),
-        ),
+        MARK_CORE_WIDTH,
+        Color32::from_rgba_unmultiplied(0xE8, 0xCD, 0x8B, MARK_CORE),
     );
+}
+
+/// Mannaz as paint rather than as line work: the cut wanders, the pigment
+/// runs thick and thin, and the brush leaves the surface here and there. The
+/// bloom underneath stays smooth, so what reads as uneven is the paint and
+/// not the light behind it.
+fn painted_rune(
+    painter: &egui::Painter,
+    centre: egui::Pos2,
+    radius: f32,
+    width: f32,
+    colour: Color32,
+) {
+    for (i, (a, b)) in mannaz_strokes([centre.x, centre.y], radius)
+        .into_iter()
+        .enumerate()
+    {
+        #[allow(clippy::cast_possible_truncation)]
+        let seed = 0x51_u32.wrapping_mul(i as u32 + 1);
+        brushed(
+            painter,
+            egui::pos2(a[0], a[1]),
+            egui::pos2(b[0], b[1]),
+            width,
+            colour,
+            seed,
+        );
+    }
+}
+
+/// One stroke, drawn as a chain of short segments that wander off the line,
+/// vary in weight and opacity, and now and then skip.
+///
+/// The jitter comes from the same value noise the ground uses, so it is the
+/// same on every machine and identical from frame to frame: a mark that
+/// re-rolled itself each repaint would crawl.
+#[allow(
+    clippy::cast_precision_loss,
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss
+)]
+fn brushed(
+    painter: &egui::Painter,
+    a: egui::Pos2,
+    b: egui::Pos2,
+    width: f32,
+    colour: Color32,
+    seed: u32,
+) {
+    let span = b - a;
+    let len = span.length();
+    if len <= f32::EPSILON {
+        return;
+    }
+    let dir = span / len;
+    let normal = egui::vec2(-dir.y, dir.x);
+    // Short enough that the wander reads as a wobble rather than a zigzag.
+    let step = (width * 0.6).max(3.0);
+    let count = (len / step).ceil().max(1.0) as usize;
+
+    let (mut prev, mut prev_off) = (a, 0.0_f32);
+    for i in 1..=count {
+        let t = i as f32 / count as f32;
+        let point = a + span * t;
+        let wander = hash_noise(i, seed as usize, seed);
+        let load = hash_noise(i + 977, seed as usize, seed ^ 0x5bf0_3635);
+        let lift = hash_noise(i + 313, seed as usize, seed ^ 0x2545_f491);
+        let off = (wander - 0.5) * width * 0.40;
+
+        // The bristles leave the surface: a gap, not a thin patch.
+        if lift > 0.88 {
+            prev = point;
+            prev_off = off;
+            continue;
+        }
+        let alpha = (f32::from(colour.a()) * (0.40 + wander * 0.95)).min(255.0) as u8;
+        painter.line_segment(
+            [prev + normal * prev_off, point + normal * off],
+            Stroke::new(
+                width * (0.5 + load * 0.85),
+                Color32::from_rgba_unmultiplied(colour.r(), colour.g(), colour.b(), alpha),
+            ),
+        );
+        prev = point;
+        prev_off = off;
+    }
 }
 
 /// A fine dust over the ground, so the surface is a material rather than a
