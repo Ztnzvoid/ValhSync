@@ -73,16 +73,32 @@ impl News {
         if entry.changes.is_empty() && entry.notes.is_none() {
             return false;
         }
-        if self
-            .entries
-            .iter()
-            .any(|e| e.server_id == entry.server_id && e.pack_id == entry.pack_id)
-        {
+        // The note counts as much as the pack. Notes are not part of a pack
+        // id -- an admin who rewrites the message without touching a mod
+        // publishes the same pack -- so deduplicating on the id alone threw
+        // away exactly the entries that exist to be read. A player would
+        // never see a word their admin wrote unless a mod moved with it.
+        if self.entries.iter().any(|e| {
+            e.server_id == entry.server_id && e.pack_id == entry.pack_id && e.notes == entry.notes
+        }) {
             return false;
         }
         self.entries.insert(0, entry);
         self.entries.truncate(KEEP);
         true
+    }
+
+    /// What this server last said, if it has said anything.
+    ///
+    /// Used to notice a note that has changed since the player last saw one,
+    /// which is the only way a message with no mods behind it ever reaches
+    /// them.
+    #[must_use]
+    pub fn latest_notes<'a>(&'a self, server_id: &str) -> Option<&'a str> {
+        self.entries
+            .iter()
+            .filter(|e| e.server_id == server_id)
+            .find_map(|e| e.notes.as_deref())
     }
 
     /// Entries from one server, newest first.
@@ -95,6 +111,7 @@ impl News {
 
 #[cfg(test)]
 mod tests {
+
     use super::*;
 
     fn entry(pack: &str, changes: Vec<ModChange>) -> Entry {
@@ -113,6 +130,37 @@ mod tests {
             name: name.into(),
             kind: ChangeKind::Added,
         }
+    }
+
+    #[test]
+    fn a_rewritten_note_is_kept_even_when_the_pack_is_the_same() {
+        // The admin fixed a typo, or added the warning they forgot. Nothing
+        // about the mods changed, so the pack id did not either -- and that
+        // used to mean nobody read the corrected note.
+        let said = |text: &str| Entry {
+            notes: Some(text.to_string()),
+            ..entry("same-pack", Vec::new())
+        };
+        let mut news = News::default();
+        assert!(news.record(said("empty your chests")));
+        assert!(news.record(said("empty your chests AND your cart")));
+        assert_eq!(news.for_server("server-one").count(), 2);
+        assert_eq!(
+            news.latest_notes("server-one"),
+            Some("empty your chests AND your cart")
+        );
+    }
+
+    #[test]
+    fn the_same_note_on_the_same_pack_is_still_recorded_once() {
+        let said = || Entry {
+            notes: Some("a word".to_string()),
+            ..entry("same-pack", Vec::new())
+        };
+        let mut news = News::default();
+        assert!(news.record(said()));
+        assert!(!news.record(said()));
+        assert_eq!(news.for_server("server-one").count(), 1);
     }
 
     #[test]

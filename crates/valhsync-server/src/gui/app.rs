@@ -1360,6 +1360,13 @@ impl App {
     /// tens of thousands a session writes, and often outside the window the
     /// log view reads at all.
     fn console_panel(&mut self, ctx: &egui::Context) {
+        // The Server tab only. It belongs beside the thing it is the console
+        // of, and a panel that follows you onto Mods, Players and Settings is
+        // a panel taking a third of the window from whatever you came there
+        // to do.
+        if self.tab != Tab::Status {
+            return;
+        }
         egui::TopBottomPanel::bottom("console")
             .resizable(true)
             .default_height(164.0)
@@ -2594,6 +2601,17 @@ impl App {
         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
             ui.label(RichText::new(text).small().color(color));
         });
+
+        // Whether it has actually gone anywhere. Everything about this is
+        // automatic -- typing saves, saving rebuilds, rebuilding republishes
+        // -- which is exactly why it needs saying: an admin with no button to
+        // press and no confirmation has no way to tell automatic from broken.
+        ui.add_space(6.0);
+        if self.serving_at.is_some() {
+            w::status_dot(ui, th::MOSS, self.t(Key::NotesLive));
+        } else {
+            w::status_dot(ui, th::GOLD, self.t(Key::NotesWaiting));
+        }
 
         // Under the note, because it is what carries the note out: the
         // announcement is this text plus the mods that moved.

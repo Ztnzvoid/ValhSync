@@ -673,6 +673,14 @@ impl App {
                     self.mods = mod_rows(&prepared);
                     self.prepared = Some(*prepared);
                     self.status = Status::Ready;
+                    // A word from the admin reaches the history on being
+                    // seen, not on being synced. Notes are not part of a pack
+                    // id, so an admin who writes one without touching a mod
+                    // leaves nothing to install -- and until now that meant
+                    // nothing to read either. The check runs on its own every
+                    // few seconds, so what they wrote arrives without anybody
+                    // pressing anything.
+                    self.record_note_seen();
                     // A sync restores `winhttp.dll`, so the switch has to be
                     // read again after one rather than left showing what the
                     // player chose before it.
@@ -1429,6 +1437,41 @@ impl App {
     /// Taken from the plan that was applied rather than from a fresh one: by
     /// the next check the same comparison yields nothing, because everything
     /// in it is now on disk.
+    /// Keep a note the server is publishing, the moment it is seen.
+    ///
+    /// [`Self::record_news`] runs after a sync, which covers every note that
+    /// arrives with mods behind it. A note on its own has no sync to hang
+    /// off: there is nothing to install, so the player would have had to
+    /// guess that something had been said. This is the other half.
+    fn record_note_seen(&mut self) {
+        let Some(p) = &self.prepared else {
+            return;
+        };
+        let Some(notes) = p.manifest.notes.clone() else {
+            return;
+        };
+        if self.news.latest_notes(&p.server.id) == Some(notes.as_str()) {
+            return;
+        }
+        let entry = crate::news::Entry {
+            server_id: p.server.id.clone(),
+            server_name: p.server.name.clone(),
+            pack_id: p.manifest.pack_id.clone(),
+            at: valhsync_core::clock::now_rfc3339(),
+            notes: Some(notes),
+            // Deliberately empty. What the plan would say here is what is
+            // about to be installed, not what this entry is about, and a
+            // history that claims mods moved when none did is worse than one
+            // that says only what it knows.
+            changes: Vec::new(),
+        };
+        if self.news.record(entry)
+            && let Err(e) = self.news.save(&self.paths)
+        {
+            self.notify(e.to_string(), th::GOLD);
+        }
+    }
+
     fn record_news(&mut self) {
         let Some(p) = &self.prepared else {
             return;
