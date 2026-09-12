@@ -456,10 +456,10 @@ nav.toc a.here .n { color: var(--gold); }
 <section id="s3">
   <h2><span class="n">§3</span>Playing</h2>
   <p>Press <strong>PLAY</strong>. That is the whole of it.</p>
-  <p>The first time, the launcher shows what it will do before doing it — files to install, and
-  any mod files of your own it will move aside — and asks you to confirm. After that, if the
-  admin changed something it downloads only what changed; if nothing changed it just starts
-  Valheim through Steam and connects you.</p>
+  <p>One press does it. If the admin changed something the launcher downloads only what
+  changed and then starts Valheim through Steam; if nothing changed it just starts the game and
+  connects you. There is no screen asking you to agree to anything: you said who you trust when
+  you added the server, and the launcher does not ask twice.</p>
   <p>Close Valheim before syncing. The launcher refuses to change files while the game is
   running, rather than doing it behind the game's back.</p>
   <p>Your own edits to config files — keybinds, UI positions — survive a sync. The server seeds
@@ -468,15 +468,18 @@ nav.toc a.here .n { color: var(--gold); }
 
 <section id="s4">
   <h2><span class="n">§4</span>What's new</h2>
-  <p>When a sync would change something, a gold panel says what, <em>before</em> you press
-  anything: mods added, updated and removed, by name. That list is computed from the pack itself,
-  so it is always right and always complete.</p>
-  <p>Above it sits whatever your admin wrote about the release — the part no list can tell you.
-  That a mod resets its own configuration. That you should empty a chest before this one. That
-  the update only matters if you were crashing on the boat. Read it before you confirm; that is
-  why it is there and not in a Discord message you have scrolled past.</p>
-  <p>The <strong>What's new</strong> button keeps the history: one entry per sync that changed
-  something, so you can go back to what arrived when, and to what you were told about it.</p>
+  <p>The <strong>What's new</strong> button lights up when your admin has written something. It
+  holds what they wrote — the part no list can tell you: that a mod resets its own configuration,
+  that you should empty a chest before this one, that the update only matters if you were
+  crashing on the boat — along with the mods added, updated and removed by name, computed from
+  the pack itself so it is always right and always complete.</p>
+  <p>It is a button and not a panel in your way on purpose. You came here to press one thing, and
+  a wall of text in front of it stops being read by the third time it appears. It is one click
+  away instead, and <strong>it stays there after the sync</strong>, which is more than a warning
+  shown only at the moment of installing ever manages.</p>
+  <p><strong>History</strong> keeps the previous ones: one entry per pack, and one for every time
+  the admin rewrote their note without changing a mod — so a word they added later still
+  reaches you.</p>
 </section>
 
 <section id="s5">

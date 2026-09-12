@@ -625,7 +625,22 @@ journalctl -u valhsync-server -f</code></pre>
     name rather than half-read — extract those yourself and drop the folder.</li>
     <li><strong>Start, Restart, Stop and save.</strong> Stopping sends Ctrl+C to the server's
     console, so Valheim writes the world before it exits; the process is never killed. Restart
-    waits for it to actually be gone before starting again.</li>
+    waits for it to actually be gone before starting again. Optionally, a server that exits
+    without being asked to is brought back: off by default, because a server that returns after
+    you deliberately shut it down is fighting you, and bounded at three restarts in twenty
+    minutes because the failure this exists for is also the failure that loops.</li>
+    <li><strong>Turn a mod off, or take it out</strong>, from the row it is on. Disabling moves
+    it out of <code>BepInEx</code> entirely — renaming it in place would not do, since BepInEx
+    loads every <code>.dll</code> under <code>plugins</code> recursively and anything still
+    inside it travels to players in the pack. Removing does not delete: the mod goes to a folder
+    ValhSync owns and the window says which, so a mistake at eleven at night can be walked
+    back.</li>
+    <li><strong>Back up the world.</strong> ValhSync protects every file it puts on a player's
+    machine and, until now, nothing on yours — which is the wrong way round, since the world is
+    the one thing that cannot be downloaded again, and adding a mod is exactly when one gets
+    corrupted. Both halves travel together, beside <code>worlds_local</code> and never inside it.
+    Valheim writes the world while it plays, so a copy taken with the server up can be torn; the
+    window says so before the click rather than after.</li>
     <li><strong>The log</strong>, followed live, filling the tab; and below it a resizable
     <strong>console</strong> carrying the lines the server prints to its own console, which are
     otherwise a handful among tens of thousands.</li>

@@ -126,7 +126,13 @@ everything below available from it.
   to players* or *server only*. Admin tools and DiscordConnector belong in the
   second; there is no reason to push them down everyone's connection. Drop a
   `.zip` from anywhere, a mod folder or a bare `.dll` on the window to install
-  one; an update replaces the version that was there.
+  one; an update replaces the version that was there. Turn one off from its own
+  row, or take it out — removing moves it to a folder ValhSync owns rather than
+  deleting it, and the window says which.
+- **World backups** — a copy of the world beside it, taken before a change.
+  ValhSync protected every file it put on a player's machine and nothing on
+  yours, which is the wrong way round: the world is the one thing that cannot
+  be downloaded again.
 - **Players** — admins, bans and the permitted list, with Iron Gate's own
   warning about that last one on the card. The same from the console's prompt:
   `ban <id>`, `unban`, `admin`, `permit`, `banned`. These write the three files
@@ -136,8 +142,9 @@ everything below available from it.
   saving on demand, are an admin pressing F5 in the game — typing those here
   says so rather than failing quietly.
 - **Patch notes** — published signed with the pack. What was added, updated and
-  removed writes itself; you add why it matters. Players read it before they
-  agree to install, and keep it afterwards.
+  removed writes itself; you add why it matters. Players read it behind a
+  button and keep it afterwards, with a history. Optionally posted to a Discord
+  webhook as well, once per pack that is genuinely new.
 - **Settings** — where the dedicated server lives, the name and address players
   see, publishing (a static folder you upload, or the live server), and the
   invite code. Nothing to save: what is on screen is what the server publishes.
