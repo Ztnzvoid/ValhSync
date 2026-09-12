@@ -1,0 +1,493 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ValhSync — the server decides the mods</title>
+<meta name="description" content="ValhSync keeps a modded Valheim server and its players on the same mod pack: the server publishes a signed manifest, the launcher applies it before the game starts.">
+<style>
+  /* ── ValhSync palette, after Valheim's own interface ────────────────
+     Night and burnt wood for the ground, bone and parchment for text,
+     worn brass for headings, northern mist for numbering. */
+  :root {
+    --night:      #0F0D0B;
+    --wood:       #17140F;
+    --panel:      #1E1912;
+    --leather:    #262017;
+    --edge:       #4A3C27;
+    --edge-soft:  #332A1D;
+    --bone:       #E0D5BC;
+    --bone-dim:   #ADA089;
+    --gold:       #C7A455;
+    --gold-lit:   #E8CD8B;
+    --rune:       #7E9AA7;
+    --blood:      #9A3421;
+    --moss:       #7E9155;
+
+    --serif:   "Iowan Old Style", "Charter", Constantia, "Palatino Linotype", Georgia, serif;
+    --display: Cinzel, "Trajan Pro", Constantia, "Palatino Linotype", "Book Antiqua", Georgia, serif;
+    --mono:    "Cascadia Code", "JetBrains Mono", Consolas, "DejaVu Sans Mono", monospace;
+  }
+  * { box-sizing: border-box; }
+  html {
+    background: var(--night);
+    color: var(--bone);
+    background-image:
+      radial-gradient(120% 80% at 50% 0%, #241D14 0%, rgba(36,29,20,0) 60%),
+      radial-gradient(90% 60% at 50% 100%, #1A1610 0%, rgba(26,22,16,0) 70%);
+    background-attachment: fixed;
+  }
+  body { margin: 0; font: 17px/1.65 var(--serif); }
+  ::selection { background: rgba(199,164,85,0.3); }
+
+  a { color: var(--gold); text-underline-offset: 2px; text-decoration-color: var(--edge); }
+  a:hover { color: var(--gold-lit); }
+  a:focus-visible { outline: 2px solid var(--gold-lit); outline-offset: 2px; }
+
+  .layout {
+    display: grid;
+    grid-template-columns: 15rem minmax(0, 46rem);
+    gap: 3rem;
+    max-width: 68rem;
+    margin: 0 auto;
+    padding: 0 1.5rem 6rem;
+  }
+
+  /* ── Contents: carved into the margin ───────────────────────────── */
+  nav.toc {
+    position: sticky;
+    top: 1.5rem;
+    align-self: start;
+    margin-top: 3rem;
+    font: 0.86rem/1.6 var(--display);
+    letter-spacing: 0.01em;
+  }
+  nav.toc ol { list-style: none; margin: 0; padding: 0; border-left: 1px solid var(--edge-soft); }
+  nav.toc li { margin: 0; }
+  nav.toc a {
+    display: block;
+    text-decoration: none;
+    color: var(--bone-dim);
+    padding: 0.22rem 0 0.22rem 0.9rem;
+    margin-left: -1px;
+    border-left: 2px solid transparent;
+  }
+  nav.toc a:hover { color: var(--gold-lit); border-left-color: var(--gold); background: rgba(199,164,85,0.05); }
+  nav.toc .n { display: inline-block; width: 2.4rem; color: var(--rune); }
+
+  main { min-width: 0; }
+
+  header.hero { padding: 3.5rem 0 2.2rem; border-bottom: 1px solid var(--edge); }
+  header.hero h1 {
+    font: 600 3rem/1.05 var(--display);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--gold);
+    margin: 0 0 0.5rem;
+    text-shadow: 0 1px 0 #000, 0 0 28px rgba(199,164,85,0.16);
+  }
+  header.hero .sub {
+    font: 1.05rem/1.5 var(--serif);
+    color: var(--bone-dim);
+    margin: 0 0 2rem;
+    max-width: 40rem;
+  }
+  .log {
+    background: var(--wood);
+    color: #BFB5A0;
+    font: 0.84rem/1.7 var(--mono);
+    padding: 1.1rem 1.25rem;
+    border: 1px solid var(--edge-soft);
+    border-left: 6px solid var(--blood);
+    overflow-x: auto;
+    white-space: pre;
+    box-shadow: inset 0 0 40px rgba(0,0,0,0.5);
+  }
+  .log .w { color: #E3B45A; }
+  header.hero .verdict {
+    font: 600 1.3rem/1.4 var(--display);
+    color: var(--bone);
+    margin: 1.5rem 0 0;
+    max-width: 38rem;
+  }
+
+  section { padding-top: 2.6rem; }
+  h2 {
+    font: 600 1.5rem/1.25 var(--display);
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--gold);
+    margin: 0 0 1rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid var(--edge-soft);
+    display: flex;
+    gap: 0.7rem;
+    align-items: baseline;
+  }
+  h2 .n { color: var(--rune); font-weight: 400; letter-spacing: 0; text-transform: none; }
+  h3 {
+    font: 600 1.08rem/1.35 var(--display);
+    letter-spacing: 0.02em;
+    color: var(--gold-lit);
+    margin: 1.8rem 0 0.5rem;
+  }
+  p, li { max-width: 42rem; }
+  strong { color: var(--gold-lit); font-weight: 600; }
+  em { color: var(--bone); }
+  ul, ol { padding-left: 1.3rem; }
+  li { margin: 0.32rem 0; }
+  li::marker { color: var(--rune); }
+
+  code {
+    font: 0.86em var(--mono);
+    background: var(--wood);
+    border: 1px solid var(--edge-soft);
+    color: var(--gold-lit);
+    padding: 0.08em 0.34em;
+    border-radius: 2px;
+  }
+  pre {
+    font: 0.82rem/1.6 var(--mono);
+    background: var(--wood);
+    color: #C6BCA6;
+    border: 1px solid var(--edge-soft);
+    border-left: 3px solid var(--edge);
+    padding: 1rem 1.15rem;
+    overflow-x: auto;
+    border-radius: 2px;
+  }
+  pre code { background: none; border: 0; padding: 0; font-size: inherit; color: inherit; }
+
+  table { border-collapse: collapse; width: 100%; margin: 0.9rem 0 1.3rem; font-size: 0.93rem; }
+  th, td { text-align: left; vertical-align: top; padding: 0.6rem 0.75rem; border-bottom: 1px solid var(--edge-soft); }
+  th {
+    font: 600 0.82rem var(--display);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--gold);
+    border-bottom: 2px solid var(--edge);
+  }
+  tbody tr:hover { background: rgba(199,164,85,0.04); }
+  td.num { text-align: right; color: var(--rune); font-family: var(--mono); font-size: 0.88em; white-space: nowrap; }
+
+  .rule {
+    border: 1px solid var(--edge-soft);
+    border-left: 4px solid var(--rune);
+    background: var(--leather);
+    padding: 0.85rem 1.05rem;
+    margin: 1.1rem 0;
+  }
+  .rule.decide { border-left-color: var(--gold); }
+  .rule.never  { border-left-color: var(--blood); }
+  .rule strong:first-child {
+    font-family: var(--display);
+    letter-spacing: 0.03em;
+    color: var(--gold-lit);
+  }
+  .rule.never strong:first-child { color: #D2724F; }
+
+  /* ── The two halves, side by side ───────────────────────────────── */
+  .halves { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin: 1.2rem 0; }
+  .half {
+    border: 1px solid var(--edge-soft);
+    background: var(--panel);
+    padding: 1rem 1.1rem;
+  }
+  .half h3 { margin-top: 0; }
+  .half ul { padding-left: 1.1rem; margin-bottom: 0; }
+
+  footer {
+    margin-top: 4.5rem;
+    padding-top: 1.1rem;
+    border-top: 1px solid var(--edge-soft);
+    font: 0.86rem var(--display);
+    letter-spacing: 0.02em;
+    color: var(--bone-dim);
+  }
+
+  @media (max-width: 900px) {
+    .layout { grid-template-columns: 1fr; gap: 0; }
+    nav.toc { position: static; margin-top: 1.5rem; }
+    header.hero h1 { font-size: 2.1rem; }
+    .halves { grid-template-columns: 1fr; }
+  }
+  @media print {
+    nav.toc { display: none; }
+    .layout { display: block; }
+    html { background: #fff; color: #000; background-image: none; }
+    a, h1, h2, h3, th, strong { color: #000; }
+  }
+</style>
+</head>
+<body>
+<div class="layout">
+
+<nav class="toc" aria-label="Contents">
+  <ol>
+    <li><a href="#s1"><span class="n">§1</span>What it is</a></li>
+    <li><a href="#s2"><span class="n">§2</span>How it works</a></li>
+    <li><a href="#s3"><span class="n">§3</span>The admin's window</a></li>
+    <li><a href="#s4"><span class="n">§4</span>The player's launcher</a></li>
+    <li><a href="#s5"><span class="n">§5</span>Updating the launcher</a></li>
+    <li><a href="#s6"><span class="n">§6</span>Security, honestly</a></li>
+    <li><a href="#s7"><span class="n">§7</span>Licences</a></li>
+    <li><a href="#s8"><span class="n">§8</span>Building it</a></li>
+    <li><a href="#s9"><span class="n">§9</span>En français</a></li>
+  </ol>
+</nav>
+
+<main>
+
+<header class="hero">
+  <h1>ValhSync</h1>
+  <p class="sub">Two launchers for a modded Valheim server. The admin's runs the dedicated
+  server and publishes a signed mod pack; the player's pins the server key, brings BepInEx in
+  line with it, and starts the game.</p>
+<div class="log"><span class="w">[Warning:AzuCraftyBoxes] Peer (Steam_7656119xxxxxxxxxx) never sent version
+                        or couldn't due to previous disconnect, disconnecting</span></div>
+  <p class="verdict">The player did not have the right mods, was thrown out, and saw only
+  “Incompatible version”. ValhSync exists so that stops happening.</p>
+</header>
+
+<section id="s1">
+  <h2><span class="n">§1</span>What it is</h2>
+  <p>Valheim has no native way to distribute mods. There is no Steam Workshop for it, even in
+  1.0, and Iron Gate does not officially support modding: everything goes through BepInEx and
+  third-party managers. On a modded server that breaks in several ways at once.</p>
+  <ul>
+    <li><strong>The version handshake.</strong> Mods built on ServerSync or Jotunn check at
+    connection time that the client has the same mod at the same version. If it does not, the
+    client is dropped, and the game shows one generic message.</li>
+    <li><strong>Mods that refuse each other.</strong> One leftover plugin on a player's machine
+    can stop another from loading at all, and the server rejects them for it.</li>
+    <li><strong>Scattered sources.</strong> Some authors publish outside Thunderstore; a manager
+    that does not read that source hands a player a version from before the last game update.</li>
+  </ul>
+  <p>ValhSync makes the server the single source of truth. The admin's machine already has the
+  exact set of mods the server runs — that is what it is running. ValhSync publishes it, signed,
+  and the launcher makes the player's game folder match before Valheim starts.</p>
+  <div class="rule">
+    <strong>No installer.</strong> Two executables, no registry, no service to register, no
+    account to create. Unpack and run.
+  </div>
+</section>
+
+<section id="s2">
+  <h2><span class="n">§2</span>How it works</h2>
+<pre><code> Server machine                              Player's PC
+ ┌────────────────────────────┐             ┌──────────────────────────────┐
+ │ Valheim dedicated server   │             │ valhsync (launcher)          │
+ │  └ BepInEx/ (server mods)  │   HTTP/TCP  │  1. GET /manifest.json + sig │
+ │                            │ ◀─────────▶ │  2. verify Ed25519 signature │
+ │ valhsync-server            │             │  3. compare with local files │
+ │  ├ scans the pack          │             │  4. GET /files/&lt;blake3&gt;       │
+ │  ├ signs the manifest      │             │  5. apply, journalled        │
+ │  └ content-addressed store │             │  6. start Valheim via Steam  │
+ └────────────────────────────┘             └──────────────────────────────┘</code></pre>
+  <h3>A signed manifest</h3>
+  <p>The server publishes a JSON manifest and a detached Ed25519 signature over the exact bytes.
+  The launcher pins the server's public key when the invite code is imported, and verifies the
+  signature <em>before</em> parsing anything. A manifest that does not verify is never read.</p>
+  <h3>Content-addressed files</h3>
+  <p>Every file is fetched by its BLAKE3 digest and checked after download. A URL can only ever
+  name a hash, never a path, so there is no path for a request to traverse. Nothing is written
+  until every file has arrived and verified.</p>
+  <h3>One port, and it is already open</h3>
+  <p>The live publisher serves on the game's own port in TCP. Valheim uses that port in UDP only,
+  so the router rule an admin already has covers both. ValhSync never asks for a port the game
+  does not already use. Admins who prefer to open nothing export a static folder instead and
+  upload it anywhere.</p>
+</section>
+
+<section id="s3">
+  <h2><span class="n">§3</span>The admin's window</h2>
+  <p>Run <code>valhsync-server</code> with no arguments and it opens a window. Three tabs.</p>
+  <div class="halves">
+    <div class="half">
+      <h3>Server</h3>
+      <ul>
+        <li>Start, restart and stop the dedicated server. Stopping sends Ctrl+C to its console,
+        so Valheim writes the world before it exits; the process is never killed.</li>
+        <li>Players online, join code, Valheim version, public address, process id.</li>
+        <li>Its console, followed live, and a prompt to type into it.</li>
+        <li>A warning when Steam has an update waiting for the dedicated server: the game and the
+        server are separate Steam applications, and one updating without the other refuses every
+        connection.</li>
+      </ul>
+    </div>
+    <div class="half">
+      <h3>Mods</h3>
+      <ul>
+        <li>One row per mod found in the server's BepInEx folder.</li>
+        <li>Each is either <em>sent to players</em> or <em>server only</em>: admin tools and
+        Discord bridges have no reason to travel.</li>
+        <li>An optional note to players, published signed with the pack.</li>
+      </ul>
+    </div>
+  </div>
+  <h3>Settings</h3>
+  <p>Where the dedicated server lives, the name and address players see, publishing — a static
+  folder to upload, or the live server — and the invite code to hand out. Everything writes
+  itself: there is no Save button, because a setting that is on screen and not on disk is a
+  server nobody can reach.</p>
+  <p>Publishing follows the game server. Bring the game up, however you bring it up, and the pack
+  goes online behind it.</p>
+  <p>The command line does all of the same things, and is what a service unit runs.</p>
+</section>
+
+<section id="s4">
+  <h2><span class="n">§4</span>The player's launcher</h2>
+  <p>One window, one button. Press <strong>Play</strong>: if anything has changed it is installed
+  first, then Valheim starts through Steam.</p>
+  <ul>
+    <li><strong>Servers are added from an invite code</strong>, which pins the server's key. The
+    fingerprint is shown so it can be checked against what the admin announced. Several servers
+    can sit side by side.</li>
+    <li><strong>What will change is shown before it happens</strong>, mod by mod and by name:
+    added, updated, removed — with whatever the admin wrote about it. Kept afterwards, so it can
+    be read again.</li>
+    <li><strong>Nothing is deleted.</strong> Files that get replaced go to a backup. Mods the
+    player installed themselves that are not in the pack are set aside in a folder inside the
+    game, never removed. The last sync can be rolled back exactly.</li>
+    <li><strong>A repair pass</strong> re-verifies and re-fetches anything that no longer matches.</li>
+    <li><strong>Play without mods</strong> renames <code>winhttp.dll</code> rather than
+    uninstalling anything, and the next sync puts it back.</li>
+  </ul>
+  <div class="rule">
+    <strong>Nothing is applied half-way.</strong> Everything is downloaded and verified first,
+    every change is journalled with the previous bytes stashed, and a failure rolls back on its
+    own. A crash mid-sync leaves a working game folder.
+  </div>
+</section>
+
+<section id="s5">
+  <h2><span class="n">§5</span>Updating the launcher</h2>
+  <p>A server can offer players a newer ValhSync. The offer is a document signed by the same key
+  they already pinned for the mod pack, naming a build by its BLAKE3 digest; the launcher checks
+  the signature before reading a field of it, checks the digest before installing a byte of it,
+  and refuses anything that is not strictly newer or not built for that machine.</p>
+  <p>The prompt names the server and its key fingerprint, because that is what the player is
+  being asked to trust — see <a href="#s6">§6</a>. Declining changes nothing: syncing and playing
+  carry on, and releases can always be fetched from the repository instead.</p>
+</section>
+
+<section id="s6">
+  <h2><span class="n">§6</span>Security, honestly</h2>
+  <p>The full threat model is in <a href="https://github.com/Ztnzvoid/ValhSync/blob/main/SECURITY.md">SECURITY.md</a>.
+  The shape of it:</p>
+  <table>
+    <thead><tr><th>Threat</th><th>What stops it</th></tr></thead>
+    <tbody>
+      <tr><td>Manifest forged or altered in transit</td><td>Ed25519 signature over the exact bytes, verified before parsing, key pinned at import</td></tr>
+      <tr><td>File altered in transit or on the server</td><td>BLAKE3 checked after download; nothing applied until everything verifies</td></tr>
+      <tr><td>Replay of an old, validly signed manifest</td><td>The launcher remembers the newest it has seen and refuses an older one</td></tr>
+      <tr><td>Path traversal, drive letters, UNC, reserved device names</td><td>Strict syntax check plus an allow-list of roots; one bad entry rejects the whole manifest</td></tr>
+      <tr><td>Symlinks or junctions in the game folder</td><td>Never followed, checked at plan time and again at apply time</td></tr>
+      <tr><td>Names that render as something other than what they are</td><td>Control characters, bidirectional overrides and zero-width joiners all refused</td></tr>
+      <tr><td>Server-side path access through a URL</td><td>Files served by digest only, from a content-addressed store; no listing, no write route</td></tr>
+    </tbody>
+  </table>
+  <div class="rule never">
+    <strong>The admin is trusted.</strong> A plugin is arbitrary code with the player's rights.
+    Importing an invite means trusting that admin, exactly as accepting a zip of mods from them
+    does — and since the update channel, it also means they can offer a replacement launcher,
+    which runs whether or not Valheim is started. ValhSync does not try to protect against a
+    malicious admin, and says so rather than implying otherwise.
+  </div>
+  <p>The transport is plain HTTP by default. Confidentiality is not a goal — mod files are
+  public — and integrity does not depend on the transport. An admin who wants TLS puts a reverse
+  proxy in front; the launcher accepts <code>https://</code> and verifies certificates against
+  bundled roots.</p>
+  <p>Builds are not signed with a code-signing certificate, so Windows SmartScreen warns on first
+  run and Defender's machine-learning classifier occasionally reports a fresh build. Release
+  hashes are published to be checked.</p>
+</section>
+
+<section id="s7">
+  <h2><span class="n">§7</span>Licences</h2>
+  <h3>ValhSync</h3>
+  <p><strong>MIT OR Apache-2.0</strong>, at your option — the Rust ecosystem's usual pair. Both
+  texts ship with the source and in every release archive
+  (<a href="https://github.com/Ztnzvoid/ValhSync/blob/main/LICENSE-MIT">LICENSE-MIT</a>,
+  <a href="https://github.com/Ztnzvoid/ValhSync/blob/main/LICENSE-APACHE">LICENSE-APACHE</a>).
+  Written from scratch; not a fork of any existing mod manager.</p>
+
+  <h3>Typefaces</h3>
+  <p>Both windows embed two faces, under the <strong>SIL Open Font License 1.1</strong>, whose
+  texts travel with every release:</p>
+  <ul>
+    <li><strong>Cinzel</strong> by Natanael Gama — headings, buttons and labels. A Roman
+    inscriptional face: the closest thing to letters carved in stone.</li>
+    <li><strong>Source Serif 4</strong> by Frank Grießhammer — running text and paths.</li>
+  </ul>
+
+  <h3>Dependencies</h3>
+  <p>464 crates in the full graph, permissively licensed throughout. <strong>No GPL, AGPL or
+  SSPL, and nothing unlicensed.</strong> <code>cargo deny</code> enforces the allow-list in
+  <code>deny.toml</code> on every CI run, so this cannot drift unnoticed.</p>
+  <table>
+    <thead><tr><th>Licence</th><th class="num">Crates</th><th>Note</th></tr></thead>
+    <tbody>
+      <tr><td>MIT and/or Apache-2.0</td><td class="num">~360</td><td>the overwhelming majority, most offering both</td></tr>
+      <tr><td>Unicode-3.0</td><td class="num">18</td><td>Unicode character tables</td></tr>
+      <tr><td>Zlib, BSD-2/3-Clause, ISC, BSL-1.0, 0BSD</td><td class="num">~25</td><td>permissive, usually as one option among several</td></tr>
+      <tr><td>CC0-1.0, CDLA-Permissive-2.0</td><td class="num">4</td><td>public-domain dedication and permissive data licence</td></tr>
+      <tr><td>MPL-2.0</td><td class="num">1</td><td><code>option-ext</code>, reached through <code>directories</code>. File-scoped copyleft: modifying that crate's own files means publishing those files. Linking it does not affect ValhSync's licence.</td></tr>
+    </tbody>
+  </table>
+  <p>Two crates offer <code>MIT OR Apache-2.0 OR LGPL-2.1-or-later</code>; the permissive option
+  is taken. The window toolkit bundles a fallback font of its own under OFL-1.1 and the Ubuntu
+  Font Licence.</p>
+  <div class="rule">
+    <strong>Mods are not ValhSync's to license.</strong> Serving DLLs from your own server is
+    ordinary between friends, but some mod authors forbid redistribution. Check what you publish.
+  </div>
+</section>
+
+<section id="s8">
+  <h2><span class="n">§8</span>Building it</h2>
+  <p>Rust stable, edition 2024. No build container, no code generation step, no vendored C.</p>
+<pre><code>cargo test --workspace
+cargo clippy --workspace --all-targets -- -D warnings
+cargo run -p valhsync-server     # the admin's window
+cargo run -p valhsync            # the player's launcher</code></pre>
+  <p>On Linux the window needs the usual X11/Wayland development packages. Release archives are
+  built by <code>scripts/package.ps1</code>, which passes <code>--remap-path-prefix</code> so no
+  build machine's paths travel inside the binaries, and refuses to package a build that was made
+  without it.</p>
+  <p>The workspace is four crates: <code>valhsync-core</code> (pure logic over bytes and the
+  local filesystem, no network, where most of the tests live), <code>valhsync-server</code>,
+  <code>valhsync</code> (CLI and window in one executable), and <code>valhsync-ui</code> (the
+  shared theme).</p>
+</section>
+
+<section id="s9">
+  <h2><span class="n">§9</span>En français</h2>
+  <p><strong>Le serveur fait autorité sur le pack de mods.</strong> L'administrateur lance
+  <code>valhsync-server</code> à côté du serveur dédié : il pilote le serveur de jeu, choisit
+  quels mods partent chez les joueurs, et publie le pack sous forme de manifeste signé. Le joueur
+  lance <code>valhsync</code>, appuie sur <strong>Jouer</strong>, et son dossier BepInEx est
+  aligné sur celui du serveur avant que Valheim démarre. Plus de « Version incompatible », plus
+  de zip de DLL à installer à la main après chaque changement.</p>
+  <p>Rien n'est jamais supprimé : les fichiers remplacés partent en sauvegarde, les mods inconnus
+  sont mis de côté dans un dossier du jeu, et la dernière synchronisation peut être annulée
+  exactement. Le launcher montre ce qui va changer, mod par mod et par son nom, avant de rien
+  faire.</p>
+  <p>La publication passe par le port du jeu, en TCP : Valheim ne l'utilise qu'en UDP, donc la
+  règle de routeur qui existe déjà couvre les deux. <strong>ValhSync ne demande jamais d'ouvrir
+  un port que le jeu n'utilise pas déjà.</strong></p>
+  <p>Guides détaillés :
+  <a href="https://github.com/Ztnzvoid/ValhSync/blob/main/docs/admin-guide.md">administrateur</a>,
+  <a href="https://github.com/Ztnzvoid/ValhSync/blob/main/docs/player-guide.md">joueur</a>.
+  Le <a href="cahier-des-charges.html">cahier des charges</a> d'origine, en français, explique le
+  raisonnement de conception.</p>
+</section>
+
+<footer>
+  ValhSync — MIT OR Apache-2.0 · <a href="https://github.com/Ztnzvoid/ValhSync">github.com/Ztnzvoid/ValhSync</a>
+</footer>
+
+</main>
+</div>
+</body>
+</html>
