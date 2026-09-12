@@ -273,6 +273,7 @@ pub enum Key {
     DropReplaced,
     DropRestart,
     DropNeedsRoot,
+    TabNotes,
 }
 
 #[must_use]
@@ -1176,6 +1177,16 @@ fn strings(key: Key) -> [&'static str; LANGS] {
             "za dużo",
             "a mais",
             "лишних",
+        ],
+        Key::TabNotes => [
+            "Patch notes",
+            "Notes de version",
+            "Änderungen",
+            "Notas de versión",
+            "Note di versione",
+            "Lista zmian",
+            "Notas da versão",
+            "Список изменений",
         ],
         Key::DropTitle => [
             "Add a mod",

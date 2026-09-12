@@ -53,6 +53,7 @@ enum Chan {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Tab {
     Mods,
+    Notes,
     Status,
     Settings,
 }
@@ -928,9 +929,10 @@ impl eframe::App for App {
             .frame(egui::Frame::new().inner_margin(egui::Margin::same(18)))
             .show(ctx, |ui| {
                 th::backdrop(ui.ctx(), ui.painter(), ui.max_rect().expand(18.0));
-                let (status, mods, settings) = (
+                let (status, mods, notes, settings) = (
                     self.t(Key::TabStatus),
                     self.t(Key::TabMods),
+                    self.t(Key::TabNotes),
                     self.t(Key::TabSettings),
                 );
                 w::tabs(
@@ -939,6 +941,7 @@ impl eframe::App for App {
                     &[
                         (Tab::Status, status),
                         (Tab::Mods, mods),
+                        (Tab::Notes, notes),
                         (Tab::Settings, settings),
                     ],
                 );
@@ -969,6 +972,7 @@ impl eframe::App for App {
                             self.card_logs(ui);
                         }
                         Tab::Mods => self.card_mods(ui),
+                        Tab::Notes => self.card_notes(ui),
                         Tab::Settings => {
                             self.card_server_folder(ui);
                             ui.add_space(12.0);
@@ -1701,14 +1705,22 @@ impl App {
     fn card_mods(&mut self, ui: &mut egui::Ui) {
         th::card(ui, |ui| {
             ui.set_width(ui.available_width());
-            self.mod_list(ui);
-            ui.add_space(10.0);
-            th::hairline(ui);
-            ui.add_space(8.0);
+            // First, not last. Adding a mod is what an admin opens this tab
+            // to do; the list below is what they check afterwards.
             self.drop_zone(ui);
             ui.add_space(10.0);
             th::hairline(ui);
             ui.add_space(8.0);
+            self.mod_list(ui);
+        });
+    }
+
+    /// The note to players, on its own. It is written at a different moment
+    /// from the one where mods are chosen -- after, when there is something
+    /// to say about them -- and it wants the room to say it.
+    fn card_notes(&mut self, ui: &mut egui::Ui) {
+        th::card(ui, |ui| {
+            ui.set_width(ui.available_width());
             self.pack_notes(ui);
         });
     }
