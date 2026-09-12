@@ -334,7 +334,6 @@ pub(super) struct App {
     /// The new launcher is running; this one has nothing left to do.
     quit_after_update: bool,
     add_dialog: Option<AddDialog>,
-    confirm_open: bool,
     settings_open: bool,
     mods_open: bool,
     /// What each sync changed, kept so a player can read it afterwards.
@@ -406,7 +405,6 @@ impl App {
             update: None,
             quit_after_update: false,
             add_dialog: None,
-            confirm_open: false,
             settings_open: false,
             mods_open: false,
             news,
@@ -566,7 +564,6 @@ impl App {
         if self.busy() {
             return;
         }
-        self.confirm_open = false;
         if launch {
             // The sync that ends in the game starting counts as playing here:
             // by the time it finishes the player is in Valheim and not looking
@@ -597,10 +594,13 @@ impl App {
         let Some(p) = &self.prepared else {
             return;
         };
+        // No gate. Adding a server is where the player says who they trust
+        // -- the fingerprint is shown and confirmed there, or it arrives
+        // inside the invite code the admin handed them. Asking a second time
+        // at the first sync confirmed a decision already made, and it stood
+        // between somebody and the one button this window has.
         if p.is_up_to_date() {
             self.launch_game();
-        } else if p.needs_confirmation {
-            self.confirm_open = true;
         } else {
             self.start_sync(false);
         }
@@ -1029,12 +1029,7 @@ impl eframe::App for App {
         // and one margin. A dialog floats above all that and needs its own
         // room, or its buttons end up past the bottom edge.
         self.wanted_height = panel + 20.0 + self.notice_height;
-        if self.add_dialog.is_some()
-            || self.confirm_open
-            || self.settings_open
-            || self.mods_open
-            || self.news_open
-        {
+        if self.add_dialog.is_some() || self.settings_open || self.mods_open || self.news_open {
             self.wanted_height = self.wanted_height.max(600.0);
         }
 
@@ -1049,7 +1044,6 @@ impl eframe::App for App {
         self.mods_dialog(ctx);
         self.news_dialog(ctx);
         self.add_dialog(ctx);
-        self.confirm_dialog(ctx);
         self.settings_dialog(ctx);
     }
 }
@@ -1544,88 +1538,48 @@ impl App {
         }
     }
 
-    /// What the next press will change, in mods rather than in files, with
-    /// whatever the admin wanted to say about it.
+    /// One line: what is waiting, and a way to read about it.
     ///
-    /// Before the sync, not after: this is the moment somebody decides. The
-    /// confirmation dialog only appears on a first sync with a server, and a
-    /// note saying "empty your chests before this one" is worth exactly
-    /// nothing once the files are on disk.
+    /// It used to be the note and the whole mod list, on the card, before the
+    /// sync -- on the theory that this is the moment somebody decides. They
+    /// are not deciding. They came to press one button, and a wall of text
+    /// between them and it is not information, it is an obstacle: the third
+    /// time it appears nobody reads it, and by then it has taught them that
+    /// this screen is something to get past.
+    ///
+    /// So it is a button. What the admin wrote is one click away and stays
+    /// there afterwards, which is more than the old block managed -- that one
+    /// vanished the moment the files landed.
     fn whats_new_block(&mut self, ui: &mut egui::Ui) {
-        let (changes, notes) = self.prepared.as_ref().map_or_else(
-            || (Vec::new(), None),
-            |p| {
-                (
-                    valhsync_core::changes::mods_touched(&p.plan),
-                    p.manifest.notes.clone(),
-                )
-            },
-        );
         let has_history = self
             .selected
             .as_deref()
             .is_some_and(|id| self.news.for_server(id).next().is_some());
-        if changes.is_empty() && notes.is_none() {
-            // Shown even with nothing behind it. A feature that only appears
-            // once something happens cannot be told apart from one that does
-            // not work, and "nothing new yet" is an answer -- silence is not.
-            let label = if has_history {
-                self.t(Key::WhatsNew).to_string()
-            } else {
-                format!("{} — {}", self.t(Key::WhatsNew), self.t(Key::NewsNone))
-            };
-            if ui.small_button(label).clicked() {
-                self.news_open = true;
-            }
-            ui.add_space(10.0);
-            return;
-        }
+        let waiting = self
+            .prepared
+            .as_ref()
+            .is_some_and(|p| p.manifest.notes.is_some());
 
-        let title = self.t(Key::WhatsNew);
-        let history = self.t(Key::NewsHistory);
-        th::callout(ui, th::GOLD, |ui| {
-            ui.horizontal(|ui| {
-                ui.label(
-                    RichText::new(title)
-                        .font(th::display_font(15.0))
-                        .strong()
-                        .color(th::GOLD_LIT),
-                );
-                ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                    if has_history && ui.small_button(history).clicked() {
-                        self.news_open = true;
-                    }
-                });
-            });
-            if let Some(notes) = &notes {
-                ui.add_space(4.0);
-                // Bounded, and scrolled past that. An admin is allowed
-                // eight thousand characters, and a note anywhere near that
-                // would otherwise push the mod list, the button and the whole
-                // point of the screen off the bottom of the window.
-                egui::ScrollArea::vertical()
-                    .id_salt("pack-notes")
-                    .max_height(170.0)
-                    .auto_shrink([false, true])
-                    .show(ui, |ui| {
-                        ui.label(RichText::new(notes).color(th::BONE));
-                    });
-            }
-            if !changes.is_empty() {
-                ui.add_space(4.0);
-                // Bounded for the same reason as the note above it. A first
-                // sync moves every mod the server has -- eighteen of them
-                // here, one to a line -- and the card is not the place to
-                // read a list that long without a way to stop it growing.
-                egui::ScrollArea::vertical()
-                    .id_salt("pack-changes")
-                    .max_height(200.0)
-                    .auto_shrink([false, true])
-                    .show(ui, |ui| {
-                        self.change_lines(ui, &changes);
-                    });
-            }
-        });
+        // Shown even with nothing behind it. A control that only appears once
+        // something happens cannot be told apart from one that does not work,
+        // and "nothing new yet" is an answer -- silence is not.
+        let label = if has_history || waiting {
+            self.t(Key::WhatsNew).to_string()
+        } else {
+            format!(
+                "{} \u{2014} {}",
+                self.t(Key::WhatsNew),
+                self.t(Key::NewsNone)
+            )
+        };
+        let button = ui.button(
+            RichText::new(label)
+                .font(th::display_font(14.0))
+                .color(if waiting { th::GOLD_LIT } else { th::BONE_DIM }),
+        );
+        if button.clicked() {
+            self.news_open = true;
+        }
         ui.add_space(10.0);
     }
 
@@ -2024,107 +1978,6 @@ impl App {
         self.notify(format!("{}: {}", self.t(Key::Added), invite.name), th::MOSS);
         self.check();
         Ok(())
-    }
-
-    fn confirm_dialog(&mut self, ctx: &egui::Context) {
-        if !self.confirm_open {
-            return;
-        }
-        let Some(p) = self.prepared.clone() else {
-            self.confirm_open = false;
-            return;
-        };
-        let mut apply = false;
-        let mut cancel = false;
-        egui::Window::new(self.t(Key::ConfirmTitle))
-            .collapsible(false)
-            .resizable(false)
-            .anchor(egui::Align2::CENTER_CENTER, egui::vec2(0.0, 0.0))
-            .default_width(520.0)
-            .show(ctx, |ui| {
-                ui.label(RichText::new(self.t(Key::ConfirmBody)).color(th::BONE_DIM));
-                ui.add_space(6.0);
-                ui.label(
-                    RichText::new(format!(
-                        "{} {}: {}",
-                        self.t(Key::TrustLine),
-                        self.t(Key::KeyFingerprint),
-                        p.server.fingerprint()
-                    ))
-                    .small()
-                    .color(th::RUNE),
-                );
-                // The admin's own words, above the file list rather than
-                // under it: a warning about chests or config files is read
-                // before the plan, or it is not read.
-                if let Some(notes) = p.manifest.notes.clone() {
-                    ui.add_space(8.0);
-                    th::callout(ui, th::GOLD, |ui| {
-                        ui.label(
-                            RichText::new(self.t(Key::NewsFromAdmin))
-                                .small()
-                                .color(th::GOLD_LIT),
-                        );
-                        ui.label(RichText::new(notes).color(th::BONE));
-                    });
-                }
-                ui.add_space(8.0);
-                egui::ScrollArea::vertical()
-                    .max_height(valhsync_ui::widgets::dialog_room(ui, 300.0))
-                    .show(ui, |ui| {
-                        for (key, action) in [
-                            (Key::PlanInstall, Action::Add),
-                            (Key::PlanUpdate, Action::Replace),
-                            (Key::PlanRemove, Action::Remove),
-                            (Key::PlanQuarantine, Action::Quarantine),
-                        ] {
-                            let items: Vec<_> = p.plan.with_action(action).collect();
-                            if items.is_empty() {
-                                continue;
-                            }
-                            ui.label(
-                                RichText::new(format!("{} {}", items.len(), self.t(key)))
-                                    .strong()
-                                    .color(th::GOLD),
-                            );
-                            for i in items {
-                                ui.label(
-                                    RichText::new(format!(
-                                        "  {}  ({})",
-                                        i.path,
-                                        human_bytes(i.size)
-                                    ))
-                                    .monospace()
-                                    .small()
-                                    .color(th::BONE_DIM),
-                                );
-                            }
-                        }
-                    });
-                ui.add_space(8.0);
-                ui.horizontal(|ui| {
-                    if ui
-                        .add(
-                            egui::Button::new(
-                                RichText::new(self.t(Key::Apply)).strong().color(th::NIGHT),
-                            )
-                            .fill(th::GOLD),
-                        )
-                        .clicked()
-                    {
-                        apply = true;
-                    }
-                    if ui.button(self.t(Key::Cancel)).clicked() {
-                        cancel = true;
-                    }
-                });
-            });
-        if apply {
-            self.start_sync(true);
-        }
-        if cancel {
-            self.confirm_open = false;
-        }
     }
 
     #[allow(clippy::too_many_lines)] // one dialog, read top to bottom
