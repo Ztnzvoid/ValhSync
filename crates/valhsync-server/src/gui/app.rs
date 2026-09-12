@@ -175,6 +175,9 @@ pub(super) struct App {
     lists_error: Option<String>,
     player_id: String,
     lists_checked: Instant,
+    /// When the game server has gone down on its own recently. Bounded
+    /// restarts need a memory, and this is it.
+    crashes: Vec<Instant>,
     /// Every player this server has ever logged, id to name. Read from the
     /// log beside the lists, so a row can say who an id belongs to.
     known_names: std::collections::HashMap<String, String>,
@@ -342,6 +345,7 @@ impl App {
             player_id: String::new(),
             remove_armed: None,
             known_names: std::collections::HashMap::new(),
+            crashes: Vec::new(),
             lists_checked: Instant::now()
                 .checked_sub(Duration::from_secs(60))
                 .unwrap_or_else(Instant::now),
@@ -1797,6 +1801,9 @@ impl App {
             return;
         }
         self.session = logs::Session::default();
+        // Whether this exit was one we asked for. Read before it is cleared,
+        // because it is the whole difference between a crash and a Stop.
+        let was_asked_for = self.stop_requested.is_some() || self.restart_after_stop;
         self.stop_requested = None;
         // The game is gone; the shell that ran the script is only a question
         // waiting for an answer.
@@ -1812,7 +1819,45 @@ impl App {
         // Valheim takes as long as its world takes.
         if std::mem::take(&mut self.restart_after_stop) {
             self.start_everything();
+            return;
         }
+        if !was_asked_for {
+            self.restart_after_crash();
+        }
+    }
+
+    /// Bring a server back that nobody asked to stop.
+    ///
+    /// Only when the admin has turned it on, and only for an exit this window
+    /// did not ask for -- a Stop or a Restart from here is a deliberate act,
+    /// and a server that comes back from one of those is fighting its admin.
+    /// A Ctrl+C typed in the server's own console is indistinguishable from a
+    /// crash out here; it restarts, and the setting's own description says so.
+    ///
+    /// Bounded, because the failure this exists for is also the failure that
+    /// loops. A server that dies three times inside the window below is not
+    /// crashing, it is broken -- a mod that will not load, a port already
+    /// taken, a world it cannot open -- and restarting it a fourth time only
+    /// buries the reason further up the log.
+    fn restart_after_crash(&mut self) {
+        const GIVE_UP_AFTER: usize = 3;
+        const FORGET_AFTER: Duration = Duration::from_secs(20 * 60);
+
+        if !self.cfg.game_server.restart_on_crash || self.scripts.is_empty() {
+            return;
+        }
+        let now = Instant::now();
+        self.crashes
+            .retain(|at| now.duration_since(*at) < FORGET_AFTER);
+        if self.crashes.len() >= GIVE_UP_AFTER {
+            let msg = self.t(Key::CrashLoop).to_string();
+            self.notify(msg, th::BLOOD_LIT);
+            return;
+        }
+        self.crashes.push(now);
+        let msg = self.t(Key::RestartingAfterCrash).to_string();
+        self.notify(msg, th::GOLD);
+        self.start_everything();
     }
 
     /// Publishing follows the game server.
@@ -1994,6 +2039,20 @@ impl App {
                     );
                 }
             }
+
+            ui.add_space(10.0);
+            th::hairline(ui);
+            ui.add_space(8.0);
+            let mut back = self.cfg.game_server.restart_on_crash;
+            if ui
+                .checkbox(&mut back, self.t(Key::RestartOnCrash))
+                .changed()
+            {
+                // It lives in `cfg` rather than in a widget field, and
+                // `edited()` clones `cfg`, so autosave sees this on its own.
+                self.cfg.game_server.restart_on_crash = back;
+            }
+            w::hint(ui, self.t(Key::RestartOnCrashHint));
         });
     }
 

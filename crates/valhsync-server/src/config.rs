@@ -39,6 +39,11 @@ pub struct GameServerSection {
     /// Stop publishing when the dedicated server stops. Only applies when
     /// ValhSync runs on the same machine and can see it.
     pub stop_with_game: bool,
+    /// Bring the dedicated server back up when it exits without being asked
+    /// to. Off by default: an admin who shuts the server down deliberately
+    /// and finds it running again has been fought with, not helped, so a stop
+    /// asked for from this window never counts as a crash.
+    pub restart_on_crash: bool,
 }
 
 impl Default for GameServerSection {
@@ -46,6 +51,7 @@ impl Default for GameServerSection {
         Self {
             start_script: None,
             stop_with_game: true,
+            restart_on_crash: false,
         }
     }
 }
@@ -603,7 +609,14 @@ max_files = {max_files}
 # the two in either order works. Ignored when ValhSync publishes from another
 # machine and cannot see the game.
 stop_with_game = {stop_with_game}
+# Bring the dedicated server back up when it exits without being asked to.
+# A stop or a restart from this window never counts as a crash, and neither
+# does a Ctrl+C typed in the server's own console: only an exit nobody asked
+# for. Off by default, because a server that comes back after you deliberately
+# shut it down is fighting you.
+restart_on_crash = {restart_on_crash}
 "#,
+        restart_on_crash = cfg.game_server.restart_on_crash,
         name = toml_str(cfg.server.name.trim()),
         bind = toml_str(&cfg.server.bind),
         public_url = match &cfg.server.public_url {
@@ -839,6 +852,11 @@ mod tests {
                 game_address: "valheim.example.org:2456".into(),
                 public_url: Some("https://example.org/pack".into()),
                 publish_live: Some(true),
+            },
+            game_server: GameServerSection {
+                restart_on_crash: true,
+                stop_with_game: false,
+                start_script: Some(PathBuf::from("/srv/valheim/start.sh")),
             },
             pack: PackSection {
                 server_root: Some(PathBuf::from("/srv/valheim")),
