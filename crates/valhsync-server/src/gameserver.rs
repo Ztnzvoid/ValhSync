@@ -49,8 +49,7 @@ pub fn stop() -> Result<()> {
 #[allow(unsafe_code)]
 fn interrupt(pid: u32) -> Result<()> {
     use windows_sys::Win32::System::Console::{
-        ATTACH_PARENT_PROCESS, AttachConsole, CTRL_C_EVENT, FreeConsole, GenerateConsoleCtrlEvent,
-        SetConsoleCtrlHandler,
+        AttachConsole, CTRL_C_EVENT, FreeConsole, GenerateConsoleCtrlEvent, SetConsoleCtrlHandler,
     };
 
     // A Ctrl+C event goes to a console, not to a process, so ValhSync has to
@@ -69,7 +68,7 @@ fn interrupt(pid: u32) -> Result<()> {
         FreeConsole();
         if AttachConsole(pid) == 0 {
             let err = std::io::Error::last_os_error();
-            AttachConsole(ATTACH_PARENT_PROCESS);
+            release_console();
             bail!(
                 "cannot reach the server's console window ({err}). Press Ctrl+C in it instead: that is what saves the world."
             );
@@ -77,15 +76,60 @@ fn interrupt(pid: u32) -> Result<()> {
         SetConsoleCtrlHandler(None, 1);
         let sent = GenerateConsoleCtrlEvent(CTRL_C_EVENT, 0);
         let err = std::io::Error::last_os_error();
-        FreeConsole();
         SetConsoleCtrlHandler(None, 0);
-        // Put our own console back, so the command-line face keeps printing.
-        AttachConsole(ATTACH_PARENT_PROCESS);
+        release_console();
         if sent == 0 {
             bail!("the server's console refused the stop signal ({err})");
         }
     }
     Ok(())
+}
+
+/// Let go of the game server's console, and leave this process able to start
+/// something afterwards.
+///
+/// This is the half that was missing, and it broke Restart. Joining another
+/// process's console with `AttachConsole` also points this process's three
+/// standard handles at it. Releasing it with `FreeConsole` does not put them
+/// back: they keep their values, and those values now refer to a console this
+/// process is no longer attached to.
+///
+/// From a terminal that does not matter, because reattaching to the parent's
+/// console gives the handles something real to point at again. A windowed
+/// process has no parent console, so that call fails and the stale handles
+/// stay. `Command::spawn` duplicates them into every child it starts, and
+/// duplicating a dead handle fails with ERROR_INVALID_HANDLE -- "Descripteur
+/// non valide (os error 6)", on the one button whose whole job is to start the
+/// server again.
+///
+/// Setting them to null is what a windowed process looks like when it has
+/// never had a console: `GetStdHandle` answers null, the standard library
+/// reads that as "no handle to pass on", and a child created with
+/// `CREATE_NEW_CONSOLE` gets fresh handles onto its own new window -- which is
+/// what the server needs, since its console is where Ctrl+C has to land.
+#[cfg(windows)]
+#[allow(unsafe_code)]
+fn release_console() {
+    use windows_sys::Win32::System::Console::{
+        ATTACH_PARENT_PROCESS, AttachConsole, FreeConsole, STD_ERROR_HANDLE, STD_INPUT_HANDLE,
+        STD_OUTPUT_HANDLE, SetStdHandle,
+    };
+
+    // SAFETY: no pointers and no memory we own. Every call here is one whose
+    // failure we can do nothing about and do not need to: the point is to
+    // leave the process in a state it can start a child from, and nulling the
+    // handles reaches that state whether or not the reattach worked.
+    unsafe {
+        FreeConsole();
+        if AttachConsole(ATTACH_PARENT_PROCESS) != 0 {
+            // Back in the terminal we came from, with its handles. The
+            // command-line face keeps printing.
+            return;
+        }
+        SetStdHandle(STD_INPUT_HANDLE, std::ptr::null_mut());
+        SetStdHandle(STD_OUTPUT_HANDLE, std::ptr::null_mut());
+        SetStdHandle(STD_ERROR_HANDLE, std::ptr::null_mut());
+    }
 }
 
 #[cfg(not(windows))]
