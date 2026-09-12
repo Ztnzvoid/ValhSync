@@ -237,8 +237,55 @@ pub fn backdrop(ctx: &egui::Context, painter: &egui::Painter, rect: Rect) {
         Color32::from_rgba_unmultiplied(0x22, 0x1C, 0x14, 120),
     );
     dust(ctx, painter, rect);
+    motes(ctx, painter, rect);
     vignette(painter, rect);
     watermark(ctx, rect);
+    // Twenty-five frames a second is enough for something that drifts, and
+    // it is a quarter of the work of asking for every frame. A launcher
+    // sitting open on somebody's desk should not warm their laptop to make a
+    // background move.
+    ctx.request_repaint_after(std::time::Duration::from_millis(40));
+}
+
+/// Embers, in the colour of the mark, drifting up through the window.
+///
+/// Deterministic: each mote's lane, speed and phase come out of the same hash
+/// the grain uses, so there is no state to keep and every machine sees the
+/// same drift. Few, small, and dim enough that on a bright monitor they are
+/// atmosphere rather than confetti -- if you can count them, there are too
+/// many.
+fn motes(ctx: &egui::Context, painter: &egui::Painter, rect: Rect) {
+    const COUNT: usize = 34;
+    /// Seconds for one to cross the window, at the slowest.
+    const CLIMB: f32 = 26.0;
+
+    let t = seconds(ctx);
+    for i in 0..COUNT {
+        let lane = hash_noise(i, 0, 0x5EED);
+        let speed = 0.6 + hash_noise(i, 1, 0x5EED) * 0.8;
+        let sway = hash_noise(i, 2, 0x5EED);
+        let size = 0.7 + hash_noise(i, 3, 0x5EED) * 1.3;
+
+        // Its own place in the climb, so they do not rise in a rank.
+        let phase = (t * speed / CLIMB + hash_noise(i, 4, 0x5EED)).fract();
+        let y = rect.max.y - phase * rect.height();
+        let drift = (t * 0.35 + sway * std::f32::consts::TAU).sin() * 14.0;
+        let x = rect.min.x + lane * rect.width() + drift;
+
+        // In at the bottom, out at the top: an ember that vanishes mid-air is
+        // less believable than one that fades as it goes cold.
+        let fade = (phase * 3.0).min(1.0) * ((1.0 - phase) * 2.4).min(1.0);
+        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+        let alpha = (fade * 26.0) as u8;
+        if alpha == 0 {
+            continue;
+        }
+        painter.circle_filled(
+            egui::pos2(x, y),
+            size,
+            Color32::from_rgba_unmultiplied(0xE8, 0xCD, 0x8B, alpha),
+        );
+    }
 }
 
 /// How much of the mark shows through, and how heavily it is cut. Five
@@ -258,7 +305,38 @@ const MARK_CORE_WIDTH: f32 = 7.0;
 /// are opaque, and a mark showing only in the gaps between them would read as
 /// four unrelated scratches instead of one shape. Above them, at this alpha,
 /// it is felt rather than seen -- if it reads as a picture it is too strong.
+/// The clock the animations run on.
+///
+/// Wrapped an hour at a time. egui counts seconds since the window opened as
+/// an `f64`, and a launcher somebody leaves open for days would otherwise
+/// lose precision in the fraction that drives the drift.
+#[allow(clippy::cast_possible_truncation)]
+fn seconds(ctx: &egui::Context) -> f32 {
+    ctx.input(|i| i.time % 3600.0) as f32
+}
+
+/// How bright the mark is this frame, as a multiplier around 1.
+///
+/// Two slow waves that do not share a period, so the mark never settles into
+/// a pulse you can count along with -- a light that breathes rather than one
+/// that blinks. Kept close to 1: the point is that somebody notices the mark
+/// is alive without ever catching it moving.
+fn shimmer(ctx: &egui::Context) -> f32 {
+    let t = seconds(ctx);
+    let slow = (t * 0.23).sin();
+    let slower = (t * 0.11 + 1.7).sin();
+    1.0 + 0.22 * slow + 0.12 * slower
+}
+
+/// One alpha, dimmed or lifted by the shimmer, and never past what a `u8`
+/// holds.
+#[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+fn breathed(alpha: u8, by: f32) -> u8 {
+    (f32::from(alpha) * by).clamp(0.0, 255.0) as u8
+}
+
 fn watermark(ctx: &egui::Context, rect: Rect) {
+    let glow = shimmer(ctx);
     let painter = egui::Painter::new(
         ctx.clone(),
         egui::LayerId::new(egui::Order::Middle, egui::Id::new("mannaz-watermark")),
@@ -272,7 +350,7 @@ fn watermark(ctx: &egui::Context, rect: Rect) {
         &painter,
         centre,
         radius * 2.0,
-        Color32::from_rgba_unmultiplied(0xC7, 0xA4, 0x55, MARK_HALO),
+        Color32::from_rgba_unmultiplied(0xC7, 0xA4, 0x55, breathed(MARK_HALO, glow)),
     );
     // A wide dim pass for the bloom along each stroke, a narrow bright one
     // for the carved edge: the same two-step the lamps are built from.
@@ -282,7 +360,7 @@ fn watermark(ctx: &egui::Context, rect: Rect) {
         radius,
         Stroke::new(
             MARK_BLOOM_WIDTH,
-            Color32::from_rgba_unmultiplied(0xC7, 0xA4, 0x55, MARK_BLOOM),
+            Color32::from_rgba_unmultiplied(0xC7, 0xA4, 0x55, breathed(MARK_BLOOM, glow)),
         ),
     );
     painted_rune(
@@ -290,7 +368,7 @@ fn watermark(ctx: &egui::Context, rect: Rect) {
         centre,
         radius,
         MARK_CORE_WIDTH,
-        Color32::from_rgba_unmultiplied(0xE8, 0xCD, 0x8B, MARK_CORE),
+        Color32::from_rgba_unmultiplied(0xE8, 0xCD, 0x8B, breathed(MARK_CORE, glow)),
     );
 }
 

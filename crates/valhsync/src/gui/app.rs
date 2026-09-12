@@ -1353,7 +1353,7 @@ impl App {
                 };
                 valhsync_ui::widgets::lamp(ui, lamp, 26.0);
                 ui.label(
-                    RichText::new(&server.name)
+                    RichText::new(valhsync_ui::widgets::spaced(&server.name))
                         .font(th::display_font(19.0))
                         .strong()
                         .color(th::GOLD_LIT),
@@ -1369,7 +1369,13 @@ impl App {
                     });
                 }
             });
-            ui.label(RichText::new(&server.url).small().color(th::BONE_DIM));
+            // Indented to the gutter, so the address shares a left edge with
+            // the name above it and the lamp below, instead of starting at
+            // the margin on its own.
+            ui.horizontal(|ui| {
+                ui.add_space(valhsync_ui::widgets::GUTTER);
+                ui.label(RichText::new(&server.url).small().color(th::BONE_DIM));
+            });
             self.game_server_row(ui);
             ui.add_space(10.0);
             self.whats_new_block(ui);
@@ -1441,7 +1447,7 @@ impl App {
         let (colour, key) = game_server_line(up);
         ui.add_space(4.0);
         ui.horizontal(|ui| {
-            valhsync_ui::widgets::dot(ui, colour);
+            valhsync_ui::widgets::gutter_dot(ui, colour);
             let label = ui.label(
                 RichText::new(self.t(key))
                     .text_style(th::label_style())
@@ -1579,7 +1585,12 @@ impl App {
         let history = self.t(Key::NewsHistory);
         th::callout(ui, th::GOLD, |ui| {
             ui.horizontal(|ui| {
-                ui.label(RichText::new(title).strong().color(th::GOLD_LIT));
+                ui.label(
+                    RichText::new(title)
+                        .font(th::display_font(15.0))
+                        .strong()
+                        .color(th::GOLD_LIT),
+                );
                 ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                     if has_history && ui.small_button(history).clicked() {
                         self.news_open = true;

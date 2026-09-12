@@ -152,6 +152,42 @@ pub fn lamp(ui: &mut egui::Ui, colour: Color32, height: f32) {
     th::lamp(ui.painter(), rect.center(), height * 0.20, colour);
 }
 
+/// The width every line on a card indents by, so their text shares one left
+/// edge whether the line opens with a lamp, a dot or nothing at all.
+///
+/// Three different left edges on three consecutive lines reads as a mistake
+/// even to somebody who could not say what is wrong with it.
+pub const GUTTER: f32 = 26.0;
+
+/// A dot centred in the gutter, for a line that sits under one opened by a
+/// lamp.
+pub fn gutter_dot(ui: &mut egui::Ui, color: Color32) {
+    let (rect, _) = ui.allocate_exact_size(
+        egui::vec2(GUTTER, ui.text_style_height(&egui::TextStyle::Body)),
+        egui::Sense::hover(),
+    );
+    let size = ui.text_style_height(&egui::TextStyle::Body) * 0.45;
+    ui.painter()
+        .circle_filled(rect.center(), size * 0.62, color);
+}
+
+/// A name cut the way the product's own mark is cut: capitals with air
+/// between them.
+///
+/// The header spells VALHSYNC with spaces in the literal because egui has no
+/// letter spacing. A server's name is written by its admin, so it gets the
+/// same treatment here rather than being the one piece of display type on
+/// the window set solid.
+#[must_use]
+pub fn spaced(name: &str) -> String {
+    // A thin space, not a full one: this is letter spacing, not words.
+    name.trim()
+        .chars()
+        .map(|c| c.to_string())
+        .collect::<Vec<_>>()
+        .join("\u{2009}")
+}
+
 /// A filled dot, painted rather than written: the bullet glyph is missing
 /// from egui's bundled font and would show up as an empty box.
 pub fn dot(ui: &mut egui::Ui, color: Color32) {
