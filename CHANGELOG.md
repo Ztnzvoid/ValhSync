@@ -2,6 +2,18 @@
 
 Notable changes, newest first. Dates are ISO 8601.
 
+## 0.2.0 — 2026-09-12
+
+- **What changed, before agreeing to it.** A sync that touches mods now says
+  which ones, by name: added, updated, removed. Computed from the plan, so
+  nobody has to write it.
+- **A word from the admin.** An optional note travels signed in the manifest,
+  written from the Mods tab. For what a diff cannot say: that a mod resets its
+  own config, that a chest mod wants an empty base first.
+- **Kept afterwards.** Fifty entries of history per player, one per sync that
+  changed something, behind a "What's new" button.
+- The publisher no longer skips a rebuild when only the note changed.
+
 ## 0.1.0 — 2026-09-12
 
 First public release.
