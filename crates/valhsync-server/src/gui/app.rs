@@ -3,6 +3,7 @@
 //! Every string it says lives in [`super::i18n`], one key per sentence: the
 //! pairs that used to sit inline could hold two languages and no more.
 
+use std::collections::VecDeque;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, Receiver};
 use std::time::{Duration, Instant, SystemTime};
@@ -132,6 +133,10 @@ pub(super) struct App {
     log_index: usize,
     log: Option<logs::Tail>,
     log_checked: Instant,
+    /// What the game server's console has printed. Its own list rather than a
+    /// filter over the log: these lines are a handful among thousands, and on
+    /// a busy server they are pushed out of the log ring within seconds.
+    console: VecDeque<String>,
     /// Follow the end of the file, until the admin scrolls up to read.
     log_follow: bool,
     session: logs::Session,
@@ -199,7 +204,6 @@ pub(super) struct App {
     /// were suddenly all refused had nothing to go on.
     new_key_at: Option<String>,
     /// What to type into the dedicated server's console.
-    command: String,
     /// Path of a signing key to take over from another install.
     key_import: String,
     /// Why publishing is not up, when it tried and could not. Kept on the
@@ -273,7 +277,6 @@ impl App {
             publish_paused: false,
             publish_tried: None,
             new_key_at,
-            command: String::new(),
             key_import: String::new(),
             publish_error: None,
             game_running: false,
@@ -287,6 +290,7 @@ impl App {
             log_sources: Vec::new(),
             log_index: 0,
             log: None,
+            console: VecDeque::new(),
             log_checked: Instant::now(),
             log_follow: true,
             session: logs::Session::default(),
@@ -472,8 +476,17 @@ impl App {
         if let Some(tail) = &mut self.log
             && tail.poll()
         {
+            let spoken: Vec<String> = tail
+                .fresh()
+                .iter()
+                .filter_map(|line| logs::console_text(line))
+                .map(str::to_owned)
+                .collect();
             self.session = logs::read_session(tail.lines());
             self.game_version = valhsync_core::gamelog::read_version(tail.lines());
+            for line in spoken {
+                self.record_console(line);
+            }
         }
         self.world_saved = self.world_file.as_deref().and_then(logs::saved_at);
     }
@@ -1061,7 +1074,7 @@ impl App {
                 // The console line lives down here, where a prompt belongs:
                 // always in reach whichever tab is open, and out of the card
                 // that describes the server rather than drives it.
-                self.console_line(ui);
+                self.console_transcript(ui);
                 ui.add_space(8.0);
                 ui.horizontal(|ui| {
                     // No Save button. What an admin changes here is what the
@@ -1134,8 +1147,15 @@ impl App {
                         self.t(Key::Offline)
                     },
                 );
-                ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                    self.server_buttons(ui, stopping);
+                ui.with_layout(Layout::right_to_left(Align::Min), |ui| {
+                    // Stacked, not side by side: Restart beside Stop reads as
+                    // the pair of equals it is not. One is what an admin
+                    // reaches for; the other is underneath it.
+                    ui.allocate_ui_with_layout(
+                        egui::vec2(ui.available_width(), 0.0),
+                        Layout::top_down(Align::Max),
+                        |ui| self.server_buttons(ui, stopping),
+                    );
                 });
             });
 
@@ -1215,50 +1235,49 @@ impl App {
         }
     }
 
-    /// Type a command into the dedicated server's console from here.
+    /// What the server's own console has printed, on the bar that is on
+    /// screen whichever tab is open.
     ///
-    /// One way only: Valheim answers in its own window and in the log, which
-    /// is on the next card down. The field says so rather than leaving an
-    /// admin waiting for a reply that is never coming back here.
-    fn console_line(&mut self, ui: &mut egui::Ui) {
-        let hint = self.t(Key::ConsolePrompt);
-        let send_label = self.t(Key::Send);
-        let tip = self.t(Key::ConsoleTip);
-        // Shown whether the server is up or not. A prompt that disappears
-        // when there is nothing to talk to cannot be found again, and leaves
-        // an admin wondering whether the window has one at all.
-        let running = self.game_running;
-        let why = self.t(Key::ConsoleNoServer);
-        ui.horizontal(|ui| {
-            let send = ui
-                .add_enabled(running, egui::Button::new(send_label))
-                .on_hover_text(tip)
-                .on_disabled_hover_text(why)
-                .clicked();
-            let typed = ui
-                .add_enabled(
-                    running,
-                    egui::TextEdit::singleline(&mut self.command)
-                        .desired_width(ui.available_width())
-                        .font(egui::TextStyle::Monospace)
-                        .hint_text(if running { hint } else { why }),
-                )
-                .lost_focus()
-                && ui.input(|i| i.key_pressed(egui::Key::Enter));
-            if send || typed {
-                let line = std::mem::take(&mut self.command);
-                match gameserver::send_command(&line) {
-                    Ok(()) => {
-                        let msg = format!("{} {line}", self.t(Key::SentPrefix));
-                        self.notify(msg, th::MOSS);
-                    }
-                    Err(e) => {
-                        self.command = line;
-                        self.notify(format!("{e:#}"), th::BLOOD_LIT);
-                    }
-                }
-            }
-        });
+    /// Valheim tags these lines in the log, and there are perhaps fifteen of
+    /// them among the tens of thousands a session writes -- the version, the
+    /// network version, what the server wants said. Pulled out here they are
+    /// legible; left in the log they are not findable.
+    fn console_transcript(&mut self, ui: &mut egui::Ui) {
+        // Nothing yet: nothing drawn. This sits in the bar that is on screen
+        // whichever tab is open, so an empty panel here would cost every
+        // admin a strip of window for a transcript they may never open.
+        if self.console.is_empty() {
+            return;
+        }
+        egui::Frame::new()
+            .fill(th::NIGHT)
+            .stroke(egui::Stroke::new(1.0, th::EDGE_SOFT))
+            .inner_margin(egui::Margin::symmetric(8, 6))
+            .show(ui, |ui| {
+                ui.set_width(ui.available_width());
+                egui::ScrollArea::vertical()
+                    .max_height(132.0)
+                    .stick_to_bottom(true)
+                    .auto_shrink([false, true])
+                    .show(ui, |ui| {
+                        for line in &self.console {
+                            ui.label(RichText::new(line).monospace().small().color(th::BONE));
+                        }
+                    });
+            });
+    }
+
+    /// Add one line to the transcript, oldest dropped first.
+    ///
+    /// Deep enough to hold what `help` prints -- which is the longest answer
+    /// the server gives, and the one an admin is most likely to want to read
+    /// back through.
+    fn record_console(&mut self, line: String) {
+        const KEEP: usize = 400;
+        if self.console.len() == KEEP {
+            self.console.pop_front();
+        }
+        self.console.push_back(line);
     }
 
     /// What the log says about the session: players, join code, which
@@ -1316,16 +1335,6 @@ impl App {
             return;
         }
         if self.game_running {
-            // Quieter than Stop: same Ctrl+C, same saved world, and the
-            // window brings it back up once the process has actually gone.
-            // Laid out right to left, so it sits left of Stop.
-            if ui
-                .small_button(self.t(Key::Restart))
-                .on_hover_text(self.t(Key::RestartHint))
-                .clicked()
-            {
-                self.request_stop(true);
-            }
             if ui
                 .add(egui::Button::new(
                     RichText::new(self.t(Key::StopAndSave)).color(th::BONE),
@@ -1333,6 +1342,17 @@ impl App {
                 .clicked()
             {
                 self.request_stop(false);
+            }
+            ui.add_space(4.0);
+            // Quieter than Stop, and under it: same Ctrl+C, same saved world,
+            // and the window brings the server back up once the process has
+            // actually gone.
+            if ui
+                .small_button(self.t(Key::Restart))
+                .on_hover_text(self.t(Key::RestartHint))
+                .clicked()
+            {
+                self.request_stop(true);
             }
             return;
         }

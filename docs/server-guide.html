@@ -626,7 +626,11 @@ journalctl -u valhsync-server -f</code></pre>
     <li><strong>Start, Restart, Stop and save.</strong> Stopping sends Ctrl+C to the server's
     console, so Valheim writes the world before it exits; the process is never killed. Restart
     waits for it to actually be gone before starting again.</li>
-    <li><strong>The console</strong>, followed live, with a prompt to type into it.</li>
+    <li><strong>The log</strong>, followed live, with the lines the server prints to its own
+    console lifted out of it and shown on the bar. There is no command prompt: a Valheim
+    dedicated server does not read its console, whatever its start-up banner says. Admin
+    actions go through <code>adminlist.txt</code> and <code>bannedlist.txt</code>, or through
+    an admin in-game.</li>
     <li><strong>Patch notes</strong>, on their own tab — a real one, and most of it writes
     itself. The list of mods added, updated and removed is computed from the pack and named for
     you, so you never retype a version number. What you add is the half a diff cannot produce:

@@ -103,132 +103,31 @@ fn interrupt(pid: u32) -> Result<()> {
     Ok(())
 }
 
-/// Type a line into the dedicated server's console, the way the admin would.
+/// There is no way to send a command to a Valheim dedicated server.
 ///
-/// Valheim reads its commands from the console it was started in, so this is
-/// the same trick [`stop`] uses for Ctrl+C: join that console and put the
-/// keystrokes in its input buffer. It is one-way -- the server answers in its
-/// own window and its log, never back to here.
-pub fn send_command(line: &str) -> Result<()> {
-    let line = one_console_line(line)?;
-    let pid = pid().context("no Valheim dedicated server is running on this machine")?;
-    type_into_console(pid, &line)
-}
-
-/// A command is one line. Newlines are refused rather than passed on: they
-/// would run commands the admin did not see themselves type.
-fn one_console_line(line: &str) -> Result<String> {
-    let line = line.trim();
-    if line.is_empty() {
-        bail!("there is nothing to send");
-    }
-    if line.chars().count() > 512 {
-        bail!("that is longer than one console line");
-    }
-    if let Some(c) = line.chars().find(|c| c.is_control()) {
-        bail!("a command is a single line; remove the {c:?} in it");
-    }
-    Ok(line.to_string())
-}
-
-#[cfg(windows)]
-#[allow(unsafe_code)]
-fn type_into_console(pid: u32, line: &str) -> Result<()> {
-    use windows_sys::Win32::Foundation::{CloseHandle, INVALID_HANDLE_VALUE};
-    use windows_sys::Win32::Storage::FileSystem::{
-        CreateFileW, FILE_SHARE_READ, FILE_SHARE_WRITE, OPEN_EXISTING,
-    };
-    use windows_sys::Win32::System::Console::{
-        ATTACH_PARENT_PROCESS, AttachConsole, FreeConsole, INPUT_RECORD, INPUT_RECORD_0, KEY_EVENT,
-        KEY_EVENT_RECORD, KEY_EVENT_RECORD_0, WriteConsoleInputW,
-    };
-
-    const GENERIC_READ: u32 = 0x8000_0000;
-    const GENERIC_WRITE: u32 = 0x4000_0000;
-    const VK_RETURN: u16 = 0x0D;
-
-    let key = |ch: u16, vk: u16, down: i32| INPUT_RECORD {
-        #[allow(clippy::cast_possible_truncation)] // KEY_EVENT is 0x0001
-        EventType: KEY_EVENT as u16,
-        Event: INPUT_RECORD_0 {
-            KeyEvent: KEY_EVENT_RECORD {
-                bKeyDown: down,
-                wRepeatCount: 1,
-                wVirtualKeyCode: vk,
-                wVirtualScanCode: 0,
-                uChar: KEY_EVENT_RECORD_0 { UnicodeChar: ch },
-                dwControlKeyState: 0,
-            },
-        },
-    };
-    let mut records = Vec::new();
-    for unit in line.encode_utf16() {
-        records.push(key(unit, 0, 1));
-        records.push(key(unit, 0, 0));
-    }
-    // The Enter that submits the line.
-    records.push(key(VK_RETURN, VK_RETURN, 1));
-    records.push(key(VK_RETURN, VK_RETURN, 0));
-
-    let name: Vec<u16> = "CONIN$\0".encode_utf16().collect();
-
-    // SAFETY: every call is checked, the only pointers handed over are into
-    // `name` and `records`, both alive for the duration, and the console is
-    // released on every path out -- including the early return below.
-    unsafe {
-        FreeConsole();
-        if AttachConsole(pid) == 0 {
-            let err = std::io::Error::last_os_error();
-            AttachConsole(ATTACH_PARENT_PROCESS);
-            bail!(
-                "cannot reach the server's console window ({err}). Type the command in it instead."
-            );
-        }
-        let handle = CreateFileW(
-            name.as_ptr(),
-            GENERIC_READ | GENERIC_WRITE,
-            FILE_SHARE_READ | FILE_SHARE_WRITE,
-            std::ptr::null(),
-            OPEN_EXISTING,
-            0,
-            std::ptr::null_mut(),
-        );
-        if handle == INVALID_HANDLE_VALUE {
-            let err = std::io::Error::last_os_error();
-            FreeConsole();
-            AttachConsole(ATTACH_PARENT_PROCESS);
-            bail!("cannot open the server console's input ({err})");
-        }
-        let mut written = 0u32;
-        // A short write leaves a half-typed line in the console's buffer that
-        // the next command would be appended to, which is the one way the
-        // "a command is a single line" rule above can be broken.
-        #[allow(clippy::cast_possible_truncation)]
-        let count = records.len() as u32;
-        let ok = WriteConsoleInputW(handle, records.as_ptr(), count, &raw mut written);
-        let err = std::io::Error::last_os_error();
-        CloseHandle(handle);
-        FreeConsole();
-        AttachConsole(ATTACH_PARENT_PROCESS);
-        if ok == 0 {
-            bail!("the server's console refused the command ({err})");
-        }
-        if written != count {
-            bail!(
-                "only part of the command reached the server's console \
-                 ({written} of {count} keystrokes); check its window"
-            );
-        }
-    }
-    Ok(())
-}
-
-#[cfg(not(windows))]
-fn type_into_console(_pid: u32, _line: &str) -> Result<()> {
-    // Elsewhere the server's console is a terminal ValhSync does not own, and
-    // there is no equivalent of joining it. Saying so beats pretending.
-    bail!("sending console commands is only supported on Windows")
-}
+/// This used to be a `send_command` that joined the server's console and put
+/// keystrokes in its input buffer, the same way [`stop`] delivers Ctrl+C.
+/// Every Win32 call succeeded and the server did nothing, because it never
+/// reads its console: the input buffer just fills up.
+///
+/// The banner is what misleads. On start-up the server prints
+///
+/// ```text
+/// Valheim 1.0.12 (network version 40)
+/// type "help" - for commands
+/// ```
+///
+/// followed, seconds later, by the chat-command list -- `/die`, `/s`,
+/// emotes. That looks like a console answering `help`. It is not: those lines
+/// are printed while the Console object initialises, between the localisation
+/// files and Jotunn's item registration, on a server nobody has typed into.
+/// Checked against a server that had been up sixteen hours: `WriteConsoleInputW`
+/// reported every keystroke written, and the log did not grow by one byte.
+///
+/// Admin actions on a dedicated server go through `adminlist.txt`,
+/// `bannedlist.txt` and `permittedlist.txt`, or through an admin in-game. If
+/// this is ever wanted in the window, that is where to build it.
+const _: () = ();
 
 /// The command interpreter, by absolute path.
 ///

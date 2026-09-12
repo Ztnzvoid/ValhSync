@@ -143,6 +143,11 @@ pub struct Tail {
     /// A last line with no newline yet, waiting for the rest of it.
     partial: String,
     lines: VecDeque<String>,
+    /// Lines appended by the last `poll`, before the ring drops them again.
+    /// A busy server writes hundreds of lines a minute, so anything that
+    /// wants to notice a particular one has to see it as it arrives rather
+    /// than go looking for it afterwards.
+    fresh: Vec<String>,
     /// Set when the file cannot be read at all, to show instead of lines.
     error: Option<String>,
 }
@@ -155,6 +160,7 @@ impl Tail {
             offset: 0,
             partial: String::new(),
             lines: VecDeque::new(),
+            fresh: Vec::new(),
             error: None,
         }
     }
@@ -168,6 +174,12 @@ impl Tail {
         self.lines.iter().map(String::as_str)
     }
 
+    /// What the last `poll` added, oldest first.
+    #[must_use]
+    pub fn fresh(&self) -> &[String] {
+        &self.fresh
+    }
+
     #[must_use]
     pub fn error(&self) -> Option<&str> {
         self.error.as_deref()
@@ -176,6 +188,7 @@ impl Tail {
     /// Read whatever has been appended since last time. Returns true when
     /// something changed, so the view only scrolls when there is news.
     pub fn poll(&mut self) -> bool {
+        self.fresh.clear();
         let mut file = match File::open(&self.path) {
             Ok(f) => f,
             Err(e) => {
@@ -246,8 +259,37 @@ impl Tail {
         if self.lines.len() == KEEP {
             self.lines.pop_front();
         }
+        self.fresh.push(line.clone());
         self.lines.push_back(line);
     }
+}
+
+/// What the game server printed to its own console, out of one log line.
+///
+/// Valheim tags these itself. The dedicated server really does have a
+/// console -- it says `type "help" - for commands` on start-up and answers
+/// what is typed into it -- but the answer is written into the same log as
+/// everything else, where a few lines of it sit among thousands of
+/// `Destroying abandoned non persistent zdo`. Pulling them out by their tag
+/// is what turns "somewhere in that file" into a console.
+///
+/// ```text
+/// [Info   : Unity Log] 09/12/2026 05:16:22: Console: /die - Suicide
+///                                                    ^^^^^^^^^^^^^
+/// ```
+#[must_use]
+pub fn console_text(line: &str) -> Option<&str> {
+    const TAG: &str = "Console: ";
+    let at = line.find(TAG)?;
+    // Anchored to the log's own framing, so a player shouting "Console: rm
+    // -rf" in chat cannot write a line into the admin's console view. Every
+    // real one is introduced by the timestamp's colon-space, or opens the
+    // line on a server logging without timestamps.
+    let before = &line[..at];
+    if !(before.is_empty() || before.ends_with(": ")) {
+        return None;
+    }
+    Some(line[at + TAG.len()..].trim_end())
 }
 
 #[cfg(test)]
@@ -262,6 +304,54 @@ mod tests {
             .open(path)
             .unwrap();
         f.write_all(text.as_bytes()).unwrap();
+    }
+
+    #[test]
+    fn console_lines_are_picked_out_of_the_noise() {
+        let log = "[Info   : Unity Log] 09/12/2026 05:16:22: Console: /die - Suicide";
+        assert_eq!(console_text(log), Some("/die - Suicide"));
+        // A server logging without timestamps still gets one.
+        assert_eq!(console_text("Console: hello"), Some("hello"));
+        // Anything else in that file is not console output.
+        assert_eq!(
+            console_text("[Info   : Unity Log] Destroying abandoned zdo 1:2"),
+            None
+        );
+    }
+
+    #[test]
+    fn a_player_cannot_write_into_the_console_view() {
+        // Chat reaches the log. If the tag were enough on its own, anybody on
+        // the server could put whatever they liked in front of the admin.
+        let shout = "[Info   : Unity Log] 09/12/2026 05:16:22: Got text msg from user:                      Ztnzvoid Console: ban everyone";
+        assert_eq!(console_text(shout), None);
+    }
+
+    #[test]
+    fn fresh_holds_only_the_latest_arrivals() {
+        let dir = tempfile::tempdir().unwrap();
+        let log = dir.path().join("server.log");
+        append(
+            &log, "one
+",
+        );
+        let mut tail = Tail::new(log.clone());
+        assert!(tail.poll());
+        assert_eq!(tail.fresh(), ["one"]);
+
+        append(
+            &log,
+            "two
+three
+",
+        );
+        assert!(tail.poll());
+        // Not "one" again: a console reply must be counted once, not on
+        // every frame for as long as it stays in the ring.
+        assert_eq!(tail.fresh(), ["two", "three"]);
+
+        assert!(!tail.poll());
+        assert!(tail.fresh().is_empty());
     }
 
     #[test]

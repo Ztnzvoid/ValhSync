@@ -33,6 +33,14 @@ file and the wire format.
   nothing.
 - The launcher says "server offline" rather than quoting a transport error at
   someone who cannot act on it.
+- **The server's console output**, on the bar, instead of a command prompt that
+  never worked. Valheim's dedicated server prints `type "help" - for commands`
+  on start-up and then never reads its console: keystrokes written into its
+  input buffer are accepted by Windows and ignored by the server. Checked
+  against a server up for sixteen hours — every call reported success and the
+  log did not grow by a byte. The prompt is gone; the lines the server does
+  print to its console are pulled out of the log, where fifteen of them sit
+  among tens of thousands, and shown where they can be read.
 - **Drop a mod on the window.** The Mods tab takes a `.zip` from Thunderstore,
   Nexus, a release page or anywhere else, a mod folder, or a bare `.dll`. It
   works out whether the files sit at the archive's root, under `plugins/` or
@@ -75,7 +83,7 @@ First public release.
   already use. A static export to any web space is the alternative.
 - **An admin window.** Starts and stops the dedicated server (Ctrl+C, so the
   world is written before it exits), follows its log, reports players, join
-  code and version, types commands into its console, chooses which mods reach
+  code and version, chooses which mods reach
   players, and publishes.
 - **A player launcher.** Several servers side by side, what will be installed
   or updated before it happens, one button to sync and play, a repair pass, and
