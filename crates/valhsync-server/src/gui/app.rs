@@ -218,6 +218,11 @@ pub(super) struct App {
     command: String,
     /// Path of a signing key to take over from another install.
     key_import: String,
+    /// Why publishing is not up, when it tried and could not. Kept on the
+    /// card rather than flashed as a notice: it is a standing condition, and
+    /// a message that expires leaves the admin with a dead server and no
+    /// reason for it.
+    publish_error: Option<String>,
     notice: Option<(String, Color32, Instant)>,
     egui_ctx: egui::Context,
 }
@@ -277,6 +282,7 @@ impl App {
             new_key_at,
             command: String::new(),
             key_import: String::new(),
+            publish_error: None,
             game_running: false,
             game_pid: None,
             game_shell: None,
@@ -660,9 +666,10 @@ impl App {
         }
         self.pull_fields();
         if let Err(e) = self.cfg.validate() {
-            self.notify(format!("{e:#}"), th::BLOOD_LIT);
+            self.publish_error = Some(format!("{e:#}"));
             return;
         }
+        self.publish_error = None;
         let (tx, rx) = mpsc::channel();
         let rep = Reporter {
             tx,
@@ -925,6 +932,21 @@ impl eframe::App for App {
                     ],
                 );
                 ui.add_space(12.0);
+                // Nothing is published from a configuration that was never
+                // written: the publisher reads it from disk. The bar at the
+                // bottom says "unsaved changes" in passing, which is not the
+                // same as saying the server is unreachable because of it.
+                if self.never_saved {
+                    w::notice(
+                        ui,
+                        th::GOLD,
+                        self.t(
+                            "Configuration jamais enregistrée. Tant qu'elle ne l'est pas, rien n'est publié et vos joueurs ne trouveront pas le serveur : cliquez sur Enregistrer, en bas.",
+                            "This configuration has never been saved. Until it is, nothing is published and your players will not find the server: press Save, at the bottom.",
+                        ),
+                    );
+                    ui.add_space(12.0);
+                }
                 if let Some(path) = self.new_key_at.clone() {
                     let text = format!(
                         "{}
@@ -1968,6 +1990,20 @@ impl App {
                         }
                     }
                     ui.add_space(6.0);
+                    if let Some(why) = self.publish_error.clone() {
+                        w::notice(
+                            ui,
+                            th::BLOOD_LIT,
+                            &format!(
+                                "{} {why}",
+                                self.t(
+                                    "La publication ne peut pas démarrer :",
+                                    "Publishing cannot start:"
+                                )
+                            ),
+                        );
+                        ui.add_space(6.0);
+                    }
                     w::hint(
                         ui,
                         self.t(
