@@ -2,11 +2,18 @@
 
 Notable changes, newest first. Dates are ISO 8601.
 
-ValhSync is early: 0.2.0 is the second release, and one server has run it in
+ValhSync is early: 0.0.3 is the third release, and one server has run it in
 anger. Nothing here is settled yet, including the shape of the configuration
 file and the wire format.
 
-## 0.2.0 — 2026-09-12
+The numbering was reset before publication, because 0.2 claimed more than the
+project had earned. Binaries handed out before that carried 0.1.0 and 0.2.0;
+they are the 0.0.1 and 0.0.2 below. Anybody holding one of those installs
+0.0.3 by hand once -- a launcher will not offer itself as an update to a
+version that sorts above it -- and every release after this one arrives on
+its own.
+
+## 0.0.3 — 2026-09-13
 
 - **What changed, before agreeing to it.** A sync that touches mods now says
   which ones, by name: added, updated, removed. Computed from the plan, so
@@ -73,7 +80,7 @@ file and the wire format.
   They travel inside the release archives too.
 - Scrollbars, and the mark behind the windows, belong to the theme.
 
-## 0.1.0 — 2026-09-12
+## 0.0.1 — 2026-09-12
 
 First public release.
 

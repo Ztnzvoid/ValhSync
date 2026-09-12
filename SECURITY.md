@@ -96,7 +96,7 @@ file, and ValhSync's own bugs.
   that should decline the update and fetch releases from the project instead.
 - **Detecting the public IP** in the admin window calls `api.ipify.org`, at
   startup and every fifteen minutes. The service is named in the interface
-  beside what it answered. It was a button press until 0.1.0; an admin who had
+  beside what it answered. It was a button press until 0.0.1; an admin who had
   to ask for it ended up publishing a stale address after a reboot.
 - **Typing into the server's console.** The admin window can send a line to
   the dedicated server's console (Windows only, `AttachConsole` plus

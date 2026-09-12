@@ -39,6 +39,28 @@ pub struct Offered {
     pub size: u64,
 }
 
+/// Is there a launcher beside this publisher to offer at all, and which file?
+///
+/// Cheap: no hashing and no signing, because the window asks this every time
+/// it draws. What it answers is the half of the update channel an admin
+/// cannot otherwise see -- a publisher unpacked without its launcher offers
+/// nothing, works perfectly, and says nothing about it.
+#[must_use]
+pub fn beside() -> Option<PathBuf> {
+    let exe = std::env::current_exe().ok()?;
+    let path = exe.parent()?.join(LAUNCHER);
+    std::fs::metadata(&path)
+        .ok()
+        .filter(Metadata::is_file)
+        .map(|_| path)
+}
+
+/// The version this publisher would offer: its own.
+#[must_use]
+pub fn offered_version() -> &'static str {
+    env!("CARGO_PKG_VERSION")
+}
+
 /// Look for the launcher beside the running publisher and sign an offer for
 /// it. `None` whenever there is nothing sane to offer -- an admin who never
 /// unpacked the launcher has a working publisher, not a broken one, so this is

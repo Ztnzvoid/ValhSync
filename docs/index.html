@@ -398,7 +398,7 @@ nav.toc a.here .n { color: var(--gold); }
   “Incompatible version”. ValhSync exists so that stops happening.</p>
 </header>
 <div class="early">
-  <p><strong>This is an early version.</strong> 0.2.0 is the second release there has ever
+  <p><strong>This is an early version.</strong> 0.0.3 is the third release there has ever
   been. One server has actually run it — a Windows machine, a dedicated server beside it, a
   handful of players — and the whole chain works there. Everything else is tested but has not
   met a real server: Linux, hosted providers, Proton, any setup that is not the one above.</p>
@@ -634,8 +634,8 @@ nav.toc a.here .n { color: var(--gold); }
     <thead><tr><th>Platform</th><th>Status</th></tr></thead>
     <tbody>
       <tr><td>Windows 11, x86_64</td><td><strong>Verified end to end</strong>, in one configuration: a PC running the Valheim <em>dedicated server</em> (Steam app 896660) with the publisher beside it, serving on the game's port. The launcher fetched the pack over that machine's public address, applied it, and Steam started Valheim into the server.</td></tr>
-      <tr><td>Other machines as players</td><td><strong>Verified with 0.1.0.</strong> Several players ran the launcher on their own PCs — their own Valheim installs, their own game folders, their own pre-existing mods — synced from the publisher and joined. That is the run that exercises quarantine, backups and the root allow-list against installations nobody arranged in advance.</td></tr>
-      <tr><td>0.2.0 across machines</td><td>Not yet. The multi-player run above was 0.1.0; the release notes, the news history and the update channel have only been exercised between a publisher and a launcher on one PC.</td></tr>
+      <tr><td>Other machines as players</td><td><strong>Verified with 0.0.1.</strong> Several players ran the launcher on their own PCs — their own Valheim installs, their own game folders, their own pre-existing mods — synced from the publisher and joined. That is the run that exercises quarantine, backups and the root allow-list against installations nobody arranged in advance.</td></tr>
+      <tr><td>This release across machines</td><td>Not yet. The multi-player run above was 0.0.1; the release notes, the news history and the update channel have only been exercised between a publisher and a launcher on one PC.</td></tr>
       <tr><td>Linux, x86_64</td><td>Builds, and the whole suite passes in CI on every commit — including the end-to-end tests, which stand a real publisher on a real TCP listener and drive the launcher's real engine against it: a pack installed, replaced, rolled back, an older manifest refused as a replay, an update offer verified and written. What has <em>never</em> happened on Linux is a window being opened or Steam being asked to start the game.</td></tr>
       <tr><td>Proton / Steam Deck</td><td>Untested. The launch-option lines the launcher shows come from the BepInEx documentation, not from a machine here.</td></tr>
       <tr><td>Dedicated server in Docker</td><td>Untested, and partly unsupported by design: the publisher finds the game server by looking at processes, so it cannot see one in another container. Publishing a pack from a mounted volume should work; starting, stopping and the console will not.</td></tr>

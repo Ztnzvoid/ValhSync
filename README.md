@@ -6,7 +6,7 @@
 the game starts. No more "Incompatible version", no more zips of DLLs sent by
 hand after every mod update.
 
-> **Early version.** 0.2.0 is the second release there has ever been. One
+> **Early version.** 0.0.3 is the third release there has ever been. One
 > server has actually run it — Windows, a dedicated server beside it, a handful
 > of players — and the whole chain works there. Linux, hosted providers, Proton
 > and anything that is not that setup are tested but have not met a real server

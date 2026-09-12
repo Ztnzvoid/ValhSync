@@ -2655,6 +2655,27 @@ impl App {
         );
     }
 
+    /// What this publisher offers players as a newer launcher.
+    ///
+    /// Invisible until it is written down, and its one rule catches people
+    /// out: an offer is only taken by a launcher on an *older* version. A day
+    /// spent rebuilding without changing the number produces a publisher that
+    /// works, offers, signs -- and reaches nobody.
+    fn offer_line(&mut self, ui: &mut egui::Ui) {
+        ui.add_space(8.0);
+        th::hairline(ui);
+        ui.add_space(8.0);
+        if crate::update::beside().is_some() {
+            let said =
+                self.t(Key::OfferingLauncher)
+                    .replacen("{}", crate::update::offered_version(), 1);
+            w::status_dot(ui, th::MOSS, &said);
+            w::hint(ui, self.t(Key::OfferingHint));
+        } else {
+            w::notice(ui, th::GOLD, self.t(Key::NoLauncherBeside));
+        }
+    }
+
     #[allow(clippy::too_many_lines)] // one card, read top to bottom
     fn card_publish(&mut self, ui: &mut egui::Ui) {
         th::card(ui, |ui| {
@@ -2800,6 +2821,7 @@ impl App {
                         .color(th::GOLD),
                 );
             }
+            self.offer_line(ui);
         });
     }
 
