@@ -5,190 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ValhSync — server guide</title>
 <meta name="description" content="Setting up ValhSync beside a Valheim dedicated server, on Windows and on Linux: install, configure, publish, hand out the launcher, keep it running.">
-<style>
-  :root {
-    --night:      #0F0D0B;
-    --wood:       #17140F;
-    --panel:      #1E1912;
-    --leather:    #262017;
-    --edge:       #4A3C27;
-    --edge-soft:  #332A1D;
-    --bone:       #E0D5BC;
-    --bone-dim:   #ADA089;
-    --gold:       #C7A455;
-    --gold-lit:   #E8CD8B;
-    --rune:       #7E9AA7;
-    --blood:      #9A3421;
-    --moss:       #7E9155;
-
-    --serif:   "Iowan Old Style", "Charter", Constantia, "Palatino Linotype", Georgia, serif;
-    --display: Cinzel, "Trajan Pro", Constantia, "Palatino Linotype", "Book Antiqua", Georgia, serif;
-    --mono:    "Cascadia Code", "JetBrains Mono", Consolas, "DejaVu Sans Mono", monospace;
-  }
-  * { box-sizing: border-box; }
-  html {
-    background: var(--night);
-    color: var(--bone);
-    background-image:
-      radial-gradient(120% 80% at 50% 0%, #241D14 0%, rgba(36,29,20,0) 60%),
-      radial-gradient(90% 60% at 50% 100%, #1A1610 0%, rgba(26,22,16,0) 70%);
-    background-attachment: fixed;
-  }
-  body { margin: 0; font: 17px/1.65 var(--serif); }
-  ::selection { background: rgba(199,164,85,0.3); }
-
-  a { color: var(--gold); text-underline-offset: 2px; text-decoration-color: var(--edge); }
-  a:hover { color: var(--gold-lit); }
-  a:focus-visible { outline: 2px solid var(--gold-lit); outline-offset: 2px; }
-
-  .layout {
-    display: grid;
-    grid-template-columns: 15rem minmax(0, 46rem);
-    gap: 3rem;
-    max-width: 68rem;
-    margin: 0 auto;
-    padding: 0 1.5rem 6rem;
-  }
-
-  nav.toc {
-    position: sticky;
-    top: 1.5rem;
-    align-self: start;
-    margin-top: 3rem;
-    font: 0.86rem/1.6 var(--display);
-    letter-spacing: 0.01em;
-  }
-  nav.toc ol { list-style: none; margin: 0; padding: 0; border-left: 1px solid var(--edge-soft); }
-  nav.toc li { margin: 0; }
-  nav.toc a {
-    display: block;
-    text-decoration: none;
-    color: var(--bone-dim);
-    padding: 0.22rem 0 0.22rem 0.9rem;
-    margin-left: -1px;
-    border-left: 2px solid transparent;
-  }
-  nav.toc a:hover { color: var(--gold-lit); border-left-color: var(--gold); background: rgba(199,164,85,0.05); }
-  nav.toc .n { display: inline-block; width: 2.4rem; color: var(--rune); }
-  nav.toc .back { margin-top: 1rem; padding-left: 0.9rem; display: block; color: var(--rune); text-decoration: none; }
-  nav.toc .back:hover { color: var(--gold-lit); }
-
-  main { min-width: 0; }
-
-  header.hero { padding: 3.5rem 0 2.2rem; border-bottom: 1px solid var(--edge); }
-  header.hero h1 {
-    font: 600 2.6rem/1.05 var(--display);
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
-    color: var(--gold);
-    margin: 0 0 0.5rem;
-    text-shadow: 0 1px 0 #000, 0 0 28px rgba(199,164,85,0.16);
-  }
-  header.hero .sub { font: 1.05rem/1.5 var(--serif); color: var(--bone-dim); margin: 0; max-width: 40rem; }
-
-  section { padding-top: 2.6rem; }
-  h2 {
-    font: 600 1.5rem/1.25 var(--display);
-    letter-spacing: 0.04em;
-    text-transform: uppercase;
-    color: var(--gold);
-    margin: 0 0 1rem;
-    padding-bottom: 0.5rem;
-    border-bottom: 1px solid var(--edge-soft);
-    display: flex;
-    gap: 0.7rem;
-    align-items: baseline;
-  }
-  h2 .n { color: var(--rune); font-weight: 400; letter-spacing: 0; text-transform: none; }
-  h3 {
-    font: 600 1.08rem/1.35 var(--display);
-    letter-spacing: 0.02em;
-    color: var(--gold-lit);
-    margin: 1.8rem 0 0.5rem;
-  }
-  p, li { max-width: 42rem; }
-  strong { color: var(--gold-lit); font-weight: 600; }
-  em { color: var(--bone); }
-  ul, ol { padding-left: 1.3rem; }
-  li { margin: 0.32rem 0; }
-  li::marker { color: var(--rune); }
-
-  code {
-    font: 0.86em var(--mono);
-    background: var(--wood);
-    border: 1px solid var(--edge-soft);
-    color: var(--gold-lit);
-    padding: 0.08em 0.34em;
-    border-radius: 2px;
-  }
-  pre {
-    font: 0.82rem/1.6 var(--mono);
-    background: var(--wood);
-    color: #C6BCA6;
-    border: 1px solid var(--edge-soft);
-    border-left: 3px solid var(--edge);
-    padding: 1rem 1.15rem;
-    overflow-x: auto;
-    border-radius: 2px;
-  }
-  pre code { background: none; border: 0; padding: 0; font-size: inherit; color: inherit; }
-
-  table { border-collapse: collapse; width: 100%; margin: 0.9rem 0 1.3rem; font-size: 0.93rem; }
-  th, td { text-align: left; vertical-align: top; padding: 0.6rem 0.75rem; border-bottom: 1px solid var(--edge-soft); }
-  th {
-    font: 600 0.82rem var(--display);
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
-    color: var(--gold);
-    border-bottom: 2px solid var(--edge);
-  }
-  tbody tr:hover { background: rgba(199,164,85,0.04); }
-
-  .rule {
-    border: 1px solid var(--edge-soft);
-    border-left: 4px solid var(--rune);
-    background: var(--leather);
-    padding: 0.85rem 1.05rem;
-    margin: 1.1rem 0;
-  }
-  .rule.decide { border-left-color: var(--gold); }
-  .rule.never  { border-left-color: var(--blood); }
-  .rule strong:first-child {
-    font-family: var(--display);
-    letter-spacing: 0.03em;
-    color: var(--gold-lit);
-  }
-  .rule.never strong:first-child { color: #D2724F; }
-
-  /* ── Windows and Linux, side by side ────────────────────────────── */
-  .os { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin: 1.2rem 0; }
-  .os > div { border: 1px solid var(--edge-soft); background: var(--panel); padding: 1rem 1.1rem; }
-  .os h3 { margin-top: 0; }
-  .os pre { margin-bottom: 0; }
-  .os ol, .os ul { padding-left: 1.1rem; margin-bottom: 0; }
-
-  footer {
-    margin-top: 4.5rem;
-    padding-top: 1.1rem;
-    border-top: 1px solid var(--edge-soft);
-    font: 0.86rem var(--display);
-    letter-spacing: 0.02em;
-    color: var(--bone-dim);
-  }
-
-  @media (max-width: 900px) {
-    .layout { grid-template-columns: 1fr; gap: 0; }
-    nav.toc { position: static; margin-top: 1.5rem; }
-    header.hero h1 { font-size: 2rem; }
-    .os { grid-template-columns: 1fr; }
-  }
-  @media print {
-    nav.toc { display: none; }
-    .layout { display: block; }
-    html { background: #fff; color: #000; background-image: none; }
-    a, h1, h2, h3, th, strong { color: #000; }
-  }
-</style>
+<link rel="stylesheet" href="valhsync.css">
+<script src="valhsync.js" defer></script>
 </head>
 <body>
 <div class="layout">
@@ -363,13 +181,25 @@ sudo chown -R valhsync: /opt/valhsync</code></pre>
 
 <section id="s6">
   <h2><span class="n">§6</span>Hand out the launcher</h2>
-  <p>Give players the invite code — <code>valhsync-server invite</code> prints it again, and the
-  window has a copy button. Better: send them a zip containing <code>valhsync.exe</code> and a
-  file named <code>valhsync-invite.txt</code> holding the code. The launcher imports it on first
-  start and they have nothing to type.</p>
-  <p>Players joining by address alone instead should be given your <strong>key fingerprint</strong>
-  to check against what the launcher shows them. That is the only thing standing between them and
-  somebody else answering at that address.</p>
+  <p>Two ways in, both fine. Give players whichever suits how you already talk to them.</p>
+  <div class="os">
+    <div>
+      <h3>The invite code</h3>
+      <p><code>valhsync-server invite</code> prints it; the window has a copy button. It carries
+      your key inside it, so there is nothing for the player to check.</p>
+      <p>Best of all: send a zip holding <code>valhsync.exe</code> and a file named
+      <code>valhsync-invite.txt</code> with the code in it. The launcher imports it on first
+      start and they type nothing at all.</p>
+    </div>
+    <div>
+      <h3>The address</h3>
+      <p>Just <code>203.0.113.10:2456</code> — the same thing they already paste into Valheim.
+      Paste it into <em>Add a server</em> and the launcher fetches the key itself.</p>
+      <p>It then shows the <strong>fingerprint</strong> and waits. Send them yours alongside the
+      address, in the same message, so they can compare before accepting. That comparison is
+      what the invite code does for them automatically.</p>
+    </div>
+  </div>
   <p>After that, you do not have to send anything again: if <code>valhsync.exe</code> sits beside
   the publisher, players are offered each new launcher through the same signed channel.</p>
 </section>
@@ -383,7 +213,7 @@ sudo chown -R valhsync: /opt/valhsync</code></pre>
 sudo systemctl daemon-reload
 sudo systemctl enable --now valhsync-server
 journalctl -u valhsync-server -f</code></pre>
-      <p>The unit in <a href="deploy/valhsync-server.service">docs/deploy</a> runs as a dedicated
+      <p>The unit in <a href="https://github.com/Ztnzvoid/ValhSync/blob/main/docs/deploy/valhsync-server.service">docs/deploy</a> runs as a dedicated
       user with <code>ProtectSystem=strict</code> and a read-only home; its header carries the
       whole setup.</p>
     </div>
@@ -398,7 +228,7 @@ journalctl -u valhsync-server -f</code></pre>
         <li>Settings: restart every minute on failure.</li>
       </ol>
       <p>Or NSSM, for a real service entry. Both are written out in
-      <a href="deploy/README.md">docs/deploy</a>.</p>
+      <a href="https://github.com/Ztnzvoid/ValhSync/tree/main/docs/deploy">docs/deploy</a>.</p>
     </div>
   </div>
   <div class="rule">
@@ -419,9 +249,13 @@ journalctl -u valhsync-server -f</code></pre>
     console, so Valheim writes the world before it exits; the process is never killed. Restart
     waits for it to actually be gone before starting again.</li>
     <li><strong>The console</strong>, followed live, with a prompt to type into it.</li>
-    <li><strong>A note to players</strong>, on the Mods tab. The list of what changed is computed
-    for you; the note is for what no diff can say — that a mod resets its own config, that a chest
-    mod wants an empty base first.</li>
+    <li><strong>Patch notes</strong>, on the Mods tab — a real one, and most of it writes
+    itself. The list of mods added, updated and removed is computed from the pack and named for
+    you, so you never retype a version number. What you add is the half a diff cannot produce:
+    that a mod resets its own config, that a chest mod wants an empty base first, that this
+    update only matters to the people who were crashing on the boat. Players read the whole
+    thing <em>before</em> they agree to install it, and it is kept afterwards so they can go
+    back to it.</li>
   </ul>
   <p>From the command line, on either platform: <code>start-game</code>, <code>stop-game</code>,
   <code>scan</code>, <code>invite</code>, <code>rotate-key</code>.</p>
@@ -445,7 +279,7 @@ journalctl -u valhsync-server -f</code></pre>
 
 <footer>
   ValhSync — <a href="index.html">overview</a> ·
-  <a href="player-guide.md">player guide</a> ·
+  <a href="player-guide.html">player guide</a> ·
   <a href="https://github.com/Ztnzvoid/ValhSync">github.com/Ztnzvoid/ValhSync</a>
 </footer>
 

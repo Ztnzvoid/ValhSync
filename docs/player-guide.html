@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ValhSync — player guide</title>
+<meta name="description" content="Installing and using the ValhSync launcher: add your server, press Play, and your mods match the server's before Valheim starts.">
+<link rel="stylesheet" href="valhsync.css">
+<script src="valhsync.js" defer></script>
+</head>
+<body>
+<div class="layout">
+
+<nav class="toc" aria-label="Contents">
+  <ol>
+    <li><a href="#s1"><span class="n">§1</span>Install</a></li>
+    <li><a href="#s2"><span class="n">§2</span>Add your server</a></li>
+    <li><a href="#s3"><span class="n">§3</span>Playing</a></li>
+    <li><a href="#s4"><span class="n">§4</span>What's new</a></li>
+    <li><a href="#s5"><span class="n">§5</span>The other buttons</a></li>
+    <li><a href="#s6"><span class="n">§6</span>If your antivirus removes it</a></li>
+    <li><a href="#s7"><span class="n">§7</span>A newer ValhSync</a></li>
+    <li><a href="#s8"><span class="n">§8</span>Linux and Steam Deck</a></li>
+    <li><a href="#s9"><span class="n">§9</span>Command line</a></li>
+    <li><a href="#s10"><span class="n">§10</span>When it goes wrong</a></li>
+    <li><a href="#s11"><span class="n">§11</span>En français</a></li>
+  </ol>
+  <a class="back" href="index.html">← ValhSync</a>
+</nav>
+
+<main>
+
+<header class="hero">
+  <h1>Player guide</h1>
+  <p class="sub">One window, one button. Your mods match the server's before Valheim starts, and
+  nothing you put in that folder yourself is ever deleted.</p>
+</header>
+
+<section id="s1">
+  <h2><span class="n">§1</span>Install</h2>
+  <p>Nothing to install, nothing to open on your router, no administrator rights. ValhSync only
+  makes outgoing connections, like a browser, and only writes inside the Valheim folder.</p>
+  <p>Put <code>valhsync.exe</code> wherever you like — the Desktop is fine. If your admin sent a
+  zip, keep <code>valhsync-invite.txt</code> next to the executable: the launcher reads it on
+  first start and you have nothing to type.</p>
+  <h3>Windows will warn you, and here is why</h3>
+  <p>ValhSync is not signed with a paid certificate, so Windows shows
+  <strong>“Windows protected your PC”</strong> the first time. <em>More info</em>, then
+  <em>Run anyway</em>.</p>
+  <p>That warning does not mean the file is dangerous. It means Windows has not been told who
+  published it. What tells you the file is the one your admin meant to send is its fingerprint —
+  ask them for it, then check yours:</p>
+<pre><code>Get-FileHash valhsync.exe -Algorithm SHA256</code></pre>
+  <p>The two must match character for character. If they do not, do not run it, and tell your
+  admin.</p>
+  <div class="rule">
+    <strong>Everything it downloads is checked on top of that.</strong> Every file the server
+    sends is verified against a signature only your admin's server can produce, and against its
+    own digest. Nothing is written to your game until all of it has arrived and verified.
+  </div>
+</section>
+
+<section id="s2">
+  <h2><span class="n">§2</span>Add your server</h2>
+  <p>Your admin will have given you one of two things. Both work; neither is second best.</p>
+  <div class="os">
+    <div>
+      <h3>An invite code</h3>
+      <p>A long line starting with <code>valhsync1:</code>. Click <strong>Add a server</strong>,
+      paste it, done. The code carries the server's key, so there is nothing for you to check.</p>
+    </div>
+    <div>
+      <h3>Or just the address</h3>
+      <p>Something like <code>203.0.113.10:2456</code> — the same thing you already paste into
+      Valheim. Paste it in the same box.</p>
+      <p>The launcher fetches the server's key and shows you its <strong>fingerprint</strong>
+      before pinning anything. Compare it with the one your admin gave you, then accept.</p>
+    </div>
+  </div>
+  <div class="rule decide">
+    <strong>Why the fingerprint matters.</strong> It is what makes the difference between your
+    admin's server and somebody else answering at that address. Compare it once, when you add the
+    server; from then on the launcher refuses anything not signed by that same key, and tells you
+    loudly if it ever changes.
+  </div>
+  <p>You can add several servers and switch between them from the list at the top.</p>
+</section>
+
+<section id="s3">
+  <h2><span class="n">§3</span>Playing</h2>
+  <p>Press <strong>PLAY</strong>. That is the whole of it.</p>
+  <p>The first time, the launcher shows what it will do before doing it — files to install, and
+  any mod files of your own it will move aside — and asks you to confirm. After that, if the
+  admin changed something it downloads only what changed; if nothing changed it just starts
+  Valheim through Steam and connects you.</p>
+  <p>Close Valheim before syncing. The launcher refuses to change files while the game is
+  running, rather than doing it behind the game's back.</p>
+  <p>Your own edits to config files — keybinds, UI positions — survive a sync. The server seeds
+  configs but does not overwrite them, unless your admin deliberately enforces a particular file.</p>
+</section>
+
+<section id="s4">
+  <h2><span class="n">§4</span>What's new</h2>
+  <p>When a sync would change something, a gold panel says what, <em>before</em> you press
+  anything: mods added, updated and removed, by name. That list is computed from the pack itself,
+  so it is always right and always complete.</p>
+  <p>Above it sits whatever your admin wrote about the release — the part no list can tell you.
+  That a mod resets its own configuration. That you should empty a chest before this one. That
+  the update only matters if you were crashing on the boat. Read it before you confirm; that is
+  why it is there and not in a Discord message you have scrolled past.</p>
+  <p>The <strong>What's new</strong> button keeps the history: one entry per sync that changed
+  something, so you can go back to what arrived when, and to what you were told about it.</p>
+</section>
+
+<section id="s5">
+  <h2><span class="n">§5</span>The other buttons</h2>
+  <ul>
+    <li><strong>Go back to the previous version</strong> — undoes the last sync exactly, from the
+    backup taken before it. For when a mod update breaks something and you would rather play
+    elsewhere while your admin sorts it out.</li>
+    <li><strong>Open the set-aside folder</strong> — where mod files ValhSync did not recognise
+    were moved (<code>BepInEx/_valhsync_quarantine/</code> inside the game folder). Moved, never
+    deleted. Yours to put back.</li>
+    <li><strong>Play without mods</strong> — disables BepInEx by renaming one file and starts the
+    vanilla game. Nothing is uninstalled; the next PLAY puts it back.</li>
+    <li><strong>Repair</strong> — re-checks every file against the server and re-fetches anything
+    that no longer matches.</li>
+    <li><strong>Settings</strong> — set the game folder by hand if Steam detection fails (the
+    folder holding <code>valheim.exe</code>), forget a server, switch language.</li>
+  </ul>
+</section>
+
+<section id="s6">
+  <h2><span class="n">§6</span>If your antivirus removes it</h2>
+  <p>ValhSync is not signed with a paid code-signing certificate, and every build is a file
+  Windows Defender has never seen anywhere else. That, plus what the launcher legitimately does —
+  download files from a server, write them into the game folder, replace its own executable when
+  a server offers a newer one — occasionally trips the machine-learning classifier, which reports
+  something like <code>Trojan:Win32/Bearfoos.A!ml</code>.</p>
+  <p>The <code>!ml</code> suffix is the giveaway: a guess from a model, not a match against a
+  known threat.</p>
+  <div class="rule never">
+    <strong>It is a false positive — and do not take that on faith</strong> from a text file the
+    same download handed you. Check the SHA256 against the one published with the release. If it
+    matches, restore it from <em>Windows Security → Protection history</em>. If it does not,
+    delete it and tell your admin.
+  </div>
+</section>
+
+<section id="s7">
+  <h2><span class="n">§7</span>A newer ValhSync</h2>
+  <p>A server can offer a newer launcher. If yours does, a gold bar appears above the server card
+  with the version, the server's name and its key fingerprint. One click downloads it, checks it
+  against the digest the server signed, replaces your launcher and restarts it.</p>
+  <p>Worth knowing what you are agreeing to. The file comes from <em>that server's admin</em>,
+  not from this project. The signature proves it came from the server you already trust for mods;
+  it does not prove anything about what the file is, and unlike a mod it runs whether or not you
+  start Valheim. Trusting an admin with your mod folder and trusting them with a program are not
+  quite the same decision.</p>
+  <p>You never have to take it. Declining changes nothing — syncing and playing carry on — and
+  releases can always be downloaded from the project itself.</p>
+</section>
+
+<section id="s8">
+  <h2><span class="n">§8</span>Linux and Steam Deck</h2>
+  <div class="rule">
+    <strong>Not yet reported working.</strong> The syncing itself is exercised on Linux on every
+    commit — a real server on a socket, the real launcher against it — so that part is not a
+    guess. What has never happened on Linux is the window being opened or Steam being asked to
+    start the game, and nobody has run this under Proton or on a Deck. What follows is how it is
+    meant to work. If you try it, say what happened: that is worth more than this paragraph.
+  </div>
+  <p>BepInEx only loads if Valheim's launch options are set in Steam
+  (<em>Valheim → Properties → Launch options</em>):</p>
+<pre><code>Proton:              WINEDLLOVERRIDES="winhttp=n,b" %command%
+Native Linux build:  ./start_game_bepinex.sh %command%</code></pre>
+  <p>The launcher shows the right line for your install.</p>
+</section>
+
+<section id="s9">
+  <h2><span class="n">§9</span>Command line</h2>
+  <p>The same executable works in a terminal:</p>
+<pre><code>valhsync join &lt;code&gt;      add a server
+valhsync status           show what a sync would do
+valhsync sync             sync without starting the game
+valhsync play             sync and start the game
+valhsync rollback         undo the last sync
+valhsync vanilla on|off   toggle BepInEx
+valhsync doctor           show what ValhSync found on this machine</code></pre>
+</section>
+
+<section id="s10">
+  <h2><span class="n">§10</span>When it goes wrong</h2>
+  <table>
+    <thead><tr><th>What you see</th><th>What to do</th></tr></thead>
+    <tbody>
+      <tr><td>Server offline</td><td>Your admin's publisher is not running, or the port is closed. The launcher keeps trying on its own; tell your admin if it lasts.</td></tr>
+      <tr><td>The server's key does not match</td><td>The key changed. Do not accept a new code from anywhere but your admin, directly — then add the server again.</td></tr>
+      <tr><td>Valheim is running</td><td>Close the game first.</td></tr>
+      <tr><td>Valheim was not found</td><td>Set the folder in Settings: the one holding <code>valheim.exe</code>.</td></tr>
+    </tbody>
+  </table>
+  <h3>Where it keeps its things</h3>
+  <table>
+    <thead><tr><th></th><th>Windows</th><th>Linux</th></tr></thead>
+    <tbody>
+      <tr><td>Servers, settings, what is installed</td><td><code>%APPDATA%\valhsync</code></td><td><code>~/.config/valhsync</code></td></tr>
+      <tr><td>Backups</td><td><code>%LOCALAPPDATA%\valhsync\backups</code></td><td><code>~/.local/share/valhsync/backups</code></td></tr>
+    </tbody>
+  </table>
+  <p>Deleting those resets the launcher without touching your game. It is also why replacing the
+  launcher with a newer one keeps your servers.</p>
+  <h3>Keeping everything beside the launcher</h3>
+  <p>For a shared computer, a USB stick, or just to see what a newcomer sees: create a folder
+  named <strong><code>valhsync-data</code></strong> next to <code>valhsync.exe</code> and
+  everything lives there instead. It is used only if you made it, so nothing changes for anyone
+  who does not. <code>valhsync doctor</code> says which of the two is in use.</p>
+</section>
+
+<section id="s11">
+  <h2><span class="n">§11</span>En français</h2>
+  <p><strong>Installation.</strong> Rien à installer, aucun port à ouvrir, aucun droit
+  administrateur. Posez <code>valhsync.exe</code> où vous voulez ; si votre admin vous a envoyé un
+  zip, gardez <code>valhsync-invite.txt</code> à côté.</p>
+  <p>Windows affichera « Windows a protégé votre ordinateur » au premier lancement : le programme
+  n'est pas signé avec un certificat payant. <em>Informations complémentaires</em> →
+  <em>Exécuter quand même</em>. Pour vous assurer que le fichier est bien celui que votre admin a
+  envoyé, comparez son empreinte SHA256 avec celle qu'il vous donne.</p>
+  <p><strong>Ajouter le serveur.</strong> Soit un code d'invitation (il commence par
+  <code>valhsync1:</code>), soit simplement l'adresse du serveur, la même que dans Valheim. Dans
+  le second cas le launcher va chercher la clé et vous montre son <strong>empreinte</strong> :
+  comparez-la avec celle de votre admin avant d'accepter. C'est ce qui distingue son serveur de
+  quelqu'un d'autre qui répondrait à cette adresse.</p>
+  <p><strong>Jouer.</strong> Appuyez sur <strong>JOUER</strong>. La première fois, le launcher
+  montre ce qu'il va faire et demande confirmation. Ensuite il ne télécharge que ce qui a changé,
+  puis lance Valheim via Steam. Fermez le jeu avant de synchroniser.</p>
+  <p><strong>Les nouveautés.</strong> Quand quelque chose change, un encadré doré liste les mods
+  ajoutés, mis à jour et retirés, par leur nom — et au-dessus, le mot de votre admin sur cette
+  mise à jour. Lisez-le avant de valider. Le bouton <em>Nouveautés</em> garde l'historique.</p>
+  <p><strong>Rien n'est jamais supprimé.</strong> Un fichier remplacé part en sauvegarde, un mod
+  que vous aviez installé et que le pack ne connaît pas est mis de côté dans un dossier du jeu, et
+  la dernière synchronisation peut être annulée exactement. Il y a aussi un mode « jouer sans
+  mods » qui désactive BepInEx sans rien désinstaller.</p>
+  <p><strong>Si ça coince</strong> : « Serveur hors ligne » veut dire que le serveur de votre
+  admin ne répond pas — le launcher réessaie tout seul. « La clé ne correspond pas » veut dire que
+  la clé du serveur a changé : n'acceptez un nouveau code que de votre admin, directement.</p>
+</section>
+
+<footer>
+  ValhSync — <a href="index.html">overview</a> ·
+  <a href="server-guide.html">server guide</a> ·
+  <a href="https://github.com/Ztnzvoid/ValhSync">github.com/Ztnzvoid/ValhSync</a>
+</footer>
+
+</main>
+</div>
+</body>
+</html>

@@ -197,7 +197,7 @@ build). The launcher detects the case and tells you; it does not edit Steam's
 settings. Consoles cannot load mods at all: a modded server excludes PS5 and
 Switch 2 players.
 
-More: [docs/player-guide.md](docs/player-guide.md).
+More: [docs/player-guide.html](docs/player-guide.html).
 
 ## Security model, honestly
 

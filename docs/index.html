@@ -5,219 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ValhSync — the server decides the mods</title>
 <meta name="description" content="ValhSync keeps a modded Valheim server and its players on the same mod pack: the server publishes a signed manifest, the launcher applies it before the game starts.">
-<style>
-  /* ── ValhSync palette, after Valheim's own interface ────────────────
-     Night and burnt wood for the ground, bone and parchment for text,
-     worn brass for headings, northern mist for numbering. */
-  :root {
-    --night:      #0F0D0B;
-    --wood:       #17140F;
-    --panel:      #1E1912;
-    --leather:    #262017;
-    --edge:       #4A3C27;
-    --edge-soft:  #332A1D;
-    --bone:       #E0D5BC;
-    --bone-dim:   #ADA089;
-    --gold:       #C7A455;
-    --gold-lit:   #E8CD8B;
-    --rune:       #7E9AA7;
-    --blood:      #9A3421;
-    --moss:       #7E9155;
-
-    --serif:   "Iowan Old Style", "Charter", Constantia, "Palatino Linotype", Georgia, serif;
-    --display: Cinzel, "Trajan Pro", Constantia, "Palatino Linotype", "Book Antiqua", Georgia, serif;
-    --mono:    "Cascadia Code", "JetBrains Mono", Consolas, "DejaVu Sans Mono", monospace;
-  }
-  * { box-sizing: border-box; }
-  html {
-    background: var(--night);
-    color: var(--bone);
-    background-image:
-      radial-gradient(120% 80% at 50% 0%, #241D14 0%, rgba(36,29,20,0) 60%),
-      radial-gradient(90% 60% at 50% 100%, #1A1610 0%, rgba(26,22,16,0) 70%);
-    background-attachment: fixed;
-  }
-  body { margin: 0; font: 17px/1.65 var(--serif); }
-  ::selection { background: rgba(199,164,85,0.3); }
-
-  a { color: var(--gold); text-underline-offset: 2px; text-decoration-color: var(--edge); }
-  a:hover { color: var(--gold-lit); }
-  a:focus-visible { outline: 2px solid var(--gold-lit); outline-offset: 2px; }
-
-  .layout {
-    display: grid;
-    grid-template-columns: 15rem minmax(0, 46rem);
-    gap: 3rem;
-    max-width: 68rem;
-    margin: 0 auto;
-    padding: 0 1.5rem 6rem;
-  }
-
-  /* ── Contents: carved into the margin ───────────────────────────── */
-  nav.toc {
-    position: sticky;
-    top: 1.5rem;
-    align-self: start;
-    margin-top: 3rem;
-    font: 0.86rem/1.6 var(--display);
-    letter-spacing: 0.01em;
-  }
-  nav.toc ol { list-style: none; margin: 0; padding: 0; border-left: 1px solid var(--edge-soft); }
-  nav.toc li { margin: 0; }
-  nav.toc a {
-    display: block;
-    text-decoration: none;
-    color: var(--bone-dim);
-    padding: 0.22rem 0 0.22rem 0.9rem;
-    margin-left: -1px;
-    border-left: 2px solid transparent;
-  }
-  nav.toc a:hover { color: var(--gold-lit); border-left-color: var(--gold); background: rgba(199,164,85,0.05); }
-  nav.toc .n { display: inline-block; width: 2.4rem; color: var(--rune); }
-
-  main { min-width: 0; }
-
-  header.hero { padding: 3.5rem 0 2.2rem; border-bottom: 1px solid var(--edge); }
-  header.hero h1 {
-    font: 600 3rem/1.05 var(--display);
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
-    color: var(--gold);
-    margin: 0 0 0.5rem;
-    text-shadow: 0 1px 0 #000, 0 0 28px rgba(199,164,85,0.16);
-  }
-  header.hero .sub {
-    font: 1.05rem/1.5 var(--serif);
-    color: var(--bone-dim);
-    margin: 0 0 2rem;
-    max-width: 40rem;
-  }
-  .log {
-    background: var(--wood);
-    color: #BFB5A0;
-    font: 0.84rem/1.7 var(--mono);
-    padding: 1.1rem 1.25rem;
-    border: 1px solid var(--edge-soft);
-    border-left: 6px solid var(--blood);
-    overflow-x: auto;
-    white-space: pre;
-    box-shadow: inset 0 0 40px rgba(0,0,0,0.5);
-  }
-  .log .w { color: #E3B45A; }
-  header.hero .verdict {
-    font: 600 1.3rem/1.4 var(--display);
-    color: var(--bone);
-    margin: 1.5rem 0 0;
-    max-width: 38rem;
-  }
-
-  section { padding-top: 2.6rem; }
-  h2 {
-    font: 600 1.5rem/1.25 var(--display);
-    letter-spacing: 0.04em;
-    text-transform: uppercase;
-    color: var(--gold);
-    margin: 0 0 1rem;
-    padding-bottom: 0.5rem;
-    border-bottom: 1px solid var(--edge-soft);
-    display: flex;
-    gap: 0.7rem;
-    align-items: baseline;
-  }
-  h2 .n { color: var(--rune); font-weight: 400; letter-spacing: 0; text-transform: none; }
-  h3 {
-    font: 600 1.08rem/1.35 var(--display);
-    letter-spacing: 0.02em;
-    color: var(--gold-lit);
-    margin: 1.8rem 0 0.5rem;
-  }
-  p, li { max-width: 42rem; }
-  strong { color: var(--gold-lit); font-weight: 600; }
-  em { color: var(--bone); }
-  ul, ol { padding-left: 1.3rem; }
-  li { margin: 0.32rem 0; }
-  li::marker { color: var(--rune); }
-
-  code {
-    font: 0.86em var(--mono);
-    background: var(--wood);
-    border: 1px solid var(--edge-soft);
-    color: var(--gold-lit);
-    padding: 0.08em 0.34em;
-    border-radius: 2px;
-  }
-  pre {
-    font: 0.82rem/1.6 var(--mono);
-    background: var(--wood);
-    color: #C6BCA6;
-    border: 1px solid var(--edge-soft);
-    border-left: 3px solid var(--edge);
-    padding: 1rem 1.15rem;
-    overflow-x: auto;
-    border-radius: 2px;
-  }
-  pre code { background: none; border: 0; padding: 0; font-size: inherit; color: inherit; }
-
-  table { border-collapse: collapse; width: 100%; margin: 0.9rem 0 1.3rem; font-size: 0.93rem; }
-  th, td { text-align: left; vertical-align: top; padding: 0.6rem 0.75rem; border-bottom: 1px solid var(--edge-soft); }
-  th {
-    font: 600 0.82rem var(--display);
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
-    color: var(--gold);
-    border-bottom: 2px solid var(--edge);
-  }
-  tbody tr:hover { background: rgba(199,164,85,0.04); }
-  td.num { text-align: right; color: var(--rune); font-family: var(--mono); font-size: 0.88em; white-space: nowrap; }
-
-  .rule {
-    border: 1px solid var(--edge-soft);
-    border-left: 4px solid var(--rune);
-    background: var(--leather);
-    padding: 0.85rem 1.05rem;
-    margin: 1.1rem 0;
-  }
-  .rule.decide { border-left-color: var(--gold); }
-  .rule.never  { border-left-color: var(--blood); }
-  .rule strong:first-child {
-    font-family: var(--display);
-    letter-spacing: 0.03em;
-    color: var(--gold-lit);
-  }
-  .rule.never strong:first-child { color: #D2724F; }
-
-  /* ── The two halves, side by side ───────────────────────────────── */
-  .halves { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin: 1.2rem 0; }
-  .half {
-    border: 1px solid var(--edge-soft);
-    background: var(--panel);
-    padding: 1rem 1.1rem;
-  }
-  .half h3 { margin-top: 0; }
-  .half ul { padding-left: 1.1rem; margin-bottom: 0; }
-
-  footer {
-    margin-top: 4.5rem;
-    padding-top: 1.1rem;
-    border-top: 1px solid var(--edge-soft);
-    font: 0.86rem var(--display);
-    letter-spacing: 0.02em;
-    color: var(--bone-dim);
-  }
-
-  @media (max-width: 900px) {
-    .layout { grid-template-columns: 1fr; gap: 0; }
-    nav.toc { position: static; margin-top: 1.5rem; }
-    header.hero h1 { font-size: 2.1rem; }
-    .halves { grid-template-columns: 1fr; }
-  }
-  @media print {
-    nav.toc { display: none; }
-    .layout { display: block; }
-    html { background: #fff; color: #000; background-image: none; }
-    a, h1, h2, h3, th, strong { color: #000; }
-  }
-</style>
+<link rel="stylesheet" href="valhsync.css">
+<script src="valhsync.js" defer></script>
 </head>
 <body>
 <div class="layout">
@@ -322,7 +111,8 @@
         <li>One row per mod found in the server's BepInEx folder.</li>
         <li>Each is either <em>sent to players</em> or <em>server only</em>: admin tools and
         Discord bridges have no reason to travel.</li>
-        <li>An optional note to players, published signed with the pack.</li>
+        <li>Patch notes, published signed with the pack. The list of mods added, updated and
+        removed writes itself; you add why it matters.</li>
       </ul>
     </div>
   </div>
@@ -343,12 +133,13 @@
   <p>One window, one button. Press <strong>Play</strong>: if anything has changed it is installed
   first, then Valheim starts through Steam.</p>
   <ul>
-    <li><strong>Servers are added from an invite code</strong>, which pins the server's key. The
-    fingerprint is shown so it can be checked against what the admin announced. Several servers
-    can sit side by side.</li>
-    <li><strong>What will change is shown before it happens</strong>, mod by mod and by name:
-    added, updated, removed — with whatever the admin wrote about it. Kept afterwards, so it can
-    be read again.</li>
+    <li><strong>Servers are added from an invite code or from an address</strong> — whichever
+    the admin hands out. The code carries the key; an address makes the launcher fetch it and
+    show its fingerprint to be compared against what the admin announced. Several servers can
+    sit side by side.</li>
+    <li><strong>Patch notes before the install, not after.</strong> Mod by mod and by name —
+    added, updated, removed, computed from the pack itself — above whatever the admin wrote
+    about the release. Kept in a history, so a player can go back to what arrived when.</li>
     <li><strong>Nothing is deleted.</strong> Files that get replaced go to a backup. Mods the
     player installed themselves that are not in the pack are set aside in a folder inside the
     game, never removed. The last sync can be rolled back exactly.</li>
@@ -509,8 +300,8 @@ cargo run -p valhsync            # the player's launcher</code></pre>
   aucune fenêtre n'y a jamais été ouverte. Proton, Steam Deck, Docker, serveurs hébergés et
   macOS : jamais essayés. Le <a href="#s8">§8</a> détaille.</p>
   <p>Guides détaillés :
-  <a href="https://github.com/Ztnzvoid/ValhSync/blob/main/docs/admin-guide.md">administrateur</a>,
-  <a href="https://github.com/Ztnzvoid/ValhSync/blob/main/docs/player-guide.md">joueur</a>.
+  <a href="server-guide.html">administrateur</a>,
+  <a href="https://github.com/Ztnzvoid/ValhSync/blob/main/docs/player-guide.html">joueur</a>.
   Le <a href="cahier-des-charges.html">cahier des charges</a> d'origine, en français, explique le
   raisonnement de conception.</p>
 </section>
