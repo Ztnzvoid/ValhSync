@@ -58,17 +58,20 @@ fn interrupt(pid: u32) -> Result<()> {
     // group 0 then reaches every process attached to it — ourselves included,
     // hence the handler that ignores it for the duration.
     //
-    // SAFETY: none of these take pointers or memory we own. The only argument
-    // is a process id, and each call reports failure through its return value,
-    // which is checked. The handler is restored and the console released on
-    // every path out.
+    // SAFETY: none of these take pointers or memory we own; the only argument
+    // is a process id. `AttachConsole` and `GenerateConsoleCtrlEvent` are
+    // checked, because everything after them depends on them. `FreeConsole`,
+    // `SetConsoleCtrlHandler` and the restoring `AttachConsole` are
+    // best-effort: there is no useful recovery from any of them failing, and
+    // the stop signal has already been delivered by then. The handler is
+    // restored and the console released on every path out.
     unsafe {
         FreeConsole();
         if AttachConsole(pid) == 0 {
             let err = std::io::Error::last_os_error();
             AttachConsole(ATTACH_PARENT_PROCESS);
             bail!(
-                "cannot reach the server's console window ({err}).                  Press Ctrl+C in it instead: that is what saves the world."
+                "cannot reach the server's console window ({err}). Press Ctrl+C in it instead: that is what saves the world."
             );
         }
         SetConsoleCtrlHandler(None, 1);
@@ -197,6 +200,9 @@ fn type_into_console(pid: u32, line: &str) -> Result<()> {
             bail!("cannot open the server console's input ({err})");
         }
         let mut written = 0u32;
+        // A short write leaves a half-typed line in the console's buffer that
+        // the next command would be appended to, which is the one way the
+        // "a command is a single line" rule above can be broken.
         #[allow(clippy::cast_possible_truncation)]
         let count = records.len() as u32;
         let ok = WriteConsoleInputW(handle, records.as_ptr(), count, &raw mut written);
@@ -207,6 +213,12 @@ fn type_into_console(pid: u32, line: &str) -> Result<()> {
         if ok == 0 {
             bail!("the server's console refused the command ({err})");
         }
+        if written != count {
+            bail!(
+                "only part of the command reached the server's console \
+                 ({written} of {count} keystrokes); check its window"
+            );
+        }
     }
     Ok(())
 }
@@ -216,6 +228,22 @@ fn type_into_console(_pid: u32, _line: &str) -> Result<()> {
     // Elsewhere the server's console is a terminal ValhSync does not own, and
     // there is no equivalent of joining it. Saying so beats pretending.
     bail!("sending console commands is only supported on Windows")
+}
+
+/// The command interpreter, by absolute path.
+///
+/// `%COMSPEC%` is what the system says it is; the fallback is where it has
+/// been since NT. Resolving it by name would go through the child's PATH,
+/// which the caller has just added a folder to.
+#[cfg(windows)]
+fn system_shell() -> PathBuf {
+    std::env::var_os("COMSPEC").map_or_else(
+        || {
+            let root = std::env::var("SystemRoot").unwrap_or_else(|_| r"C:\Windows".to_string());
+            PathBuf::from(root).join("System32").join("cmd.exe")
+        },
+        PathBuf::from,
+    )
 }
 
 /// The admin's own start script. Its directory becomes the working
@@ -300,9 +328,12 @@ pub fn start(launch: &Launch) -> Result<Shell> {
     // cmd.exe re-parses its command line, so a path holding a quote or an
     // ampersand could change the command. Refuse those rather than escape
     // them: no real start script has such a name.
+    // `%` is the one people forget: cmd.exe expands %VAR% in the command line
+    // it is handed, so a path containing one does not name the file that was
+    // selected. Parentheses group commands in the same parser.
     if path
         .to_string_lossy()
-        .contains(['"', '&', '|', '^', '<', '>'])
+        .contains(['"', '&', '|', '^', '<', '>', '%', '(', ')'])
     {
         bail!(
             "{} has a name ValhSync will not pass to a shell; rename it",
@@ -312,7 +343,10 @@ pub fn start(launch: &Launch) -> Result<Shell> {
     // The script is passed as a single argument: nothing ValhSync composed is
     // ever parsed by a shell.
     let mut cmd = if cfg!(windows) {
-        let mut c = Command::new("cmd");
+        // By absolute path, never by name. The child's PATH below starts with
+        // the server's own folder, and a `cmd.exe` dropped in there would
+        // otherwise be a candidate for what actually runs.
+        let mut c = Command::new(system_shell());
         c.arg("/C").arg(path);
         c
     } else {
@@ -328,10 +362,12 @@ pub fn start(launch: &Launch) -> Result<Shell> {
     // plenty of shells and launchers set it. Put the folder on the child's
     // PATH instead, which works either way.
     cmd.env_remove("NoDefaultCurrentDirectoryInExePath");
-    let mut search = vec![cwd.to_path_buf()];
-    if let Some(existing) = std::env::var_os("PATH") {
-        search.extend(std::env::split_paths(&existing));
-    }
+    // Appended, not prepended: the folder only has to be searched, and it
+    // must not get the chance to answer for something the system provides.
+    let mut search: Vec<PathBuf> = std::env::var_os("PATH")
+        .map(|existing| std::env::split_paths(&existing).collect())
+        .unwrap_or_default();
+    search.push(cwd.to_path_buf());
     if let Ok(path) = std::env::join_paths(search) {
         cmd.env("PATH", path);
     }
@@ -355,10 +391,14 @@ mod tests {
             let err = start(&Launch(not_a_script)).unwrap_err().to_string();
             assert!(err.contains("not a start script"), "{err}");
 
-            let tricky = dir.path().join("start&calc.bat");
-            std::fs::write(&tricky, b"@echo off").unwrap();
-            let err = start(&Launch(tricky)).unwrap_err().to_string();
-            assert!(err.contains("will not pass to a shell"), "{err}");
+            // cmd.exe re-parses what it is handed: each of these means
+            // something to it, so none of them can be in a path we pass.
+            for name in ["start&calc.bat", "start%TEMP%.bat", "start(1).bat"] {
+                let tricky = dir.path().join(name);
+                std::fs::write(&tricky, b"@echo off").unwrap();
+                let err = start(&Launch(tricky)).unwrap_err().to_string();
+                assert!(err.contains("will not pass to a shell"), "{name}: {err}");
+            }
         }
     }
 

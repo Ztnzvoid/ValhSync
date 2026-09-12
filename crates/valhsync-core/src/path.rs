@@ -75,7 +75,9 @@ pub fn check_syntax(path: &str) -> std::result::Result<(), PathError> {
         return Err(PathError::DriveOrUnc);
     }
     for c in path.chars() {
-        if c.is_control() {
+        // Control characters, and the format characters that would make a
+        // path render as a different name than the one written to disk.
+        if crate::manifest::is_deceptive(c) {
             return Err(PathError::ControlChar);
         }
         if matches!(c, '<' | '>' | ':' | '"' | '|' | '?' | '*') {

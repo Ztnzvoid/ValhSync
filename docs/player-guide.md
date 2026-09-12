@@ -68,6 +68,24 @@ Your own changes to config files (keybinds, UI positions) survive syncs: the
 server seeds configs but does not overwrite them, unless the admin enforces a
 specific file.
 
+## When the server offers you a new ValhSync
+
+A server can publish a ValhSync build of its own. If yours does, and it is
+newer than what you are running, a gold bar appears above the server card:
+the version, the server's name, and its key fingerprint. One click downloads
+it, checks it against the digest the server signed, replaces your launcher and
+restarts it.
+
+Worth knowing what you are agreeing to. The file comes from that server's
+admin, not from this project. The signature proves it came from the server you
+already trust for mods; it does not prove anything about what the file is, and
+unlike a mod it runs whether or not you start Valheim. Trusting an admin with
+your mod folder and trusting them with a program are not quite the same
+decision.
+
+You never have to take it. Declining changes nothing: syncing and playing keep
+working, and you can always download a release from the project itself.
+
 ## Linux and Steam Deck
 
 The sync works the same. BepInEx itself only loads if Valheim's launch options

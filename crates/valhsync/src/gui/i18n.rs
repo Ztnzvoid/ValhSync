@@ -97,6 +97,9 @@ pub enum Key {
     UpdateInstall,
     UpdateDownloading,
     UpdateFailed,
+    UpdateFrom,
+    UpdateReplaces,
+    UpdateReplayed,
     Settings,
     Language,
     Busy,
@@ -120,6 +123,7 @@ pub fn text(lang: Lang, key: Key) -> &'static str {
     }
 }
 
+#[allow(clippy::too_many_lines)] // one arm per string, and there are many
 fn fr(key: Key) -> &'static str {
     match key {
         Key::Subtitle => "Vos mods, alignés sur le serveur. Puis on joue.",
@@ -204,6 +208,9 @@ fn fr(key: Key) -> &'static str {
         Key::UpdateInstall => "Mettre à jour et redémarrer",
         Key::UpdateDownloading => "Téléchargement de la mise à jour…",
         Key::UpdateFailed => "Mise à jour impossible",
+        Key::UpdateFrom => "Build fourni par ce serveur, signé de sa clé",
+        Key::UpdateReplaces => "Remplace ValhSync par ce fichier, puis redémarre.",
+        Key::UpdateReplayed => "Offre de mise à jour plus ancienne que la dernière vue : ignorée.",
         Key::Settings => "Réglages",
         Key::Language => "Langue",
         Key::Busy => "Opération en cours…",
@@ -222,6 +229,7 @@ fn fr(key: Key) -> &'static str {
     }
 }
 
+#[allow(clippy::too_many_lines)] // one arm per string, and there are many
 fn en(key: Key) -> &'static str {
     match key {
         Key::Subtitle => "Your mods, matched to the server. Then play.",
@@ -306,6 +314,9 @@ fn en(key: Key) -> &'static str {
         Key::UpdateInstall => "Update and restart",
         Key::UpdateDownloading => "Downloading the update…",
         Key::UpdateFailed => "Update failed",
+        Key::UpdateFrom => "Build supplied by this server, signed with its key",
+        Key::UpdateReplaces => "Replaces ValhSync with that file, then restarts.",
+        Key::UpdateReplayed => "Update offer older than the last one seen: ignored.",
         Key::Settings => "Settings",
         Key::Language => "Language",
         Key::Busy => "Working…",

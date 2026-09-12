@@ -42,6 +42,15 @@ pub struct UpdateOffer {
     pub exe: String,
     pub size: u64,
     pub blake3: String,
+    /// When the publisher signed this offer, RFC 3339.
+    ///
+    /// A signature proves who wrote the document, never when. Without a time
+    /// in it, someone on the path can keep replaying a genuine older offer --
+    /// still newer than what the player runs, so every other check passes --
+    /// and pin them to a superseded build for as long as they keep answering.
+    /// The manifest has carried a timestamp for this reason since the start.
+    #[serde(default)]
+    pub generated_at: String,
 }
 
 impl UpdateOffer {
@@ -99,6 +108,12 @@ impl UpdateOffer {
         if !is_hex_hash(&self.blake3) {
             return bad("blake3 is not a digest".into());
         }
+        if !crate::clock::is_rfc3339(&self.generated_at) {
+            return bad(format!(
+                "generated_at {:?} is not RFC 3339",
+                self.generated_at
+            ));
+        }
         Ok(())
     }
 
@@ -118,6 +133,27 @@ impl UpdateOffer {
     #[must_use]
     pub fn runs_on(&self, target: &str) -> bool {
         self.target == target
+    }
+
+    /// Has this server made a newer offer before? Then this one is a replay.
+    ///
+    /// Compared against the newest offer seen *from that server*, not against
+    /// the running version: a replayed offer is newer than what the player
+    /// runs, which is exactly why the version check does not catch it.
+    #[must_use]
+    pub fn is_stale_against(&self, newest_seen: Option<&str>) -> bool {
+        let Some(seen) = newest_seen else {
+            return false;
+        };
+        match (
+            crate::clock::parse_rfc3339(seen),
+            crate::clock::parse_rfc3339(&self.generated_at),
+        ) {
+            (Some(seen_at), Some(got_at)) => got_at < seen_at,
+            // An offer we cannot date, from a server that has dated one
+            // before, is not worth trusting over the one we already had.
+            _ => true,
+        }
     }
 }
 
@@ -147,6 +183,7 @@ mod tests {
             exe: "valhsync.exe".into(),
             size: 4_608_045,
             blake3: "a".repeat(64),
+            generated_at: "2026-09-12T02:00:00Z".to_string(),
         }
     }
 
@@ -223,6 +260,29 @@ mod tests {
         tampered.blake3 = "b".repeat(64);
         let tampered = serde_json::to_vec(&tampered).unwrap();
         assert!(UpdateOffer::parse_verified(&tampered, &sig, &kp.public()).is_err());
+    }
+
+    /// The version check compares against what the player runs, so a genuine
+    /// older offer replayed on the path passes it. Only the server's own
+    /// history catches that.
+    #[test]
+    fn an_offer_older_than_the_last_one_seen_is_a_replay() {
+        let mut o = offer();
+        o.generated_at = "2026-09-01T00:00:00Z".into();
+        assert!(o.is_stale_against(Some("2026-09-10T00:00:00Z")));
+        assert!(!o.is_stale_against(Some("2026-08-01T00:00:00Z")));
+        assert!(!o.is_stale_against(None), "a first offer has no history");
+        // A server that dated an offer before and cannot now is not to be
+        // preferred over the one we already had.
+        o.generated_at = "whenever".into();
+        assert!(o.is_stale_against(Some("2026-09-10T00:00:00Z")));
+    }
+
+    #[test]
+    fn an_undated_offer_is_refused() {
+        let mut o = offer();
+        o.generated_at = String::new();
+        assert!(o.validate().is_err());
     }
 
     #[test]

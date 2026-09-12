@@ -214,23 +214,32 @@ pub fn prepare(
     let install = game::locate(&ctx.settings)?;
     let key = server.public_key()?;
     progress.on(Event::Fetching { url: &server.url });
-    let (manifest, _) = ctx
-        .client
-        .fetch_manifest(
-            &server.url,
-            &key,
-            &ctx.settings.allowed_roots(),
-            &Limits::default(),
-        )
-        .map_err(|e| match e {
-            // A bad signature on a URL we trust means the key changed (or an impostor).
-            SyncError::Core(valhsync_core::CoreError::BadSignature) => SyncError::KeyMismatch {
-                name: server.name.clone(),
-                pinned: server.fingerprint(),
-                received: "a different key".into(),
-            },
-            other => other,
-        })?;
+    let roots = ctx.settings.allowed_roots();
+    let limits = Limits::default();
+    let fetch = || {
+        ctx.client
+            .fetch_manifest(&server.url, &key, &roots, &limits)
+    };
+    // The manifest and its signature are two requests, and the publisher
+    // rebuilds whenever the admin saves a mod file. Landing either side of
+    // that gives a body and a signature from different packs, which fails to
+    // verify for an entirely innocent reason. Retry once before crying
+    // impostor: teaching players to dismiss that warning costs more than the
+    // extra round trip.
+    let fetched = match fetch() {
+        Err(SyncError::Core(valhsync_core::CoreError::BadSignature)) => fetch(),
+        other => other,
+    };
+    let (manifest, _) = fetched.map_err(|e| match e {
+        // A bad signature that survives a retry means the key changed, or
+        // there is someone else at that address.
+        SyncError::Core(valhsync_core::CoreError::BadSignature) => SyncError::KeyMismatch {
+            name: server.name.clone(),
+            pinned: server.fingerprint(),
+            received: "a different key".into(),
+        },
+        other => other,
+    })?;
     // Replay protection: a valid signature does not prove freshness. Someone
     // on the network path could serve yesterday's manifest to reinstall a mod
     // version the admin has since replaced.

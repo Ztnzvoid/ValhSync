@@ -22,8 +22,10 @@ use valhsync_server::{config, detect, gameserver, gui, keys, net, pack, serve};
     about = "Publishes a signed Valheim mod pack for ValhSync launchers"
 )]
 struct Cli {
-    /// Configuration file. Defaults to `valhsync-server.toml` next to this
-    /// executable, so the folder can be copied anywhere and still work.
+    /// Configuration file. Defaults to `valhsync-server.toml` beside this
+    /// executable when one is already there (a portable install), and
+    /// otherwise to the one in your configuration directory, which survives
+    /// unpacking a new build somewhere else.
     #[arg(long, global = true)]
     config: Option<PathBuf>,
 

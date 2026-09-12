@@ -2,20 +2,25 @@
 
 ## Reporting
 
-Open a private security advisory on the GitHub repository, or write to the
-maintainer listed in `Cargo.toml`. Please do not file public issues for
-vulnerabilities before a fix is available.
+Open a private security advisory on the GitHub repository. Please do not file
+public issues for vulnerabilities before a fix is available.
 
 ## Threat model
 
 ValhSync moves executable code (BepInEx plugins, .NET DLLs) from a server
-admin's machine onto players' machines and runs nothing itself. The trust
-boundary is explicit:
+admin's machine onto players' machines, where Valheim loads it. Since the
+update channel it also offers to replace **its own executable** with a build
+that same admin supplies, which a player runs directly. The trust boundary is
+explicit:
 
 **Trusted:** the server admin whose invite code a player imported. A plugin is
 arbitrary code with the player's rights; importing an invite means trusting
-that admin, exactly like accepting a zip of mods from them. ValhSync cannot and
-does not try to protect against a malicious admin.
+that admin, exactly like accepting a zip of mods from them. Since the update
+channel it means a little more than that: the admin can also offer a
+replacement launcher, which runs outside Valheim and does not need the game to
+be started. ValhSync cannot and does not try to protect against a malicious
+admin, and the launcher names the server and its fingerprint on the update
+prompt so the decision is at least an informed one.
 
 **Not trusted:** everyone else. The network between player and server, anyone
 who can reach the server's port, anyone who can hand a player a link or a
@@ -38,7 +43,12 @@ file, and ValhSync's own bugs.
 | Server-side path access through URLs | Files are served from a content-addressed store by 64-hex digest only; the digest must be named by the live manifest; no listing, no write endpoints | `valhsync-server::serve::file`, `store::Store` |
 | Half-applied sync after a crash or network loss | Everything downloaded and verified first; every change journaled with the previous bytes stashed; automatic rollback on failure; `valhsync rollback` on demand | `engine::apply`, `backup::Backup` |
 | Loss of the player's own data | ValhSync never deletes a file it did not install; unknown files are moved to a quarantine folder, replaced files to a backup | `plan.rs`, `backup.rs` |
-| Panics on hostile input | `valhsync-core` denies `unwrap`/`expect`/`panic`; `unsafe` is denied workspace-wide except one documented `AttachConsole` call | `Cargo.toml` lints |
+| Panics on hostile input | `valhsync-core` refuses `unwrap`/`expect`/`panic` outside tests (a crate-level `deny` in `lib.rs`); `unsafe` is denied by a workspace lint, allowed only in the two `gameserver` functions that reach the dedicated server's console, each with a SAFETY note | `valhsync-core/src/lib.rs`, `Cargo.toml` lints |
+| Forged or altered launcher update | The offer is a document signed by the same pinned key, verified before it is parsed; the build is fetched by BLAKE3 and the digest checked before anything is installed; a build for another target, or not strictly newer, is refused | `valhsync-core::update`, `valhsync::selfupdate` |
+| Replay of an old, validly signed update offer | Every offer carries `generated_at`; the launcher remembers the newest each server has made and refuses an older one, whatever version it claims | `UpdateOffer::is_stale_against` |
+| A server choosing where the new launcher lands | The offer's file name is validated and then never used as a path: the replacement always takes the name the running launcher was started under, in its own folder | `selfupdate::install` |
+| Names that render as something else | Server names and manifest paths refuse control characters **and** the bidirectional overrides and zero-width joiners that make `txt<RLO>lld.exe` read as a text file | `manifest::is_deceptive`, `path::check_syntax` |
+| The launcher being aimed at the player's own machine | Redirects are not followed at all | `http::Client::new` |
 | A server joined by address rather than by invite code | The launcher fetches the key the server publishes, checks it really signs the manifest, then shows its fingerprint and refuses to pin anything until the player confirms it against what the admin announced | `engine::discover`, add-server dialog |
 | An address that is not an address | Rejected before any request: no credentials, no second scheme, no whitespace or control characters | `invite::address_to_url` |
 | Starting the game server from the window | Only a `.bat`, `.cmd` or `.sh` the admin named in the configuration, passed to the shell as one argument, and refused outright if its name holds shell punctuation | `gameserver::start` |
@@ -72,9 +82,22 @@ file, and ValhSync's own bugs.
   server is added by address is only as good as the channel the admin used to
   announce it. An invite code carries the key directly and is the safer path;
   the address form exists because players are given IP addresses in practice.
-- **Detecting the public IP** in the admin window calls `api.ipify.org`. It
-  happens only when the admin presses that button, and the service is named on
-  the button itself.
+- **The update channel widens what trusting an admin means.** The publisher
+  signs whatever bytes are in the `valhsync.exe` sitting beside it, with the
+  key players have pinned. It does not and cannot check where that file came
+  from. Anything able to write it -- the admin, or whatever has got onto the
+  admin's machine -- reaches every player who accepts an update, and reaches
+  them outside Valheim entirely. The signature proves the file came from that
+  server; it proves nothing about what the file is. A player who does not want
+  that should decline the update and fetch releases from the project instead.
+- **Detecting the public IP** in the admin window calls `api.ipify.org`, at
+  startup and every fifteen minutes. The service is named in the interface
+  beside what it answered. It was a button press until 0.1.0; an admin who had
+  to ask for it ended up publishing a stale address after a reboot.
+- **Typing into the server's console.** The admin window can send a line to
+  the dedicated server's console (Windows only, `AttachConsole` plus
+  `WriteConsoleInput`). It is reachable only from that window, never from an
+  HTTP route, and the line is refused if it contains a line break.
 - **A start script holds its password in plain text**, exactly as the file
   Iron Gate ships does. ValhSync writes it once, to the file the admin names;
   it never reads a password back out of a script (`detect` records only that
@@ -84,7 +107,11 @@ file, and ValhSync's own bugs.
   window and their own machine, but the log holds the server's public address
   and its crossplay join code: it is not something to screen-share.
 - **The server's signing key** is a plain file (`valhsync-server-data/keys/server.key`,
-  mode 0600 on Unix). Back it up; treat it like a password.
+  mode 0600 on Unix), under the directory holding `valhsync-server.toml`: the
+  user's configuration directory by default, or beside the executable when a
+  configuration is already there (a portable install). Back it up; treat it
+  like a password. It is the server's identity -- lose it and every player is
+  refused until they import a fresh invite code.
 
 ## Hardening checklist for admins
 

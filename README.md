@@ -102,6 +102,24 @@ warn about a game-version mismatch.
 
 ## Quick start: admin
 
+Run `valhsync-server` with no arguments and you get a window: three tabs, and
+everything below available from it.
+
+- **Server** — start and stop the dedicated server (stopping sends Ctrl+C to
+  its console, so Valheim writes the world before it exits; the process is
+  never killed), watch its log, read players online, join code and version, and
+  type a line into its console. Starting also fills in your public address if
+  what is in the field cannot work, and brings publishing online behind it.
+  Publishing follows the game server from then on, however it was started.
+- **Mods** — one row per mod in the server's BepInEx folder, each either *sent
+  to players* or *server only*. Admin tools and DiscordConnector belong in the
+  second; there is no reason to push them down everyone's connection.
+- **Settings** — where the dedicated server lives, the name and address players
+  see, publishing (a static folder you upload, or the live server), and the
+  invite code.
+
+The command line does the same things and is what a service unit runs:
+
 ```bash
 valhsync-server init --name "My server" --game-address valheim.example.org:2456 --public-url https://you.github.io/valheim-pack
 ```
@@ -135,6 +153,20 @@ publisher can run anywhere, only `game_address` has to point at the game host.
 
 Full details: [docs/admin-guide.md](docs/admin-guide.md). Running it as a
 service: [docs/deploy](docs/deploy).
+
+### Updating the launcher your players run
+
+If `valhsync.exe` sits beside `valhsync-server.exe` — which it does when you
+unpack a release archive — the publisher offers that build to launchers as a
+signed document naming it by digest. A player on an older build sees it, with
+your server's name and key fingerprint beside it, and one click replaces their
+launcher and restarts it.
+
+Read that trade before relying on it: it means the bytes in that one file reach
+every player who accepts. The publisher signs them with the key they have
+pinned; it cannot check where the file came from. It is spelled out in
+[SECURITY.md](SECURITY.md). Players can always decline and fetch a release from
+this repository instead.
 
 ## Quick start: player
 
@@ -187,8 +219,10 @@ libgl1-mesa-dev`).
 
 Workspace layout: `crates/valhsync-core` (pure logic, no network, where the
 tests live), `crates/valhsync-server`, `crates/valhsync` (CLI + window in one
-executable). Dependencies are permissive-licensed only; `cargo deny` refuses
-copyleft, which also enforces the "no code from GPL tools" rule.
+executable). Dependencies are permissively licensed; `cargo deny` enforces the allow-list
+in `deny.toml` — MIT, Apache-2.0, BSD, ISC, Unicode and MPL-2.0, the last of
+which covers one file-scoped-copyleft crate reached through `directories`. No
+GPL, AGPL or unlicensed code.
 
 ### Release archives
 
@@ -223,6 +257,8 @@ existing mod manager.
 The windows embed the **Cinzel** typeface by Natanael Gama, under the SIL Open
 Font License 1.1. Its licence travels with the source in
 `crates/valhsync-ui/assets/OFL-Cinzel.txt` and with every release package.
+The body text is **Source Serif 4** by Frank Grießhammer, under the same
+licence (`crates/valhsync-ui/assets/OFL-SourceSerif.txt`).
 
 ---
 

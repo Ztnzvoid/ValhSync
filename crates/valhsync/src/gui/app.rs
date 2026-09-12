@@ -495,8 +495,10 @@ impl App {
     /// for the build; this also refuses one already installed, which is what
     /// a server whose document overstates its file would otherwise loop on.
     fn worth_offering(&self, offer: &valhsync_core::UpdateOffer) -> bool {
+        let newest_seen = self.selected_server().and_then(|s| s.last_offer_at.clone());
         crate::selfupdate::wanted(offer)
             && self.settings.installed_build.as_deref() != Some(offer.blake3.as_str())
+            && !offer.is_stale_against(newest_seen.as_deref())
     }
 
     fn start_sync(&mut self, launch: bool) {
@@ -647,6 +649,19 @@ impl App {
                 Msg::Applied(Err(e)) => self.notify(e, th::BLOOD_LIT),
                 Msg::Offered(offer) => {
                     self.update = offer.map(|o| *o).filter(|o| self.worth_offering(o));
+                    // Remember the newest offer this server has made, so a
+                    // genuine older one replayed at us later is recognised.
+                    if let Some(offer) = &self.update {
+                        let at = offer.generated_at.clone();
+                        if let Some(id) = self.selected.clone()
+                            && let Some(s) = self.book.servers.iter_mut().find(|s| s.id == id)
+                        {
+                            s.last_offer_at = Some(at);
+                            if let Err(e) = self.book.save(&self.paths) {
+                                self.notify(e.to_string(), th::BLOOD_LIT);
+                            }
+                        }
+                    }
                 }
                 Msg::Updated(Ok(exe)) => {
                     // Remember what went in, so an offer that does not
@@ -720,6 +735,14 @@ impl App {
             return;
         };
         let busy = self.busy();
+        let source = self.selected_server().map(|s| {
+            format!(
+                "{} · {} · {}",
+                self.t(Key::UpdateFrom),
+                s.name,
+                s.fingerprint()
+            )
+        });
         th::callout(ui, th::GOLD, |ui| {
             ui.horizontal(|ui| {
                 ui.colored_label(
@@ -741,6 +764,16 @@ impl App {
                     }
                 });
             });
+            // The one click above is the whole consent gate for running a
+            // binary chosen by someone else. It has to say whose.
+            if let Some(source) = source {
+                ui.label(RichText::new(source).small().color(th::BONE));
+            }
+            ui.label(
+                RichText::new(self.t(Key::UpdateReplaces))
+                    .small()
+                    .color(th::BONE_DIM),
+            );
         });
         ui.add_space(12.0);
     }

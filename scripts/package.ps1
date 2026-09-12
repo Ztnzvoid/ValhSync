@@ -59,10 +59,15 @@ if (-not $SkipBuild) {
     }
 }
 
-# cargo --target writes under the triple; a plain host build does not. With
-# -SkipBuild either may be what is on disk.
+# cargo --target writes under the triple, which is where this script builds.
+# There is a plain target/release too, left by `cargo build` and `cargo test`,
+# and it was never built with --remap-path-prefix: it names this machine's
+# Cargo home, and its user. Falling back to it would ship exactly what the
+# remapping exists to prevent, so -SkipBuild fails instead.
 $bin = "target/$Target/release"
-if (-not (Test-Path "$bin/valhsync$exe")) { $bin = "target/release" }
+if (-not (Test-Path "$bin/valhsync$exe")) {
+    throw "no build at $bin. Run without -SkipBuild: a plain target/release build carries this machine's paths and must not be packaged."
+}
 foreach ($name in @("valhsync$exe", "valhsync-server$exe")) {
     if (-not (Test-Path "$bin/$name")) { throw "missing $bin/$name" }
 }

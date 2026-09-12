@@ -61,8 +61,10 @@ impl Client {
             reqwest::blocking::Client::builder()
                 .user_agent(concat!("valhsync/", env!("CARGO_PKG_VERSION")))
                 .connect_timeout(CONNECT_TIMEOUT)
-                // A redirect can only lead to another http(s) URL, and not far.
-                .redirect(reqwest::redirect::Policy::limited(3))
+                // Nothing in the protocol needs a redirect, and following one
+                // off-origin would let a server aim the launcher at the
+                // player's own machine or LAN and read the timing back.
+                .redirect(reqwest::redirect::Policy::none())
         };
         let make = |b: reqwest::blocking::ClientBuilder| {
             b.build()

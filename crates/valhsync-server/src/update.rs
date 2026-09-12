@@ -3,9 +3,14 @@
 //! The publisher and the launcher ship in one archive and are unpacked side by
 //! side, so the build worth offering is the file sitting next to this
 //! executable and its version is this crate's version. Nothing is configurable
-//! here on purpose: an admin cannot point the update channel at a file of
-//! their choosing, and a publisher whose admin never unpacked the launcher
-//! offers nothing at all.
+//! here on purpose: the channel cannot be pointed at some other path, and a
+//! publisher whose admin never unpacked the launcher offers nothing at all.
+//!
+//! What that does **not** do is vouch for the bytes. Whatever is in that file
+//! gets signed with the key every player has pinned, so anything able to write
+//! it -- the admin, or whatever has got onto the admin's machine -- reaches
+//! every player who accepts an update. That is the trade the channel makes,
+//! and `SECURITY.md` states it rather than leaving it to be discovered.
 
 use std::fs::Metadata;
 use std::path::{Path, PathBuf};
@@ -58,6 +63,7 @@ fn find_beside(dir: &Path, keypair: &Keypair) -> Option<Offered> {
         exe: LAUNCHER.to_string(),
         size,
         blake3: blake3.clone(),
+        generated_at: valhsync_core::clock::now_rfc3339(),
     };
     // A launcher past the size ceiling, or a build script that handed us no
     // triple, is refused by the launcher anyway. Offer nothing rather than a

@@ -8,7 +8,7 @@ members = [
 ]
 
 [workspace.package]
-version = "0.1.1"
+version = "0.1.0"
 edition = "2024"
 rust-version = "1.88"
 license = "MIT OR Apache-2.0"
@@ -68,8 +68,10 @@ anyhow = "1"
 time = { version = "0.3", features = ["formatting", "parsing", "macros"] }
 
 [workspace.lints.rust]
-# `deny`, not `forbid`: the launcher needs exactly one FFI call (AttachConsole)
-# to be both a windowed app and a CLI in the same executable; it is allowed there.
+# `deny`, not `forbid`: the publisher has to reach the dedicated server's own
+# console -- to send it Ctrl+C, and to type a command into it -- which is FFI
+# no safe wrapper covers. Two functions in `valhsync-server::gameserver` carry
+# an `#[allow]` and a SAFETY note; nothing else in the workspace may.
 unsafe_code = "deny"
 missing_debug_implementations = "warn"
 unreachable_pub = "warn"

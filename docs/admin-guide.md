@@ -59,14 +59,23 @@ valhsync-server init --name "My server" \
 `init`:
 
 1. looks for the dedicated server (Steam app 896660, then common folders);
-2. writes `valhsync-server.toml` next to itself, fully commented;
+2. writes `valhsync-server.toml`, fully commented — in your configuration
+   directory (`%APPDATA%\valhsync\` on Windows, `~/.config/valhsync/`
+   elsewhere), or beside the executable if a configuration is already there;
 3. creates `client-extras/`;
-4. generates the Ed25519 signing key under `valhsync-server-data/keys/`;
+4. generates the Ed25519 signing key under `valhsync-server-data/keys/`,
+   beside that configuration file;
 5. prints the invite code.
 
 **Back up `valhsync-server-data/keys/server.key`.** Losing it means every
 player has to import a new invite code. Leaking it means anyone can publish a
-pack in your server's name.
+pack in your server's name — and, since the update channel, offer them a
+replacement launcher.
+
+It lives beside your configuration, not beside the executable, so unpacking a
+new build no longer mints a new identity. If you have a key from an older
+install, Settings → Invite code → **Take over another install's key** adopts
+it; the one it replaces is kept, renamed, beside it.
 
 `--public-url` is what players' launchers connect to. Without it, `init` uses
 the machine's LAN address, which only works for players on your network.
@@ -184,8 +193,10 @@ that console a Ctrl+C, which is exactly what an admin types into it: Valheim
 writes the world to disk and then exits. ValhSync never terminates the
 process, because a killed server loses everything since the last autosave.
 
-There is no way to force a save without stopping: Valheim's dedicated server
-takes no console commands. What you can set is how often it saves itself —
+There is no way to force a save without stopping. The window can type into
+the server's console (the line at the bottom, Windows only), but Valheim's
+dedicated server has no save command to send it. What you can set is how often
+it saves itself —
 `-saveinterval`, 1800 seconds by default — which the start-script wizard puts
 on the form.
 

@@ -22,6 +22,10 @@ pub struct KnownServer {
     /// `generated_at` of the last manifest applied. An older one is a replay.
     #[serde(default)]
     pub last_generated_at: Option<String>,
+    /// `generated_at` of the newest launcher update this server has offered.
+    /// An older one is a replay, whatever version it claims.
+    #[serde(default)]
+    pub last_offer_at: Option<String>,
 }
 
 impl KnownServer {
@@ -111,6 +115,7 @@ impl ServerBook {
             added_at: valhsync_core::clock::now_rfc3339(),
             last_pack_id: None,
             last_generated_at: None,
+            last_offer_at: None,
         });
         if self.default.is_none() {
             self.default = Some(id);

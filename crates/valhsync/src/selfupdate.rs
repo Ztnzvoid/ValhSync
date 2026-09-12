@@ -136,6 +136,7 @@ mod tests {
             exe: "valhsync.exe".into(),
             size: 4096,
             blake3: "a".repeat(64),
+            generated_at: "2026-01-01T00:00:00Z".into(),
         }
     }
 

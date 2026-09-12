@@ -271,6 +271,7 @@ mod tests {
             added_at: String::new(),
             last_pack_id: None,
             last_generated_at: None,
+            last_offer_at: None,
         }
     }
 

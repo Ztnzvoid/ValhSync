@@ -119,7 +119,27 @@ pub fn is_private_host(address: &str) -> bool {
 /// Display strings (server names) must not carry control characters: they end
 /// up in terminals and logs, where escape sequences could forge output.
 pub fn is_clean_text(s: &str, max: usize) -> bool {
-    !s.trim().is_empty() && s.len() <= max && !s.chars().any(char::is_control)
+    !s.trim().is_empty() && s.len() <= max && !s.chars().any(is_deceptive)
+}
+
+/// Characters that make a string read as something other than what it is.
+///
+/// `char::is_control` is category Cc only, which covers the escape sequences
+/// that could forge terminal output. It does not cover Cf -- the bidirectional
+/// overrides and the zero-width joiners -- and those are what turn a name
+/// ending in `txt.<RLO>lld` into something a player reads as a text file and
+/// confirms. The plan screen is exactly where someone looks before agreeing to
+/// a sync, so what is written there has to mean what it looks like.
+#[must_use]
+pub fn is_deceptive(c: char) -> bool {
+    c.is_control()
+        || matches!(c,
+            '\u{200b}'..='\u{200f}'   // zero width, LRM, RLM
+            | '\u{202a}'..='\u{202e}' // embeddings and overrides
+            | '\u{2060}'..='\u{2064}' // word joiner, invisible operators
+            | '\u{2066}'..='\u{2069}' // directional isolates
+            | '\u{feff}'              // byte order mark
+        )
 }
 
 fn sort_key(path: &str) -> (String, String) {
@@ -531,5 +551,35 @@ pub(crate) mod tests {
             m.validate(&roots(), &small_pack),
             Err(CoreError::LimitExceeded(_))
         ));
+    }
+}
+
+#[cfg(test)]
+mod deception_tests {
+    use super::*;
+
+    /// A name that renders as one thing and is another is exactly how the
+    /// plan screen gets someone to confirm something they did not read.
+    #[test]
+    fn bidi_and_zero_width_are_not_clean_text() {
+        assert!(is_clean_text("Northwatch", 64));
+        for bad in [
+            "txt\u{202e}lld.exe",
+            "North\u{200b}watch",
+            "\u{2066}Northwatch\u{2069}",
+            "North\u{feff}watch",
+            "North\u{0007}watch",
+        ] {
+            assert!(!is_clean_text(bad, 64), "{bad:?} should be refused");
+        }
+    }
+
+    #[test]
+    fn a_path_cannot_render_as_another_name() {
+        let roots = crate::path::AllowedRoots::bepinex();
+        let ok = crate::path::validate("BepInEx/plugins/Mod/thing.dll", &roots);
+        assert!(ok.is_ok(), "{ok:?}");
+        let bad = crate::path::validate("BepInEx/plugins/Mod/txt\u{202e}lld.exe", &roots);
+        assert!(bad.is_err(), "a right-to-left override should be refused");
     }
 }
