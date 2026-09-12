@@ -183,6 +183,9 @@ pub(super) struct App {
     world_saved: Option<SystemTime>,
     /// Set when a stop was asked for, cleared when the process is gone.
     stop_requested: Option<Instant>,
+    /// The stop under way is half of a restart: start it again once the world
+    /// has been written and the process has actually gone.
+    restart_after_stop: bool,
     /// The world file, when the start script says enough to find it.
     world_file: Option<PathBuf>,
 
@@ -323,6 +326,7 @@ impl App {
             server_outdated: false,
             world_saved: None,
             stop_requested: None,
+            restart_after_stop: false,
             world_file: None,
             recipe: wizard::Recipe::default(),
             recipe_file: String::from("start_valheim_server.bat"),
@@ -1374,15 +1378,31 @@ impl App {
     /// One button. Which one it is, the lamp beside it has already said.
     fn server_buttons(&mut self, ui: &mut egui::Ui, stopping: bool) {
         if stopping {
+            let label = if self.restart_after_stop {
+                self.t("Redémarrage…", "Restarting…")
+            } else {
+                self.t("Arrêt en cours…", "Stopping…")
+            };
             ui.add_enabled(
                 false,
-                egui::Button::new(
-                    RichText::new(self.t("Arrêt en cours…", "Stopping…")).color(th::BONE_DIM),
-                ),
+                egui::Button::new(RichText::new(label).color(th::BONE_DIM)),
             );
             return;
         }
         if self.game_running {
+            // Quieter than Stop: same Ctrl+C, same saved world, and the
+            // window brings it back up once the process has actually gone.
+            // Laid out right to left, so it sits left of Stop.
+            if ui
+                .small_button(self.t("Redémarrer", "Restart"))
+                .on_hover_text(self.t(
+                    "Arrête proprement, attend que le monde soit écrit, puis relance.",
+                    "Stops cleanly, waits for the world to be written, then starts it again.",
+                ))
+                .clicked()
+            {
+                self.request_stop(true);
+            }
             if ui
                 .add(egui::Button::new(
                     RichText::new(self.t("Arrêter et sauvegarder", "Stop and save"))
@@ -1390,19 +1410,7 @@ impl App {
                 ))
                 .clicked()
             {
-                match gameserver::stop() {
-                    Ok(()) => {
-                        self.stop_requested = Some(Instant::now());
-                        let msg = self
-                            .t(
-                                "Ctrl+C envoyé. Valheim sauvegarde le monde puis quitte.",
-                                "Ctrl+C sent. Valheim saves the world, then quits.",
-                            )
-                            .to_string();
-                        self.notify(msg, th::MOSS);
-                    }
-                    Err(e) => self.notify(format!("{e:#}"), th::BLOOD_LIT),
-                }
+                self.request_stop(false);
             }
             return;
         }
@@ -1424,6 +1432,37 @@ impl App {
             .clicked()
         {
             self.start_everything();
+        }
+    }
+
+    /// Ask the dedicated server to stop, optionally to start it again after.
+    ///
+    /// Both buttons go through here because both are the same Ctrl+C: the
+    /// difference is only whether the window brings it back once the process
+    /// has gone, which it cannot know until it has.
+    fn request_stop(&mut self, then_restart: bool) {
+        match gameserver::stop() {
+            Ok(()) => {
+                self.stop_requested = Some(Instant::now());
+                self.restart_after_stop = then_restart;
+                let msg = if then_restart {
+                    self.t(
+                        "Ctrl+C envoyé. Le monde est sauvegardé, puis le serveur repart.",
+                        "Ctrl+C sent. The world is saved, then the server comes back.",
+                    )
+                } else {
+                    self.t(
+                        "Ctrl+C envoyé. Valheim sauvegarde le monde puis quitte.",
+                        "Ctrl+C sent. Valheim saves the world, then quits.",
+                    )
+                }
+                .to_string();
+                self.notify(msg, th::MOSS);
+            }
+            Err(e) => {
+                self.restart_after_stop = false;
+                self.notify(format!("{e:#}"), th::BLOOD_LIT);
+            }
         }
     }
 
@@ -1492,6 +1531,12 @@ impl App {
             .is_some_and(gameserver::Shell::close_if_game_gone)
         {
             self.game_shell = None;
+        }
+        // The world is written and the process has gone: the other half of a
+        // restart. Waiting for that rather than sleeping is the point --
+        // Valheim takes as long as its world takes.
+        if std::mem::take(&mut self.restart_after_stop) {
+            self.start_everything();
         }
     }
 
