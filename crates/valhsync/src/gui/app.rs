@@ -1537,14 +1537,27 @@ impl App {
             if names.is_empty() {
                 continue;
             }
-            ui.horizontal_wrapped(|ui| {
+            // A heading, then one mod to a line. They used to run together
+            // on a single wrapped line in the carved label face, which is cut
+            // for headings: five package names with versions in them, set in
+            // small capitals and separated by commas, is a wall. The names
+            // are the part somebody reads, so they get the reading face and a
+            // line each.
+            ui.horizontal(|ui| {
                 valhsync_ui::widgets::dot(ui, colour);
                 ui.label(
-                    RichText::new(format!("{} · {}", self.t(key), names.join(", ")))
+                    RichText::new(format!("{} ({})", self.t(key), names.len()))
                         .text_style(th::label_style())
-                        .color(th::BONE),
+                        .color(colour),
                 );
             });
+            for name in names {
+                ui.horizontal(|ui| {
+                    ui.add_space(18.0);
+                    ui.label(RichText::new(name).monospace().color(th::BONE));
+                });
+            }
+            ui.add_space(4.0);
         }
     }
 

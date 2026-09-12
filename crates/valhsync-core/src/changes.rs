@@ -67,8 +67,68 @@ pub fn mods_touched(plan: &SyncPlan) -> Vec<ModChange> {
             kind,
         })
         .collect();
+    pair_renames(&mut out);
     out.sort_by(|a, b| a.kind.cmp(&b.kind).then_with(|| a.name.cmp(&b.name)));
     out
+}
+
+/// Fold "BetterArchery gone, BetterArchery-2.0.0 arrived" into one update.
+///
+/// Mods are grouped by the folder they sit in, and admins put the version in
+/// that folder's name -- Thunderstore's packages are named that way, so a
+/// dropped update almost always lands beside its predecessor under a
+/// different name. What a player then reads is the same mod both removed and
+/// added, which looks alarming and says nothing true: nothing was removed,
+/// something was updated.
+///
+/// Two names belong to one mod when they are equal once a trailing version is
+/// taken off. That is a guess, and a small one: two different mods sharing a
+/// name with only a version between them would be the same mod anyway.
+fn pair_renames(changes: &mut Vec<ModChange>) {
+    let stems: Vec<String> = changes.iter().map(|c| stem(&c.name).to_string()).collect();
+    let mut drop = Vec::new();
+    for (i, change) in changes.iter().enumerate() {
+        if change.kind != ChangeKind::Removed {
+            continue;
+        }
+        let paired = changes
+            .iter()
+            .enumerate()
+            .find(|(j, other)| *j != i && other.kind == ChangeKind::Added && stems[*j] == stems[i]);
+        if paired.is_some() {
+            drop.push(i);
+        }
+    }
+    for (j, other) in changes.iter_mut().enumerate() {
+        if other.kind == ChangeKind::Added && drop.iter().any(|i| stems[*i] == stems[j]) {
+            other.kind = ChangeKind::Updated;
+        }
+    }
+    let mut i = 0;
+    changes.retain(|_| {
+        let keep = !drop.contains(&i);
+        i += 1;
+        keep
+    });
+}
+
+/// A folder name with its trailing version taken off, if it has one.
+///
+/// `Seasonality-3.8.1` and `EpicLoot-0.14.4` become `Seasonality` and
+/// `EpicLoot`; `Advize_PlantEverything` and `BalrondShipyard` are left alone,
+/// because a name is not a version just for having a dash in it.
+fn stem(name: &str) -> &str {
+    let Some((head, tail)) = name.rsplit_once('-') else {
+        return name;
+    };
+    let looks_like_a_version = !tail.is_empty()
+        && tail.starts_with(|c: char| c.is_ascii_digit())
+        && tail.chars().all(|c| c.is_ascii_digit() || c == '.');
+    if looks_like_a_version && !head.is_empty() {
+        head
+    } else {
+        name
+    }
 }
 
 /// A mod whose files are partly new and partly replaced is an update, not an
@@ -99,6 +159,70 @@ mod tests {
             items,
             download_bytes: 0,
         }
+    }
+
+    #[test]
+    fn a_mod_that_gained_a_version_in_its_folder_name_is_one_update() {
+        // What an admin does when they drop a Thunderstore package beside a
+        // folder somebody had named by hand. Reading "BetterArchery removed"
+        // would frighten a player over nothing.
+        let changes = mods_touched(&plan(vec![
+            item(
+                "BepInEx/plugins/BetterArchery/BetterArchery.dll",
+                Action::Remove,
+            ),
+            item(
+                "BepInEx/plugins/BetterArchery-2.0.0/BetterArchery.dll",
+                Action::Add,
+            ),
+        ]));
+        assert_eq!(
+            changes,
+            vec![ModChange {
+                name: "BetterArchery-2.0.0".into(),
+                kind: ChangeKind::Updated,
+            }]
+        );
+    }
+
+    #[test]
+    fn a_version_bump_in_the_folder_name_is_one_update_too() {
+        let changes = mods_touched(&plan(vec![
+            item(
+                "BepInEx/plugins/EpicLoot-0.14.3/EpicLoot.dll",
+                Action::Remove,
+            ),
+            item("BepInEx/plugins/EpicLoot-0.14.4/EpicLoot.dll", Action::Add),
+        ]));
+        assert_eq!(changes.len(), 1, "{changes:?}");
+        assert_eq!(changes[0].kind, ChangeKind::Updated);
+        assert_eq!(changes[0].name, "EpicLoot-0.14.4");
+    }
+
+    #[test]
+    fn a_mod_that_really_went_still_reads_as_removed() {
+        let changes = mods_touched(&plan(vec![
+            item(
+                "BepInEx/plugins/Seasonality/Seasonality.dll",
+                Action::Remove,
+            ),
+            item("BepInEx/plugins/EpicLoot-0.14.4/EpicLoot.dll", Action::Add),
+        ]));
+        assert_eq!(changes.len(), 2, "{changes:?}");
+        assert!(
+            changes
+                .iter()
+                .any(|c| c.name == "Seasonality" && c.kind == ChangeKind::Removed)
+        );
+    }
+
+    #[test]
+    fn a_dash_is_not_a_version() {
+        // Plenty of mods carry one in the name itself.
+        assert_eq!(stem("Advize_PlantEverything"), "Advize_PlantEverything");
+        assert_eq!(stem("Server_devcommands-1.113.0"), "Server_devcommands");
+        assert_eq!(stem("OdinPlus-OdinHorse"), "OdinPlus-OdinHorse");
+        assert_eq!(stem("Smoothbrain-Mining-1.1.7"), "Smoothbrain-Mining");
     }
 
     #[test]
