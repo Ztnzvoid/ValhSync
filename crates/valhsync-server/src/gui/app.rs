@@ -1019,10 +1019,8 @@ impl App {
                 // The console line lives down here, where a prompt belongs:
                 // always in reach whichever tab is open, and out of the card
                 // that describes the server rather than drives it.
-                if self.game_running {
-                    self.console_line(ui);
-                    ui.add_space(8.0);
-                }
+                self.console_line(ui);
+                ui.add_space(8.0);
                 ui.horizontal(|ui| {
                     let dirty = self.dirty();
                     if ui
@@ -1181,14 +1179,27 @@ impl App {
             "Tapée dans la console du serveur. La réponse arrive dans le journal, pas ici.",
             "Typed into the server's console. Its answer lands in the log, not here.",
         );
+        // Shown whether the server is up or not. A prompt that disappears
+        // when there is nothing to talk to cannot be found again, and leaves
+        // an admin wondering whether the window has one at all.
+        let running = self.game_running;
+        let why = self.t(
+            "Le serveur de jeu est arrêté : il n'y a pas de console où taper.",
+            "The game server is stopped: there is no console to type into.",
+        );
         ui.horizontal(|ui| {
-            let send = ui.button(send_label).on_hover_text(tip).clicked();
+            let send = ui
+                .add_enabled(running, egui::Button::new(send_label))
+                .on_hover_text(tip)
+                .on_disabled_hover_text(why)
+                .clicked();
             let typed = ui
-                .add(
+                .add_enabled(
+                    running,
                     egui::TextEdit::singleline(&mut self.command)
                         .desired_width(ui.available_width())
                         .font(egui::TextStyle::Monospace)
-                        .hint_text(hint),
+                        .hint_text(if running { hint } else { why }),
                 )
                 .lost_focus()
                 && ui.input(|i| i.key_pressed(egui::Key::Enter));
