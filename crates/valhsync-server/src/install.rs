@@ -12,7 +12,7 @@
 
 use std::fs;
 use std::io::Read;
-use std::path::{Component, Path};
+use std::path::{Component, Path, PathBuf};
 
 use anyhow::{Context, Result, bail};
 
@@ -44,6 +44,142 @@ pub struct Installed {
     pub files: usize,
     /// A version of it was already there and has been replaced.
     pub replaced: bool,
+}
+
+/// Where a mod goes when the admin turns it off.
+///
+/// Outside `BepInEx`, deliberately. BepInEx loads every `.dll` it finds under
+/// `plugins`, recursively, so renaming the folder does not stop it; and
+/// anything left inside `BepInEx` would still be picked up by the pack and
+/// sent to every player. A sibling folder is the one place that is neither
+/// loaded nor published.
+pub const DISABLED_DIR: &str = "valhsync-disabled";
+
+/// Where a removed mod goes.
+///
+/// Not `remove_dir_all`. The launcher has never deleted anything on a
+/// player's machine -- what it does not recognise is moved aside -- and the
+/// admin's side should not be harsher than the players'. An admin who removes
+/// the wrong mod at eleven at night can walk it back out of this folder; one
+/// who really wants it gone empties it themselves.
+pub const REMOVED_DIR: &str = "valhsync-removed";
+
+/// A mod that is installed but turned off.
+#[must_use]
+pub fn disabled(server_root: &Path) -> Vec<String> {
+    let mut out: Vec<String> = fs::read_dir(server_root.join(DISABLED_DIR))
+        .into_iter()
+        .flatten()
+        .flatten()
+        .filter_map(|e| e.file_name().into_string().ok())
+        .collect();
+    out.sort();
+    out
+}
+
+/// Turn a mod off: move it out of `plugins`, keeping it installed.
+///
+/// `loose` marks a plugin that is a single `.dll` sitting directly in
+/// `plugins` rather than a folder of its own.
+pub fn disable(server_root: &Path, name: &str, loose: bool) -> Result<PathBuf> {
+    let name = sane_folder(name)?;
+    let from = plugin_path(server_root, &name, loose);
+    let into = server_root.join(DISABLED_DIR);
+    move_aside(&from, &into, &name)
+}
+
+/// Turn it back on.
+pub fn enable(server_root: &Path, name: &str) -> Result<PathBuf> {
+    let name = sane_folder(name)?;
+    let from = server_root.join(DISABLED_DIR).join(&name);
+    if !from.exists() {
+        bail!("{name} is not in {DISABLED_DIR}");
+    }
+    let plugins = server_root.join("BepInEx").join("plugins");
+    let to = plugins.join(&name);
+    if to.exists() {
+        bail!("{name} is already in the plugins folder; remove one of the two first");
+    }
+    fs::create_dir_all(&plugins).with_context(|| format!("cannot create {}", plugins.display()))?;
+    rename_or_copy(&from, &to)?;
+    Ok(to)
+}
+
+/// Take a mod out of the server, from wherever it currently sits.
+///
+/// Returns where it went, so the window can say it rather than leaving an
+/// admin wondering whether a click deleted something for good.
+pub fn remove(server_root: &Path, name: &str, loose: bool) -> Result<PathBuf> {
+    let name = sane_folder(name)?;
+    let active = plugin_path(server_root, &name, loose);
+    let from = if active.exists() {
+        active
+    } else {
+        server_root.join(DISABLED_DIR).join(&name)
+    };
+    let into = server_root.join(REMOVED_DIR);
+    move_aside(&from, &into, &name)
+}
+
+/// A plugin under `plugins`: a folder of its own, or the single `.dll` a
+/// loose plugin is. The name already carries the extension in that case, so
+/// the two are the same join -- `loose` is kept in the signature because the
+/// caller has it and a future difference belongs here, not at every call
+/// site.
+fn plugin_path(server_root: &Path, name: &str, _loose: bool) -> PathBuf {
+    server_root.join("BepInEx").join("plugins").join(name)
+}
+
+/// Move one mod into a folder ValhSync owns, without ever overwriting what is
+/// already there: a second copy gets the date on the end, because the first
+/// one is somebody's way back.
+fn move_aside(from: &Path, into: &Path, name: &str) -> Result<PathBuf> {
+    if !from.exists() {
+        bail!("{} is not there", from.display());
+    }
+    fs::create_dir_all(into).with_context(|| format!("cannot create {}", into.display()))?;
+    let mut to = into.join(name);
+    if to.exists() {
+        let stamp = valhsync_core::clock::dir_stamp();
+        to = into.join(format!("{name}-{stamp}"));
+    }
+    rename_or_copy(from, &to)?;
+    Ok(to)
+}
+
+/// Rename, falling back to a copy when the two are on different volumes --
+/// which they are whenever the server folder is a junction or a mounted
+/// drive, and a rename across those fails with a bare "os error 17".
+fn rename_or_copy(from: &Path, to: &Path) -> Result<()> {
+    if fs::rename(from, to).is_ok() {
+        return Ok(());
+    }
+    if from.is_dir() {
+        copy_tree(from, to)?;
+        fs::remove_dir_all(from)
+            .with_context(|| format!("copied, but cannot remove {}", from.display()))?;
+    } else {
+        fs::copy(from, to)
+            .with_context(|| format!("cannot copy {} to {}", from.display(), to.display()))?;
+        fs::remove_file(from)
+            .with_context(|| format!("copied, but cannot remove {}", from.display()))?;
+    }
+    Ok(())
+}
+
+fn copy_tree(from: &Path, to: &Path) -> Result<()> {
+    fs::create_dir_all(to).with_context(|| format!("cannot create {}", to.display()))?;
+    for entry in fs::read_dir(from).with_context(|| format!("cannot read {}", from.display()))? {
+        let entry = entry?;
+        let target = to.join(entry.file_name());
+        if entry.file_type()?.is_dir() {
+            copy_tree(&entry.path(), &target)?;
+        } else {
+            fs::copy(entry.path(), &target)
+                .with_context(|| format!("cannot copy to {}", target.display()))?;
+        }
+    }
+    Ok(())
 }
 
 /// Install a dropped mod into the server's plugins folder.
@@ -482,6 +618,125 @@ mod tests {
         let done = install(dir.path(), &zip_path).unwrap();
         assert_eq!(done.files, 1);
         assert_eq!(fs::read(plugins.join("Mod/Mod.dll")).unwrap(), b"the mod");
+    }
+
+    #[test]
+    fn a_disabled_mod_leaves_bepinex_entirely() {
+        let dir = tempfile::tempdir().unwrap();
+        let plugins = server(dir.path());
+        fs::create_dir_all(plugins.join("Seasonality")).unwrap();
+        fs::write(plugins.join("Seasonality/Seasonality.dll"), b"mod").unwrap();
+
+        let to = disable(dir.path(), "Seasonality", false).unwrap();
+        // Not under BepInEx: it would still be loaded from anywhere in there,
+        // and it would still travel to every player in the pack.
+        assert!(
+            !to.starts_with(dir.path().join("BepInEx")),
+            "{}",
+            to.display()
+        );
+        assert!(!plugins.join("Seasonality").exists());
+        assert_eq!(fs::read(to.join("Seasonality.dll")).unwrap(), b"mod");
+        assert_eq!(disabled(dir.path()), ["Seasonality"]);
+    }
+
+    #[test]
+    fn enabling_puts_it_back_where_bepinex_looks() {
+        let dir = tempfile::tempdir().unwrap();
+        let plugins = server(dir.path());
+        fs::create_dir_all(plugins.join("Mod")).unwrap();
+        fs::write(plugins.join("Mod/Mod.dll"), b"mod").unwrap();
+
+        disable(dir.path(), "Mod", false).unwrap();
+        let back = enable(dir.path(), "Mod").unwrap();
+        assert_eq!(back, plugins.join("Mod"));
+        assert_eq!(fs::read(plugins.join("Mod/Mod.dll")).unwrap(), b"mod");
+        assert!(disabled(dir.path()).is_empty());
+    }
+
+    #[test]
+    fn a_loose_dll_disables_too() {
+        let dir = tempfile::tempdir().unwrap();
+        let plugins = server(dir.path());
+        fs::write(plugins.join("Loose.dll"), b"mod").unwrap();
+
+        disable(dir.path(), "Loose.dll", true).unwrap();
+        assert!(!plugins.join("Loose.dll").exists());
+        assert_eq!(disabled(dir.path()), ["Loose.dll"]);
+    }
+
+    #[test]
+    fn removing_moves_aside_rather_than_deleting() {
+        let dir = tempfile::tempdir().unwrap();
+        let plugins = server(dir.path());
+        fs::create_dir_all(plugins.join("Mod")).unwrap();
+        fs::write(plugins.join("Mod/Mod.dll"), b"mod").unwrap();
+
+        let gone = remove(dir.path(), "Mod", false).unwrap();
+        assert!(!plugins.join("Mod").exists());
+        // An admin who removed the wrong one at eleven at night can walk it
+        // back. That is the whole point of not calling remove_dir_all.
+        assert_eq!(fs::read(gone.join("Mod.dll")).unwrap(), b"mod");
+    }
+
+    #[test]
+    fn a_disabled_mod_can_be_removed_from_where_it_sits() {
+        let dir = tempfile::tempdir().unwrap();
+        let plugins = server(dir.path());
+        fs::create_dir_all(plugins.join("Mod")).unwrap();
+        fs::write(plugins.join("Mod/Mod.dll"), b"mod").unwrap();
+
+        disable(dir.path(), "Mod", false).unwrap();
+        let gone = remove(dir.path(), "Mod", false).unwrap();
+        assert!(gone.exists());
+        assert!(disabled(dir.path()).is_empty());
+    }
+
+    #[test]
+    fn removing_twice_does_not_overwrite_the_first_one() {
+        let dir = tempfile::tempdir().unwrap();
+        let plugins = server(dir.path());
+        for body in [b"first".as_slice(), b"second".as_slice()] {
+            fs::create_dir_all(plugins.join("Mod")).unwrap();
+            fs::write(plugins.join("Mod/Mod.dll"), body).unwrap();
+            remove(dir.path(), "Mod", false).unwrap();
+        }
+        let kept: Vec<_> = fs::read_dir(dir.path().join(REMOVED_DIR))
+            .unwrap()
+            .map(|e| e.unwrap().file_name().to_string_lossy().to_string())
+            .collect();
+        assert_eq!(
+            kept.len(),
+            2,
+            "the second removal overwrote the first: {kept:?}"
+        );
+    }
+
+    #[test]
+    fn a_name_that_climbs_out_is_refused() {
+        let dir = tempfile::tempdir().unwrap();
+        server(dir.path());
+        for bad in ["..", "../Valheim", "a/b"] {
+            assert!(disable(dir.path(), bad, false).is_err(), "{bad}");
+            assert!(remove(dir.path(), bad, false).is_err(), "{bad}");
+            assert!(enable(dir.path(), bad).is_err(), "{bad}");
+        }
+    }
+
+    #[test]
+    fn enabling_over_a_mod_that_is_already_there_is_refused() {
+        let dir = tempfile::tempdir().unwrap();
+        let plugins = server(dir.path());
+        fs::create_dir_all(plugins.join("Mod")).unwrap();
+        fs::write(plugins.join("Mod/Mod.dll"), b"one").unwrap();
+        disable(dir.path(), "Mod", false).unwrap();
+        // Somebody reinstalled it in the meantime. Two copies of one mod is
+        // what BepInEx settles by refusing both, so say so instead.
+        fs::create_dir_all(plugins.join("Mod")).unwrap();
+        fs::write(plugins.join("Mod/Mod.dll"), b"two").unwrap();
+
+        let err = enable(dir.path(), "Mod").unwrap_err().to_string();
+        assert!(err.contains("already in the plugins folder"), "{err}");
     }
 
     #[test]

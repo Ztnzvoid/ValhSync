@@ -18,7 +18,7 @@ use valhsync_ui::widgets as w;
 use super::i18n::{Key, Lang, text};
 use super::worker::{self, Msg, Reporter};
 use crate::config::{self, Config};
-use crate::{detect, gameserver, logs, players, wizard};
+use crate::{detect, gameserver, install, logs, players, wizard};
 
 const POLL_GAME_SERVER: Duration = Duration::from_secs(2);
 /// How long the configuration has to stop changing before it is written.
@@ -52,6 +52,17 @@ enum Chan {
     Job,
     Serve,
     Ip,
+}
+
+/// What a row's buttons do to a mod.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Act {
+    /// Out of BepInEx, kept on the server.
+    Disable,
+    /// Back into BepInEx.
+    Enable,
+    /// Out of the server entirely -- into a folder, not into nothing.
+    Remove,
 }
 
 /// Who said a line in the console.
@@ -164,6 +175,9 @@ pub(super) struct App {
     lists_error: Option<String>,
     player_id: String,
     lists_checked: Instant,
+    /// The mod whose Remove has been clicked once. A second click on the same
+    /// row carries it out; a click anywhere else forgets it.
+    remove_armed: Option<String>,
     /// Follow the end of the file, until the admin scrolls up to read.
     log_follow: bool,
     session: logs::Session,
@@ -323,6 +337,7 @@ impl App {
             lists: [Vec::new(), Vec::new(), Vec::new()],
             lists_error: None,
             player_id: String::new(),
+            remove_armed: None,
             lists_checked: Instant::now()
                 .checked_sub(Duration::from_secs(60))
                 .unwrap_or_else(Instant::now),
@@ -2012,6 +2027,70 @@ impl App {
         });
     }
 
+    /// The mods that are installed but turned off.
+    ///
+    /// Shown rather than hidden: a mod that has vanished from the list and
+    /// left no trace is a mod an admin reinstalls a week later, wondering why
+    /// it was not there.
+    fn disabled_mods(&mut self, ui: &mut egui::Ui, act: &mut Option<(String, bool, Act)>) {
+        let Some(root) = self.cfg.pack.server_root.clone() else {
+            return;
+        };
+        let off = install::disabled(&root);
+        if off.is_empty() {
+            return;
+        }
+        ui.add_space(10.0);
+        th::hairline(ui);
+        ui.add_space(8.0);
+        ui.label(
+            RichText::new(self.t(Key::DisabledMods))
+                .font(th::display_font(13.0))
+                .color(th::GOLD_LIT),
+        );
+        w::hint(ui, self.t(Key::DisabledHint));
+        ui.add_space(4.0);
+        for name in off {
+            ui.horizontal(|ui| {
+                w::dot(ui, th::EDGE);
+                ui.label(RichText::new(&name).color(th::BONE_DIM));
+                ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                    if ui.small_button(self.t(Key::Enable)).clicked() {
+                        *act = Some((name.clone(), false, Act::Enable));
+                    }
+                });
+            });
+        }
+    }
+
+    /// Carry out what a row's button asked for, and say where things went.
+    fn do_mod_action(&mut self, folder: &str, loose: bool, what: Act) {
+        let Some(root) = self.cfg.pack.server_root.clone() else {
+            return;
+        };
+        let done = match what {
+            Act::Disable => install::disable(&root, folder, loose).map(|_| None),
+            Act::Enable => install::enable(&root, folder).map(|_| None),
+            Act::Remove => install::remove(&root, folder, loose).map(Some),
+        };
+        match done {
+            Ok(gone) => {
+                // Where it went, not just that it went. "Removed" on its own
+                // reads as "deleted", and nothing here deletes anything.
+                let msg = gone.map_or_else(
+                    || format!("{folder} \u{b7} {}", self.t(Key::DisabledHint)),
+                    |path| {
+                        self.t(Key::RemovedTo)
+                            .replacen("{}", &path.display().to_string(), 1)
+                    },
+                );
+                self.notify(msg, th::MOSS);
+                self.mods = self.collect_mods();
+            }
+            Err(e) => self.notify(format!("{e:#}"), th::BLOOD_LIT),
+        }
+    }
+
     /// The note to players, on its own. It is written at a different moment
     /// from the one where mods are chosen -- after, when there is something
     /// to say about them -- and it wants the room to say it.
@@ -2132,6 +2211,9 @@ impl App {
         let server_only = self.mods.iter().filter(|m| m.server_only).count();
         let sent = self.mods.len() - server_only;
         let mut changed: Vec<(String, bool, bool)> = Vec::new();
+        let armed = self.remove_armed.clone();
+        let mut arm: Option<String> = None;
+        let mut act: Option<(String, bool, Act)> = None;
         ui.horizontal(|ui| {
             ui.label(
                 RichText::new(format!(
@@ -2185,6 +2267,31 @@ impl App {
                     );
                 }
                 ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                    // Removing is two clicks, and the second one says what it
+                    // is: this is the only control on the tab that takes a
+                    // mod away, and a stray click on a row is cheap to make.
+                    let arming = armed.as_deref() == Some(m.folder.as_str());
+                    let label = if arming {
+                        self.t(Key::ConfirmRemove)
+                    } else {
+                        self.t(Key::RemoveMod)
+                    };
+                    let button = egui::Button::new(RichText::new(label).color(if arming {
+                        th::BLOOD_LIT
+                    } else {
+                        th::BONE_DIM
+                    }));
+                    if ui.add(button).clicked() {
+                        if arming {
+                            act = Some((m.folder.clone(), m.loose, Act::Remove));
+                        } else {
+                            arm = Some(m.folder.clone());
+                        }
+                    }
+                    if ui.small_button(self.t(Key::Disable)).clicked() {
+                        act = Some((m.folder.clone(), m.loose, Act::Disable));
+                    }
+                    ui.add_space(8.0);
                     if ui
                         .selectable_label(m.server_only, self.t(Key::ServerOnly))
                         .clicked()
@@ -2202,9 +2309,17 @@ impl App {
                 });
             });
         }
+        self.disabled_mods(ui, &mut act);
         for (folder, loose, server_only) in changed {
             self.set_server_only(&folder, loose, server_only);
             self.mods = self.collect_mods();
+        }
+        if let Some(folder) = arm {
+            self.remove_armed = Some(folder);
+        }
+        if let Some((folder, loose, what)) = act {
+            self.remove_armed = None;
+            self.do_mod_action(&folder, loose, what);
         }
         if let Some(extras) = self.cfg.pack.client_extras.clone() {
             ui.add_space(10.0);
