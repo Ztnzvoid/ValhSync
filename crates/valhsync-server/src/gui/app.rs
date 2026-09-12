@@ -491,6 +491,16 @@ impl App {
     }
 
     fn open_log(&mut self) {
+        // Seed the console from the whole file before following the tail.
+        // Otherwise a window opened on a server that has been up for hours
+        // starts with an empty console and stays that way until the server
+        // happens to say something.
+        if let Some(path) = self.log_sources.get(self.log_index) {
+            self.console.clear();
+            for line in logs::console_history(path, 200) {
+                self.record_console(Echo::Server, line);
+            }
+        }
         self.log = self
             .log_sources
             .get(self.log_index)

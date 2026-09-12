@@ -204,21 +204,47 @@ pub(super) fn check_link(cfg: &Config, data_dir: &Path) -> Result<Msg> {
 /// admin who had to press a button for it ended up publishing a stale address
 /// after a reboot. It sends nothing but the request, and the service is named
 /// in the interface next to what it answered.
-pub(super) const IP_ECHO_SERVICE: &str = "https://api.ipify.org";
+///
+/// More than one of them, tried in order, because a single hard-coded host is
+/// a single point of failure for the one field an admin cannot work out for
+/// themselves. One being down, blocked by a network, or blocked by a DNS
+/// filter should not leave the address empty with no explanation. They are
+/// plain-text echo services that answer with an address and nothing else.
+pub(super) const IP_ECHO_SERVICES: &[&str] = &[
+    "https://api.ipify.org",
+    "https://ifconfig.me/ip",
+    "https://icanhazip.com",
+];
+
+/// The one named in the interface: what answered, or the first we would try.
+pub(super) const IP_ECHO_SERVICE: &str = IP_ECHO_SERVICES[0];
 
 pub(super) fn public_ip() -> Result<Msg> {
     let client = reqwest::blocking::Client::builder()
         .timeout(std::time::Duration::from_secs(10))
         .user_agent(concat!("valhsync-server/", env!("CARGO_PKG_VERSION")))
         .build()?;
+    let mut last = None;
+    for service in IP_ECHO_SERVICES {
+        match ask_echo(&client, service) {
+            Ok(ip) => return Ok(Msg::PublicIp(ip)),
+            // Keep going, and keep the first failure: it is the one about the
+            // service the interface names, so it is the one worth reporting.
+            Err(e) => last.get_or_insert(e),
+        };
+    }
+    Err(last.unwrap_or_else(|| anyhow::anyhow!("no address service to ask")))
+}
+
+fn ask_echo(client: &reqwest::blocking::Client, service: &str) -> Result<String> {
     let text = client
-        .get(IP_ECHO_SERVICE)
+        .get(service)
         .send()
-        .with_context(|| format!("cannot reach {IP_ECHO_SERVICE}"))?
+        .with_context(|| format!("cannot reach {service}"))?
         .error_for_status()?
         .text()?;
     let ip = text.trim();
     ip.parse::<std::net::IpAddr>()
-        .with_context(|| format!("{IP_ECHO_SERVICE} did not answer with an address"))?;
-    Ok(Msg::PublicIp(ip.to_string()))
+        .with_context(|| format!("{service} did not answer with an address"))?;
+    Ok(ip.to_string())
 }

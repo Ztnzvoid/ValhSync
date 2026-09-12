@@ -657,12 +657,35 @@ stop_with_game = {stop_with_game}
     )
 }
 
+/// Refuse to write a configuration that would not read back as itself.
+///
+/// [`to_commented_toml`] renders the file by hand, field by field, so that it
+/// carries its own explanations instead of decaying into bare key/value pairs.
+/// The cost of that is a key added to `Config` and forgotten here: the file is
+/// written without it, `#[serde(default)]` fills it back in on the next read,
+/// and the setting has quietly reverted. That has already happened once --
+/// `publish_live` and the window language were both lost this way, and the
+/// round-trip test of the day passed because it went through `toml::to_string`
+/// rather than through the template that is actually used.
+///
+/// Parsing is not enough to catch it: a file missing a key parses perfectly.
+/// So the check is equality. Whatever comes back has to be what went in, and
+/// if it is not, saving fails loudly rather than dropping the difference.
+fn check_lossless(cfg: &Config, text: &str) -> Result<()> {
+    let read_back: Config = toml::from_str(text)
+        .context("internal error: the generated configuration is not valid TOML")?;
+    if &read_back == cfg {
+        return Ok(());
+    }
+    bail!(
+        "internal error: writing this configuration would lose part of it. A field          exists in Config that to_commented_toml does not render; the setting would          silently return to its default on the next read. Nothing has been written."
+    )
+}
+
 /// Write a configuration to disk through a temp file and a rename.
 pub fn save(cfg: &Config, path: &Path) -> Result<()> {
     let text = to_commented_toml(cfg);
-    // Never write something we could not read back.
-    let _: Config = toml::from_str(&text)
-        .context("internal error: the generated configuration is not valid TOML")?;
+    check_lossless(cfg, &text)?;
     let tmp = path.with_extension("toml.tmp");
     std::fs::write(&tmp, text).with_context(|| format!("cannot write {}", tmp.display()))?;
     std::fs::rename(&tmp, path).with_context(|| format!("cannot replace {}", path.display()))?;
@@ -799,6 +822,53 @@ mod tests {
         // A second pass must be byte-identical: editing in the window twice
         // may not drift the file.
         assert_eq!(to_commented_toml(&back), text);
+    }
+
+    /// The guard that makes the hand-written template safe. If this ever
+    /// fails, a field was added to `Config` and not to `to_commented_toml`,
+    /// and without the guard it would have been dropped in silence.
+    #[test]
+    fn a_field_the_template_forgets_stops_the_save() {
+        // Nothing here is a default, so every field has to be carried by the
+        // template for the comparison to hold.
+        let cfg = Config {
+            language: Some("pl".into()),
+            server: ServerSection {
+                name: "Northmen".into(),
+                bind: "0.0.0.0:2456".into(),
+                game_address: "valheim.example.org:2456".into(),
+                public_url: Some("https://example.org/pack".into()),
+                publish_live: Some(true),
+            },
+            pack: PackSection {
+                server_root: Some(PathBuf::from("/srv/valheim")),
+                export_dir: Some(PathBuf::from("/srv/export")),
+                notes: Some("Config resets itself, read before you install".into()),
+                exclude: vec!["BepInEx/plugins/DiscordConnector/**".into()],
+                ..PackSection::default()
+            },
+            ..Config::default()
+        };
+
+        let text = to_commented_toml(&cfg);
+        check_lossless(&cfg, &text).expect("the template dropped a field");
+
+        // And the guard really does catch a loss, rather than passing because
+        // the comparison is vacuous. Drop the line that carries the name, the
+        // way forgetting to render a field would.
+        let missing = text
+            .lines()
+            .filter(|l| !l.starts_with("name = "))
+            .collect::<Vec<_>>()
+            .join(
+                "
+",
+            );
+        assert!(
+            missing.len() < text.len(),
+            "the test removed nothing, so it proves nothing"
+        );
+        assert!(check_lossless(&cfg, &missing).is_err());
     }
 
     #[test]

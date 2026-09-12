@@ -267,6 +267,35 @@ impl Tail {
     }
 }
 
+/// Every console line in a whole log, oldest first.
+///
+/// [`Tail`] deliberately starts near the end of the file, because replaying
+/// days of Unity output would cost seconds and show nobody anything. Console
+/// lines are the exception: there are perhaps fifteen in a session, the
+/// version banner among them, and on a server that has been up for hours they
+/// are all far behind the tail. Scanning the file once when it is opened is
+/// cheap precisely because there are so few, and it is the difference between
+/// a console that starts empty and one that has the server's own greeting in
+/// it.
+///
+/// Bounded by `keep`, so a log that somehow holds thousands cannot fill the
+/// window instead.
+pub fn console_history(path: &Path, keep: usize) -> Vec<String> {
+    let Ok(file) = File::open(path) else {
+        return Vec::new();
+    };
+    let mut out = VecDeque::new();
+    for line in BufReader::new(file).lines().map_while(Result::ok) {
+        if let Some(said) = console_text(&line) {
+            if out.len() == keep {
+                out.pop_front();
+            }
+            out.push_back(said.to_string());
+        }
+    }
+    out.into()
+}
+
 /// What the game server printed to its own console, out of one log line.
 ///
 /// Valheim tags these itself. The dedicated server really does have a
@@ -298,6 +327,7 @@ pub fn console_text(line: &str) -> Option<&str> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fmt::Write as _;
     use std::io::Write;
 
     fn append(path: &Path, text: &str) {
@@ -307,6 +337,39 @@ mod tests {
             .open(path)
             .unwrap();
         f.write_all(text.as_bytes()).unwrap();
+    }
+
+    #[test]
+    fn the_whole_log_gives_up_its_console_lines() {
+        let dir = tempfile::tempdir().unwrap();
+        let log = dir.path().join("server.log");
+        // The banner sits at the very start of a long file, which is exactly
+        // where `Tail` does not look.
+        let mut text = String::from(
+            "[Info   : Unity Log] 09/12/2026 05:16:15: Console: Valheim 1.0.12
+",
+        );
+        for i in 0..5000 {
+            writeln!(text, "[Info   : Unity Log] Destroying abandoned zdo {i}").unwrap();
+        }
+        append(&log, &text);
+
+        let said = console_history(&log, 400);
+        assert_eq!(said, ["Valheim 1.0.12"]);
+    }
+
+    #[test]
+    fn console_history_keeps_only_the_last_of_too_many() {
+        let dir = tempfile::tempdir().unwrap();
+        let log = dir.path().join("server.log");
+        let mut text = String::new();
+        for i in 0..50 {
+            writeln!(text, "Console: line {i}").unwrap();
+        }
+        append(&log, &text);
+        let said = console_history(&log, 10);
+        assert_eq!(said.len(), 10);
+        assert_eq!(said[9], "line 49");
     }
 
     #[test]
