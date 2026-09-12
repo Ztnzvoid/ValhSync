@@ -1271,8 +1271,8 @@ impl App {
         );
         let send_label = self.t("Envoyer", "Send");
         let tip = self.t(
-            "Tapée dans la console du serveur. La réponse arrive dans le journal, pas ici.",
-            "Typed into the server's console. Its answer lands in the log, not here.",
+            "Tapée dans la console du serveur. La réponse arrive dans la console ci-dessus, pas ici.",
+            "Typed into the server's console. Its answer lands in the console above, not here.",
         );
         // Shown whether the server is up or not. A prompt that disappears
         // when there is nothing to talk to cannot be found again, and leaves
@@ -1351,8 +1351,8 @@ impl App {
             w::hint(
                 ui,
                 self.t(
-                    "En attente de la première ligne de session dans le journal.",
-                    "Waiting for the first session line in the log.",
+                    "En attente de la première ligne de session dans la console.",
+                    "Waiting for the first session line in the console.",
                 ),
             );
         } else {
@@ -2308,7 +2308,7 @@ impl App {
     fn card_logs(&mut self, ui: &mut egui::Ui) {
         th::card(ui, |ui| {
             ui.set_width(ui.available_width());
-            w::section(ui, self.t("II · Journal", "II · Log"));
+            w::section(ui, self.t("II · Console", "II · Console"));
 
             if self.log_sources.is_empty() {
                 w::hint(
@@ -2342,11 +2342,16 @@ impl App {
                         self.open_log();
                     }
                 } else if let Some(path) = self.log_sources.first() {
+                    // Monospace, not the carved label face: that one is cut
+                    // for headings, and a file name set in it reads as a
+                    // proclamation rather than a path.
                     ui.label(
                         RichText::new(path.file_name().unwrap_or_default().to_string_lossy())
-                            .text_style(th::label_style())
+                            .monospace()
+                            .small()
                             .color(th::BONE_DIM),
-                    );
+                    )
+                    .on_hover_text(path.display().to_string());
                 }
                 ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                     if ui
@@ -2376,7 +2381,7 @@ impl App {
                         let msg = if empty {
                             self.t("Rien à copier.", "Nothing to copy.")
                         } else {
-                            self.t("Journal copié.", "Log copied.")
+                            self.t("Console copiée.", "Console copied.")
                         }
                         .to_string();
                         self.notify(msg, if empty { th::GOLD } else { th::MOSS });
