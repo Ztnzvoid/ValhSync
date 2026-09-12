@@ -12,7 +12,24 @@ Notable changes, newest first. Dates are ISO 8601.
   own config, that a chest mod wants an empty base first.
 - **Kept afterwards.** Fifty entries of history per player, one per sync that
   changed something, behind a "What's new" button.
-- The publisher no longer skips a rebuild when only the note changed.
+- The publisher no longer skips a rebuild when only the note changed, and a
+  running one now notices its configuration changing at all: it watches the
+  file and re-reads it, instead of publishing the manifest it built at startup.
+- **The configuration saves itself.** No Save button: what is on screen is what
+  the server publishes, and asking for a second confirmation produced servers
+  running on a configuration that was never written. The bar says what is
+  happening, and why, when something stops it.
+- **Restart**, beside Stop: the same Ctrl+C, and the server comes back once the
+  world has actually been written.
+- Publishing follows the game server however it was started, not only when it
+  was started from the window; the publish mode, the window language and the
+  export folder are remembered instead of resetting on every launch.
+- Both executables carry Windows version metadata. Not a substitute for code
+  signing, which is what actually settles an antivirus, but the part that costs
+  nothing.
+- The launcher says "server offline" rather than quoting a transport error at
+  someone who cannot act on it.
+- Scrollbars, and the mark behind the windows, belong to the theme.
 
 ## 0.1.0 — 2026-09-12
 

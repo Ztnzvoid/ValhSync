@@ -49,6 +49,11 @@ The launcher writes only inside the game folder (BepInEx paths, `winhttp.dll`,
 `doorstop_config.ini`), plus its own state under the user profile. It never
 executes a downloaded file; it asks Steam to start Valheim.
 
+Full documentation, in one page:
+**[docs/index.html](docs/index.html)** — what it does, how it works, what is
+guaranteed, what every dependency is licensed under, and what has actually
+been run.
+
 ## Status
 
 | Milestone | State |
@@ -202,6 +207,21 @@ server key (pinned key, explicit re-import required), path tricks in a manifest
 (`../`, drive letters, UNC, reserved names, symlinks: the whole manifest is
 rejected), oversized packs (size and count limits), and its own bugs (journaled
 backups, rollback). See [§8 of the spec](docs/cahier-des-charges.html).
+
+## What has been tested
+
+Narrower than the code's reach, and worth saying so.
+
+| | |
+|---|---|
+| **Windows, x86_64** | Verified end to end: a PC running the Valheim dedicated server with the publisher beside it, and several players who synced from it on their own machines and joined. |
+| **Linux, x86_64** | Builds, and the whole suite passes in CI on every commit — including end-to-end tests that stand a real publisher on a socket and drive the launcher against it. No window has ever been opened on Linux, and no game started. |
+| Proton, Steam Deck, macOS | Untested. |
+| A dedicated server in Docker | Untested, and partly out of reach by design: the publisher finds the game server among processes, so it cannot see one in another container. Publishing from a mounted volume should work; starting, stopping and the console will not. |
+| Hosted servers | The layout has a test; no real provider has been on the other end. |
+
+If you try one of these, an issue saying what happened is worth more than any
+amount of reasoning from here.
 
 ## Building
 
