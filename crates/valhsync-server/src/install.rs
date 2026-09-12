@@ -77,8 +77,14 @@ pub fn install(server_root: &Path, source: &Path) -> Result<Installed> {
             let bytes = fs::read(source)?;
             place(&plugins, &name, &[(file, bytes)])
         }
+        // Named rather than shrugged at: somebody who dropped a .7z wants
+        // to be told to extract it, not that their file is not a mod.
+        "7z" | "rar" | "tar" | "gz" => bail!(
+            "ValhSync reads .zip archives, not .{ext}. Extract {} first, then drop the folder.",
+            source.display()
+        ),
         _ => bail!(
-            "{} is not a mod. Drop a Thunderstore .zip, a mod folder, or a .dll",
+            "{} is not a mod. Drop a .zip from anywhere, a mod folder, or a .dll",
             source.display()
         ),
     }
@@ -234,22 +240,28 @@ fn thunderstore_name(bytes: &[u8]) -> Option<String> {
     }
 }
 
-/// Strip the wrapper an archive happens to use, so what is left is the mod.
+/// Strip whatever wrapper an archive happens to use, so what is left is the
+/// mod.
+///
+/// There is no standard here. Thunderstore puts the plugin at the root beside
+/// a `manifest.json`; some authors ship `plugins/`, some a whole `BepInEx/`
+/// tree, and a great many zip a single folder named after the mod. All of
+/// them are somebody's idea of tidy, and all of them have to end up as the
+/// files that belong in one mod folder.
 fn unwrap_layout(entries: Files) -> Files {
     for prefix in ["BepInEx/plugins/", "plugins/"] {
-        let inside: Vec<_> = entries
+        let inside: Files = entries
             .iter()
             .filter(|(p, _)| p.starts_with(prefix))
+            .map(|(p, b)| (p[prefix.len()..].to_string(), b.clone()))
             .collect();
         if !inside.is_empty() {
-            return inside
-                .into_iter()
-                .map(|(p, b)| (p[prefix.len()..].to_string(), b.clone()))
-                .collect();
+            return strip_wrapper(inside);
         }
     }
-    // Packaging metadata is for Thunderstore, not for the server.
-    entries
+    // Packaging metadata belongs to the site the archive came from, not to
+    // the server: it is what Thunderstore reads, and what BepInEx ignores.
+    let files: Files = entries
         .into_iter()
         .filter(|(p, _)| {
             !matches!(
@@ -257,7 +269,38 @@ fn unwrap_layout(entries: Files) -> Files {
                 "manifest.json" | "icon.png" | "readme.md" | "changelog.md"
             )
         })
-        .collect()
+        .collect();
+    strip_wrapper(files)
+}
+
+/// Drop a single folder that holds everything else.
+///
+/// A zip of `MyMod-1.2.3/MyMod.dll` would otherwise install as
+/// `plugins/MyMod-1.2.3/MyMod-1.2.3/MyMod.dll`. BepInEx would still find it --
+/// it looks in subfolders -- but the admin reading that list would not
+/// recognise what they just dropped.
+fn strip_wrapper(files: Files) -> Files {
+    let mut prefix: Option<String> = None;
+    for (path, _) in &files {
+        let Some((head, _)) = path.split_once('/') else {
+            return files; // something sits at the root: no single wrapper
+        };
+        match &prefix {
+            Some(seen) if seen != head => return files,
+            Some(_) => {}
+            None => prefix = Some(head.to_string()),
+        }
+    }
+    let Some(prefix) = prefix else {
+        return files;
+    };
+    let cut = prefix.len() + 1;
+    let inner: Files = files
+        .into_iter()
+        .map(|(p, b)| (p[cut..].to_string(), b))
+        .collect();
+    // Wrappers nest: `Mod/Mod/Mod.dll` happens more than it should.
+    strip_wrapper(inner)
 }
 
 /// Write the files into `plugins/<name>/`, replacing what was there.
@@ -362,8 +405,62 @@ mod tests {
             ],
         );
         install(dir.path(), &zip_path).unwrap();
-        assert!(plugins.join("Mod/Mod/Mod.dll").exists());
-        assert!(plugins.join("Mod/Mod/assets/a.bundle").exists());
+        // `plugins/` goes, and so does the `Mod/` inside it: what is left is
+        // the mod, under one folder named for the archive.
+        assert!(plugins.join("Mod/Mod.dll").exists());
+        assert!(plugins.join("Mod/assets/a.bundle").exists());
+    }
+
+    /// The commonest shape outside Thunderstore: a zip holding one folder
+    /// named after the mod. Nothing in it says what it is, and it must not
+    /// install as a folder inside a folder of the same name.
+    #[test]
+    fn a_wrapper_folder_is_dropped() {
+        let dir = tempfile::tempdir().unwrap();
+        let plugins = server(dir.path());
+        let zip_path = dir.path().join("CoolMod-1.2.3.zip");
+        zip_with(
+            &zip_path,
+            &[
+                ("CoolMod-1.2.3/CoolMod.dll", b"dll"),
+                ("CoolMod-1.2.3/data/x.bin", b"bin"),
+            ],
+        );
+        install(dir.path(), &zip_path).unwrap();
+        assert!(plugins.join("CoolMod-1.2.3/CoolMod.dll").exists());
+        assert!(plugins.join("CoolMod-1.2.3/data/x.bin").exists());
+        assert!(
+            !plugins.join("CoolMod-1.2.3/CoolMod-1.2.3").exists(),
+            "the wrapper folder was kept"
+        );
+    }
+
+    /// A zip with no manifest, no wrapper and no prefix -- a dll and its
+    /// config, straight from a release page. Nothing to unwrap, nothing to
+    /// name it by but the archive.
+    #[test]
+    fn a_bare_release_zip_installs_as_it_is() {
+        let dir = tempfile::tempdir().unwrap();
+        let plugins = server(dir.path());
+        let zip_path = dir.path().join("SomeMod.zip");
+        zip_with(
+            &zip_path,
+            &[("SomeMod.dll", b"dll"), ("SomeMod.cfg", b"cfg")],
+        );
+        let done = install(dir.path(), &zip_path).unwrap();
+        assert_eq!(done.name, "SomeMod");
+        assert!(plugins.join("SomeMod/SomeMod.dll").exists());
+        assert!(plugins.join("SomeMod/SomeMod.cfg").exists());
+    }
+
+    #[test]
+    fn an_archive_we_cannot_read_says_what_to_do() {
+        let dir = tempfile::tempdir().unwrap();
+        server(dir.path());
+        let seven = dir.path().join("Mod.7z");
+        fs::write(&seven, b"not really").unwrap();
+        let err = install(dir.path(), &seven).unwrap_err().to_string();
+        assert!(err.contains("Extract"), "{err}");
     }
 
     #[test]
@@ -379,7 +476,11 @@ mod tests {
             ],
         );
         install(dir.path(), &zip_path).unwrap();
-        assert!(plugins.join("Big/Big/Big.dll").exists());
+        assert!(plugins.join("Big/Big.dll").exists());
+        // Only the plugins subtree travels: a config belongs to whoever runs
+        // the server, and the launcher seeds players' own rather than
+        // overwriting them.
+        assert!(!plugins.join("Big/Big.cfg").exists());
     }
 
     /// An update replaces: files the new version dropped must not stay behind
