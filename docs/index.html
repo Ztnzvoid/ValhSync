@@ -468,11 +468,8 @@ nav.toc a.here .n { color: var(--gold); }
         <li>Start, restart and stop the dedicated server. Stopping sends Ctrl+C to its console,
         so Valheim writes the world before it exits; the process is never killed.</li>
         <li>Players online, join code, Valheim version, public address, process id.</li>
-        <li>Its log, followed live, with the lines the server prints to its own console lifted
-        out of it. There is no command prompt: a Valheim dedicated server does not read its
-        console, whatever its start-up banner claims, so admin actions go through
-        <code>adminlist.txt</code> and <code>bannedlist.txt</code>, or through an admin
-        in-game.</li>
+        <li>Its log, followed live, and below it a resizable console holding the lines the
+        server prints to its own — a handful among tens of thousands.</li>
         <li>A warning when Steam has an update waiting for the dedicated server: the game and the
         server are separate Steam applications, and one updating without the other refuses every
         connection.</li>
@@ -489,6 +486,14 @@ nav.toc a.here .n { color: var(--gold); }
       </ul>
     </div>
   </div>
+  <h3>Players</h3>
+  <p>Admins, bans and the permitted list, from the window or from the console's prompt:
+  <code>ban &lt;id&gt;</code>, <code>unban</code>, <code>admin</code>, <code>permit</code>,
+  and <code>banned</code> to see a list. These write the three files Iron Gate documents, which
+  is the only channel a dedicated server has from outside the game: it does not read its
+  console, whatever its start-up banner claims, and Valheim has no RCON. Kicking somebody who
+  is connected right now, and saving on demand, are an admin pressing F5 in the game — typing
+  those here says so instead of failing quietly.</p>
   <h3>Patch notes</h3>
   <p>Its own tab, published signed with the pack. The list of mods added, updated and removed
   writes itself from the plan, so no version number is ever retyped; what you add is the half a

@@ -18,7 +18,7 @@ use valhsync_ui::widgets as w;
 use super::i18n::{Key, Lang, text};
 use super::worker::{self, Msg, Reporter};
 use crate::config::{self, Config};
-use crate::{detect, gameserver, logs, wizard};
+use crate::{detect, gameserver, logs, players, wizard};
 
 const POLL_GAME_SERVER: Duration = Duration::from_secs(2);
 /// How long the configuration has to stop changing before it is written.
@@ -39,6 +39,11 @@ const NOTICE_TTL: Duration = Duration::from_secs(12);
 /// enough that the file is touched once a second and no more.
 const POLL_LOG: Duration = Duration::from_millis(900);
 
+/// How often the permission lists are re-read while their tab is open. They
+/// change when somebody edits a text file, which is not something that needs
+/// noticing in the same second.
+const POLL_LISTS: Duration = Duration::from_secs(2);
+
 /// Which worker a message came from. They report through the same type but
 /// have different lifetimes: a one-shot job ends, the live server runs on,
 /// and the address check repeats on its own.
@@ -49,12 +54,24 @@ enum Chan {
     Ip,
 }
 
+/// Who said a line in the console.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Echo {
+    /// Typed at the prompt.
+    Sent,
+    /// ValhSync answering it.
+    Answer,
+    /// Printed by the game server's own console.
+    Server,
+}
+
 /// The two halves of the window: what the server is doing, and how it is set
 /// up. Everything that changes minute to minute is on the first.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Tab {
     Mods,
     Notes,
+    Players,
     Status,
     Settings,
 }
@@ -136,7 +153,17 @@ pub(super) struct App {
     /// What the game server's console has printed. Its own list rather than a
     /// filter over the log: these lines are a handful among thousands, and on
     /// a busy server they are pushed out of the log ring within seconds.
-    console: VecDeque<String>,
+    console: VecDeque<(Echo, String)>,
+    /// The prompt's line, and the folder its commands write to.
+    command: String,
+    lists_dir: Option<PathBuf>,
+    /// Admins, banned, permitted, in `players::Roll::ALL` order. Re-read
+    /// rather than remembered across a write: the files are Valheim's, and an
+    /// admin may well have a text editor open on one.
+    lists: [Vec<String>; 3],
+    lists_error: Option<String>,
+    player_id: String,
+    lists_checked: Instant,
     /// Follow the end of the file, until the admin scrolls up to read.
     log_follow: bool,
     session: logs::Session,
@@ -291,6 +318,14 @@ impl App {
             log_index: 0,
             log: None,
             console: VecDeque::new(),
+            command: String::new(),
+            lists_dir: None,
+            lists: [Vec::new(), Vec::new(), Vec::new()],
+            lists_error: None,
+            player_id: String::new(),
+            lists_checked: Instant::now()
+                .checked_sub(Duration::from_secs(60))
+                .unwrap_or_else(Instant::now),
             log_checked: Instant::now(),
             log_follow: true,
             session: logs::Session::default(),
@@ -485,7 +520,7 @@ impl App {
             self.session = logs::read_session(tail.lines());
             self.game_version = valhsync_core::gamelog::read_version(tail.lines());
             for line in spoken {
-                self.record_console(line);
+                self.record_console(Echo::Server, line);
             }
         }
         self.world_saved = self.world_file.as_deref().and_then(logs::saved_at);
@@ -896,6 +931,24 @@ impl App {
     }
 }
 
+/// The prompt verb a button stands for, so a click and a typed line take
+/// exactly the same path.
+fn verb_add(roll: players::Roll) -> &'static str {
+    match roll {
+        players::Roll::Admin => "admin",
+        players::Roll::Banned => "ban",
+        players::Roll::Permitted => "permit",
+    }
+}
+
+fn verb_remove(roll: players::Roll) -> &'static str {
+    match roll {
+        players::Roll::Admin => "unadmin",
+        players::Roll::Banned => "unban",
+        players::Roll::Permitted => "unpermit",
+    }
+}
+
 /// How a mod is named in `exclude`: a folder and everything under it, or the
 /// single file of a loose plugin.
 fn exclude_pattern(name: &str, loose: bool) -> String {
@@ -922,6 +975,13 @@ impl eframe::App for App {
         if self.tab == Tab::Status {
             self.poll_log();
         }
+        // The files are Valheim's, and an admin may well have a text editor
+        // open on one. Read them when the tab is looked at rather than
+        // trusting a copy taken at start-up.
+        if self.tab == Tab::Players && self.lists_checked.elapsed() >= POLL_LISTS {
+            self.lists_checked = Instant::now();
+            self.refresh_lists();
+        }
         if self.busy || self.serving_at.is_some() || self.tab == Tab::Status {
             ctx.request_repaint_after(Duration::from_millis(200));
         } else {
@@ -938,13 +998,15 @@ impl eframe::App for App {
         self.update_title(ctx);
         self.top_bar(ctx);
         self.bottom_bar(ctx);
+        self.console_panel(ctx);
         egui::CentralPanel::default()
             .frame(egui::Frame::new().inner_margin(egui::Margin::same(18)))
             .show(ctx, |ui| {
                 th::backdrop(ui.ctx(), ui.painter(), ui.max_rect().expand(18.0));
-                let (status, mods, notes, settings) = (
+                let (status, mods, players, notes, settings) = (
                     self.t(Key::TabStatus),
                     self.t(Key::TabMods),
+                    self.t(Key::TabPlayers),
                     self.t(Key::TabNotes),
                     self.t(Key::TabSettings),
                 );
@@ -954,6 +1016,7 @@ impl eframe::App for App {
                     &[
                         (Tab::Status, status),
                         (Tab::Mods, mods),
+                        (Tab::Players, players),
                         (Tab::Notes, notes),
                         (Tab::Settings, settings),
                     ],
@@ -985,6 +1048,7 @@ impl eframe::App for App {
                             self.card_logs(ui);
                         }
                         Tab::Mods => self.card_mods(ui),
+                        Tab::Players => self.card_players(ui),
                         Tab::Notes => self.card_notes(ui),
                         Tab::Settings => {
                             self.card_server_folder(ui);
@@ -1074,7 +1138,6 @@ impl App {
                 // The console line lives down here, where a prompt belongs:
                 // always in reach whichever tab is open, and out of the card
                 // that describes the server rather than drives it.
-                self.console_transcript(ui);
                 ui.add_space(8.0);
                 ui.horizontal(|ui| {
                     // No Save button. What an admin changes here is what the
@@ -1235,49 +1298,249 @@ impl App {
         }
     }
 
-    /// What the server's own console has printed, on the bar that is on
-    /// screen whichever tab is open.
+    /// The console: what the server says, what the admin types, and what
+    /// ValhSync answers.
     ///
-    /// Valheim tags these lines in the log, and there are perhaps fifteen of
-    /// them among the tens of thousands a session writes -- the version, the
-    /// network version, what the server wants said. Pulled out here they are
-    /// legible; left in the log they are not findable.
+    /// Its own panel rather than a strip in the bottom bar, and resizable,
+    /// because the useful thing to do with a console is read back through it.
+    /// Drag its top edge.
+    ///
+    /// The server half was always there and never visible: Valheim tags what
+    /// it prints to its console in the log, perhaps fifteen lines among the
+    /// tens of thousands a session writes, and often outside the window the
+    /// log view reads at all.
+    fn console_panel(&mut self, ctx: &egui::Context) {
+        egui::TopBottomPanel::bottom("console")
+            .resizable(true)
+            .default_height(164.0)
+            .min_height(96.0)
+            .max_height(ctx.screen_rect().height() * 0.7)
+            .frame(
+                egui::Frame::new()
+                    .fill(th::PANEL)
+                    .inner_margin(egui::Margin::symmetric(18, 12))
+                    .stroke(egui::Stroke::new(1.0, th::EDGE_SOFT)),
+            )
+            .show(ctx, |ui| {
+                w::section(ui, self.t(Key::SectionServerConsole));
+                // The prompt first, then the transcript filling what is left,
+                // so dragging the panel taller gives the extra height to the
+                // thing worth reading.
+                self.console_line(ui);
+                ui.add_space(6.0);
+                self.console_transcript(ui);
+            });
+    }
+
     fn console_transcript(&mut self, ui: &mut egui::Ui) {
-        // Nothing yet: nothing drawn. This sits in the bar that is on screen
-        // whichever tab is open, so an empty panel here would cost every
-        // admin a strip of window for a transcript they may never open.
-        if self.console.is_empty() {
-            return;
-        }
         egui::Frame::new()
             .fill(th::NIGHT)
             .stroke(egui::Stroke::new(1.0, th::EDGE_SOFT))
             .inner_margin(egui::Margin::symmetric(8, 6))
             .show(ui, |ui| {
+                ui.set_min_height(ui.available_height());
                 ui.set_width(ui.available_width());
                 egui::ScrollArea::vertical()
-                    .max_height(132.0)
                     .stick_to_bottom(true)
-                    .auto_shrink([false, true])
+                    .auto_shrink([false, false])
                     .show(ui, |ui| {
-                        for line in &self.console {
-                            ui.label(RichText::new(line).monospace().small().color(th::BONE));
+                        if self.console.is_empty() {
+                            w::hint(ui, self.t(Key::ConsoleTip));
+                            return;
+                        }
+                        for (echo, line) in &self.console {
+                            let (text, colour) = match echo {
+                                // The admin's own words, marked the way a
+                                // prompt marks them, so the panel reads as a
+                                // conversation and not as more log.
+                                Echo::Sent => (format!("> {line}"), th::GOLD),
+                                Echo::Answer => (line.clone(), th::BONE),
+                                Echo::Server => (line.clone(), th::RUNE),
+                            };
+                            ui.label(RichText::new(text).monospace().small().color(colour));
                         }
                     });
             });
     }
 
-    /// Add one line to the transcript, oldest dropped first.
+    /// One line, carried out against the files Valheim reads.
+    fn console_line(&mut self, ui: &mut egui::Ui) {
+        let hint = self.t(Key::ConsolePrompt);
+        let send_label = self.t(Key::Send);
+        let tip = self.t(Key::ConsoleTip);
+        ui.horizontal(|ui| {
+            let send = ui
+                .add(egui::Button::new(send_label))
+                .on_hover_text(tip)
+                .clicked();
+            let typed = ui
+                .add(
+                    egui::TextEdit::singleline(&mut self.command)
+                        .desired_width(ui.available_width())
+                        .font(egui::TextStyle::Monospace)
+                        .hint_text(hint),
+                )
+                .lost_focus()
+                && ui.input(|i| i.key_pressed(egui::Key::Enter));
+            if send || typed {
+                let line = std::mem::take(&mut self.command);
+                if !line.trim().is_empty() {
+                    self.run_command(&line);
+                }
+            }
+        });
+    }
+
+    /// Parse it, do it, and put every word of it in the transcript.
     ///
-    /// Deep enough to hold what `help` prints -- which is the longest answer
-    /// the server gives, and the one an admin is most likely to want to read
-    /// back through.
-    fn record_console(&mut self, line: String) {
+    /// Errors are answers too: an admin who mistypes an id wants to see what
+    /// they typed and what was wrong with it, in the place they typed it.
+    fn run_command(&mut self, line: &str) {
+        self.record_console(Echo::Sent, line.trim().to_string());
+        let Some(dir) = self.lists_dir.clone() else {
+            let why = self.t(Key::NoListsDir).to_string();
+            self.record_console(Echo::Answer, why);
+            return;
+        };
+        let said = players::parse(line).and_then(|cmd| players::run(&dir, cmd));
+        match said {
+            Ok(lines) => {
+                for line in lines {
+                    self.record_console(Echo::Answer, line);
+                }
+                self.refresh_lists();
+            }
+            Err(e) => self.record_console(Echo::Answer, format!("{e:#}")),
+        }
+    }
+
+    /// The three files Valheim reads, one card each.
+    ///
+    /// A list rather than a prompt, because a prompt makes somebody guess a
+    /// syntax and a list shows them the state. The prompt is still there, on
+    /// the console, for anybody who would rather type.
+    fn card_players(&mut self, ui: &mut egui::Ui) {
+        if self.lists_dir.is_none() {
+            th::card(ui, |ui| {
+                ui.set_width(ui.available_width());
+                w::notice(ui, th::GOLD, self.t(Key::NoListsDir));
+            });
+            return;
+        }
+        if let Some(error) = self.lists_error.clone() {
+            th::card(ui, |ui| {
+                ui.set_width(ui.available_width());
+                w::notice(ui, th::BLOOD_LIT, &error);
+            });
+            ui.add_space(12.0);
+        }
+        for (slot, roll) in players::Roll::ALL.into_iter().enumerate() {
+            self.card_one_list(ui, slot, roll);
+            ui.add_space(12.0);
+        }
+        th::card(ui, |ui| {
+            ui.set_width(ui.available_width());
+            w::hint(ui, self.t(Key::PlayersIntro));
+        });
+    }
+
+    fn card_one_list(&mut self, ui: &mut egui::Ui, slot: usize, roll: players::Roll) {
+        let section = match roll {
+            players::Roll::Admin => Key::SectionAdmins,
+            players::Roll::Banned => Key::SectionBanned,
+            players::Roll::Permitted => Key::SectionPermitted,
+        };
+        th::card(ui, |ui| {
+            ui.set_width(ui.available_width());
+            w::section(ui, self.t(section));
+            // Iron Gate's warning, on the card it belongs to. It is the one
+            // that empties a server when nobody reads it.
+            if roll == players::Roll::Permitted {
+                w::notice(ui, th::GOLD, self.t(Key::PermittedWarning));
+                ui.add_space(6.0);
+            }
+            w::hint(ui, roll.file_name());
+            ui.add_space(6.0);
+
+            let mut drop = None;
+            if self.lists[slot].is_empty() {
+                w::hint(ui, self.t(Key::ListEmpty));
+            } else {
+                for id in &self.lists[slot] {
+                    ui.horizontal(|ui| {
+                        ui.label(RichText::new(id).monospace().color(th::BONE));
+                        ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                            if ui.small_button(self.t(Key::RemoveFromList)).clicked() {
+                                drop = Some(id.clone());
+                            }
+                        });
+                    });
+                }
+            }
+            ui.add_space(6.0);
+            let mut add = None;
+            ui.horizontal(|ui| {
+                if ui.button(self.t(Key::AddToList)).clicked() {
+                    add = Some(self.player_id.clone());
+                }
+                let id_hint = self.t(Key::PlayerIdHint);
+                let entered = ui
+                    .add(
+                        egui::TextEdit::singleline(&mut self.player_id)
+                            .desired_width(ui.available_width())
+                            .font(egui::TextStyle::Monospace)
+                            .hint_text(id_hint),
+                    )
+                    .lost_focus()
+                    && ui.input(|i| i.key_pressed(egui::Key::Enter));
+                if entered {
+                    add = Some(self.player_id.clone());
+                }
+            });
+
+            // Both go through the console, so every change an admin makes has
+            // one place it is written down -- including the note about
+            // whether a running server picks it up.
+            if let Some(id) = drop {
+                self.run_command(&format!("{} {id}", verb_remove(roll)));
+            }
+            if let Some(id) = add
+                && !id.trim().is_empty()
+            {
+                self.player_id.clear();
+                self.run_command(&format!("{} {id}", verb_add(roll)));
+            }
+        });
+    }
+
+    /// Add one line to the console, oldest dropped first.
+    ///
+    /// Deep enough to hold what `help` prints and a long list after it, which
+    /// is what an admin scrolls back through.
+    fn record_console(&mut self, echo: Echo, line: String) {
         const KEEP: usize = 400;
         if self.console.len() == KEEP {
             self.console.pop_front();
         }
-        self.console.push_back(line);
+        self.console.push_back((echo, line));
+    }
+
+    /// Re-read the three files from disk.
+    fn refresh_lists(&mut self) {
+        let root = self.cfg.pack.server_root.clone();
+        let args = self.scripts.get(self.script_index).map(|s| s.args.clone());
+        self.lists_dir = root.and_then(|root| players::lists_dir(&root, args.as_ref()));
+        let Some(dir) = self.lists_dir.clone() else {
+            self.lists_error = None;
+            return;
+        };
+        self.lists_error = None;
+        for (slot, roll) in players::Roll::ALL.iter().enumerate() {
+            match players::read(&dir, *roll) {
+                Ok(ids) => self.lists[slot] = ids,
+                Err(e) => self.lists_error = Some(format!("{e:#}")),
+            }
+        }
     }
 
     /// What the log says about the session: players, join code, which
@@ -2368,8 +2631,13 @@ impl App {
                 .stroke(egui::Stroke::new(1.0, th::EDGE_SOFT))
                 .inner_margin(egui::Margin::symmetric(10, 8))
                 .show(ui, |ui| {
+                    // Whatever is left of the tab, not a fixed box with dead
+                    // space under it. Floored so it stays usable on a short
+                    // window, and capped so an enormous one does not put the
+                    // last line a screen away from the first.
+                    let height = (ui.available_height() - 16.0).clamp(180.0, 1200.0);
                     egui::ScrollArea::vertical()
-                        .max_height(260.0)
+                        .max_height(height)
                         .auto_shrink([false, false])
                         .stick_to_bottom(self.log_follow)
                         .show(ui, |ui| {

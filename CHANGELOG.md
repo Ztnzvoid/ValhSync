@@ -33,8 +33,16 @@ file and the wire format.
   nothing.
 - The launcher says "server offline" rather than quoting a transport error at
   someone who cannot act on it.
-- **The server's console output**, on the bar, instead of a command prompt that
-  never worked. Valheim's dedicated server prints `type "help" - for commands`
+- **Players**, on their own tab and at the console's prompt: admins, bans and
+  the permitted list, written to the three files Iron Gate's manual documents.
+  That is the only channel a dedicated server has from outside the game.
+  `kick` and `save` are recognised and answered — they exist, but only from an
+  admin pressing F5 in the game — rather than falling through to "unknown
+  command". Iron Gate's warning about the permitted list, the one that empties
+  a server when nobody reads it, is on the card.
+- **A console that is a console**: its own resizable panel, and what the game
+  server prints to its own console instead of a command prompt that never
+  worked. Valheim's dedicated server prints `type "help" - for commands`
   on start-up and then never reads its console: keystrokes written into its
   input buffer are accepted by Windows and ignored by the server. Checked
   against a server up for sixteen hours — every call reported success and the

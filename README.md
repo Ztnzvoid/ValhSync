@@ -121,16 +121,20 @@ everything below available from it.
   process is never killed), follow its log, read players online, join code and
   version. Starting also fills in your public address if what is in the field
   cannot work, and brings publishing online behind it. Publishing follows the
-  game server from then on, however it was started. There is no command prompt:
-  a Valheim dedicated server does not read its console, whatever its start-up
-  banner says, so admin actions go through `adminlist.txt` and
-  `bannedlist.txt`, or through an admin in-game. What the server does print to
-  its console is lifted out of the log and shown on the bar.
+  game server from then on, however it was started.
 - **Mods** — one row per mod in the server's BepInEx folder, each either *sent
   to players* or *server only*. Admin tools and DiscordConnector belong in the
   second; there is no reason to push them down everyone's connection. Drop a
   `.zip` from anywhere, a mod folder or a bare `.dll` on the window to install
   one; an update replaces the version that was there.
+- **Players** — admins, bans and the permitted list, with Iron Gate's own
+  warning about that last one on the card. The same from the console's prompt:
+  `ban <id>`, `unban`, `admin`, `permit`, `banned`. These write the three files
+  Iron Gate documents, which is the only channel a dedicated server has from
+  outside the game: it does not read its console, whatever its start-up banner
+  says, and Valheim has no RCON. Kicking somebody connected right now, and
+  saving on demand, are an admin pressing F5 in the game — typing those here
+  says so rather than failing quietly.
 - **Patch notes** — published signed with the pack. What was added, updated and
   removed writes itself; you add why it matters. Players read it before they
   agree to install, and keep it afterwards.

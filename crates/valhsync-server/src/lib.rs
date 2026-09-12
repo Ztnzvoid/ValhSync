@@ -10,6 +10,7 @@ pub mod keys;
 pub mod logs;
 pub mod net;
 pub mod pack;
+pub mod players;
 pub mod serve;
 pub mod store;
 pub mod update;

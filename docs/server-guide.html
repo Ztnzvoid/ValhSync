@@ -626,11 +626,18 @@ journalctl -u valhsync-server -f</code></pre>
     <li><strong>Start, Restart, Stop and save.</strong> Stopping sends Ctrl+C to the server's
     console, so Valheim writes the world before it exits; the process is never killed. Restart
     waits for it to actually be gone before starting again.</li>
-    <li><strong>The log</strong>, followed live, with the lines the server prints to its own
-    console lifted out of it and shown on the bar. There is no command prompt: a Valheim
-    dedicated server does not read its console, whatever its start-up banner says. Admin
-    actions go through <code>adminlist.txt</code> and <code>bannedlist.txt</code>, or through
-    an admin in-game.</li>
+    <li><strong>The log</strong>, followed live, filling the tab; and below it a resizable
+    <strong>console</strong> carrying the lines the server prints to its own console, which are
+    otherwise a handful among tens of thousands.</li>
+    <li><strong>Players</strong>, on their own tab, and a prompt on the console for the same
+    thing: <code>admin</code>, <code>ban</code>, <code>permit</code> and their un- forms, plus
+    <code>admins</code>, <code>banned</code>, <code>permitted</code> to see a list. These write
+    the three files Iron Gate documents — <code>adminlist.txt</code>,
+    <code>bannedlist.txt</code>, <code>permittedlist.txt</code> — which is the only channel a
+    dedicated server has from outside the game. It does not read its console, whatever its
+    start-up banner says, and Valheim has no RCON; kicking somebody who is connected right now,
+    and saving on demand, are an admin pressing F5 in the game. Typing those here says so
+    rather than failing quietly.</li>
     <li><strong>Patch notes</strong>, on their own tab — a real one, and most of it writes
     itself. The list of mods added, updated and removed is computed from the pack and named for
     you, so you never retype a version number. What you add is the half a diff cannot produce:

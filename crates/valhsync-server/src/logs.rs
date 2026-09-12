@@ -73,7 +73,10 @@ pub fn saved_at(path: &Path) -> Option<SystemTime> {
 
 /// Valheim keeps a dedicated server's worlds under the Unity persistent data
 /// path, next to the game's own saves.
-fn default_savedir() -> Option<PathBuf> {
+/// Shared with the permission lists, which Valheim keeps in the same folder
+/// as the worlds -- the manual calls it "the default save path".
+#[must_use]
+pub fn default_savedir() -> Option<PathBuf> {
     #[cfg(windows)]
     {
         let appdata = std::env::var_os("APPDATA")?;
