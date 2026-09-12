@@ -107,8 +107,14 @@ working, and you can always download a release from the project itself.
 
 ## Linux and Steam Deck
 
-The sync works the same. BepInEx itself only loads if Valheim's launch options
-are set in Steam (Valheim > Properties > Launch options):
+**Untested.** ValhSync builds for Linux and its test suite passes there on
+every commit, but nobody has yet run a real sync on Linux, under Proton, or on
+a Deck. Everything below is how it is meant to work, not a report of it
+working. If you try it, say what happened -- that is worth more than the
+paragraph you are reading.
+
+BepInEx itself only loads if Valheim's launch options are set in Steam
+(Valheim > Properties > Launch options):
 
 - Proton: `WINEDLLOVERRIDES="winhttp=n,b" %command%`
 - Native Linux build: `./start_game_bepinex.sh %command%`

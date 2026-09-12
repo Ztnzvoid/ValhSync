@@ -231,8 +231,9 @@
     <li><a href="#s5"><span class="n">§5</span>Updating the launcher</a></li>
     <li><a href="#s6"><span class="n">§6</span>Security, honestly</a></li>
     <li><a href="#s7"><span class="n">§7</span>Licences</a></li>
-    <li><a href="#s8"><span class="n">§8</span>Building it</a></li>
-    <li><a href="#s9"><span class="n">§9</span>En français</a></li>
+    <li><a href="#s8"><span class="n">§8</span>What has been tested</a></li>
+    <li><a href="#s9"><span class="n">§9</span>Building it</a></li>
+    <li><a href="#s10"><span class="n">§10</span>En français</a></li>
   </ol>
 </nav>
 
@@ -445,7 +446,29 @@
 </section>
 
 <section id="s8">
-  <h2><span class="n">§8</span>Building it</h2>
+  <h2><span class="n">§8</span>What has been tested</h2>
+  <p>Worth stating plainly, because the answer is narrower than the code's reach. One platform
+  has been verified end to end: a real dedicated server, a real player, real mods, real
+  connections. Everything else either compiles and passes its tests, or is untried.</p>
+  <table>
+    <thead><tr><th>Platform</th><th>Status</th></tr></thead>
+    <tbody>
+      <tr><td>Windows 11, x86_64</td><td><strong>Verified end to end.</strong> Publisher beside a dedicated server, launcher on a player's machine, pack synced, game joined.</td></tr>
+      <tr><td>Linux, x86_64</td><td>Builds, and the whole test suite passes in CI on every commit. <em>No window has ever been opened on it</em>, no sync has been run, no game started.</td></tr>
+      <tr><td>Proton / Steam Deck</td><td>Untested. The launch-option lines the launcher shows come from the BepInEx documentation, not from a machine here.</td></tr>
+      <tr><td>Dedicated server in Docker</td><td>Untested, and partly unsupported by design: the publisher finds the game server by looking at processes, so it cannot see one in another container. Publishing a pack from a mounted volume should work; starting, stopping and the console will not.</td></tr>
+      <tr><td>Hosted servers (G-Portal, Nitrado…)</td><td>Untested. The path exists — publish from a local copy of the pack, point <code>game_address</code> at the host — but nobody has run it.</td></tr>
+      <tr><td>macOS</td><td>Not built, not tested.</td></tr>
+    </tbody>
+  </table>
+  <div class="rule decide">
+    <strong>If you try one of these,</strong> a report either way is worth more than any amount
+    of reasoning about it from here. Open an issue with what you ran and what happened.
+  </div>
+</section>
+
+<section id="s9">
+  <h2><span class="n">§9</span>Building it</h2>
   <p>Rust stable, edition 2024. No build container, no code generation step, no vendored C.</p>
 <pre><code>cargo test --workspace
 cargo clippy --workspace --all-targets -- -D warnings
@@ -461,8 +484,8 @@ cargo run -p valhsync            # the player's launcher</code></pre>
   shared theme).</p>
 </section>
 
-<section id="s9">
-  <h2><span class="n">§9</span>En français</h2>
+<section id="s10">
+  <h2><span class="n">§10</span>En français</h2>
   <p><strong>Le serveur fait autorité sur le pack de mods.</strong> L'administrateur lance
   <code>valhsync-server</code> à côté du serveur dédié : il pilote le serveur de jeu, choisit
   quels mods partent chez les joueurs, et publie le pack sous forme de manifeste signé. Le joueur
@@ -476,6 +499,10 @@ cargo run -p valhsync            # the player's launcher</code></pre>
   <p>La publication passe par le port du jeu, en TCP : Valheim ne l'utilise qu'en UDP, donc la
   règle de routeur qui existe déjà couvre les deux. <strong>ValhSync ne demande jamais d'ouvrir
   un port que le jeu n'utilise pas déjà.</strong></p>
+  <p><strong>Testé où ?</strong> Windows 11 x86_64 de bout en bout, avec un vrai serveur et de
+  vrais joueurs. Linux compile et passe ses tests à chaque commit, mais aucune fenêtre n'y a
+  jamais été ouverte. Proton, Steam Deck, Docker, serveurs hébergés et macOS : jamais essayés.
+  Le <a href="#s8">§8</a> détaille.</p>
   <p>Guides détaillés :
   <a href="https://github.com/Ztnzvoid/ValhSync/blob/main/docs/admin-guide.md">administrateur</a>,
   <a href="https://github.com/Ztnzvoid/ValhSync/blob/main/docs/player-guide.md">joueur</a>.
