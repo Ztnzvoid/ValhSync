@@ -132,6 +132,10 @@ pub(super) struct App {
     public_url: String,
     /// The admin's word to players, as typed. Empty means there is none.
     notes: String,
+    /// The Discord webhook, as typed. A credential: it is kept out of every
+    /// log and error by `config::Secret`, and the field is masked here so it
+    /// does not travel in a screenshot either.
+    discord_webhook: String,
 
     mods: Vec<ModEntry>,
     scripts: Vec<detect::StartScript>,
@@ -298,6 +302,12 @@ impl App {
             public_url: cfg.server.public_url.clone().unwrap_or_default(),
             export_dir: export_dir.display().to_string(),
             notes: cfg.pack.notes.clone().unwrap_or_default(),
+            discord_webhook: cfg
+                .server
+                .discord_webhook
+                .as_ref()
+                .map(|s| s.as_str().to_string())
+                .unwrap_or_default(),
             saved: cfg.clone(),
             never_saved: !loaded,
             cfg,
@@ -454,6 +464,8 @@ impl App {
         cfg.pack.export_dir = (!dir.is_empty()).then(|| PathBuf::from(dir));
         let notes = self.notes.trim();
         cfg.pack.notes = (!notes.is_empty()).then(|| notes.to_string());
+        let hook = self.discord_webhook.trim();
+        cfg.server.discord_webhook = (!hook.is_empty()).then(|| hook.into());
         cfg
     }
 
@@ -2582,6 +2594,30 @@ impl App {
         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
             ui.label(RichText::new(text).small().color(color));
         });
+
+        // Under the note, because it is what carries the note out: the
+        // announcement is this text plus the mods that moved.
+        ui.add_space(12.0);
+        th::hairline(ui);
+        ui.add_space(8.0);
+        ui.label(
+            RichText::new(self.t(Key::DiscordTitle))
+                .font(th::display_font(13.0))
+                .color(th::GOLD_LIT),
+        );
+        w::hint(ui, self.t(Key::DiscordHint));
+        ui.add_space(4.0);
+        let placeholder = self.t(Key::DiscordPlaceholder);
+        ui.add(
+            egui::TextEdit::singleline(&mut self.discord_webhook)
+                .desired_width(ui.available_width())
+                .font(egui::TextStyle::Monospace)
+                // Masked: an admin showing this window to somebody, or
+                // screen-sharing while they set the server up, would
+                // otherwise be handing out posting rights to their Discord.
+                .password(true)
+                .hint_text(placeholder),
+        );
     }
 
     #[allow(clippy::too_many_lines)] // one card, read top to bottom
@@ -2614,7 +2650,10 @@ impl App {
                             let data = self.data_dir.clone();
                             let dir = PathBuf::from(self.export_dir.trim());
                             self.start_job(move |rep| {
-                                rep.run(|| worker::export(&cfg, &data, dir));
+                                rep.run_then(
+                                    || worker::export(&cfg, &data, dir),
+                                    |rep| worker::announce(&cfg, &data, rep),
+                                );
                             });
                         }
                         if ui.button(self.t(Key::Open)).clicked() {
@@ -2697,7 +2736,12 @@ impl App {
                     self.pull_fields();
                     let cfg = self.cfg.clone();
                     let data = self.data_dir.clone();
-                    self.start_job(move |rep| rep.run(|| worker::scan(&cfg, &data)));
+                    self.start_job(move |rep| {
+                        rep.run_then(
+                            || worker::scan(&cfg, &data),
+                            |rep| worker::announce(&cfg, &data, rep),
+                        );
+                    });
                 }
                 if let Some(s) = &self.summary {
                     ui.label(

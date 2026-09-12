@@ -56,6 +56,59 @@ impl Default for GameServerSection {
     }
 }
 
+/// A configured value that must never be shown.
+///
+/// One setting in this file is a credential rather than a preference: the
+/// Discord webhook URL, which lets whoever holds it post in that channel as
+/// the server. The whole point of the wrapper is the hand-written `Debug`
+/// below. [`Config`] derives `Debug`, and a configuration printed with `{:?}`
+/// ends up in a log line, a panic message or a bug report -- which is exactly
+/// how a token gets handed to a stranger. In every other respect this is a
+/// `String`, and it is serialized as one, so the TOML file is unchanged.
+#[derive(Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct Secret(String);
+
+impl Secret {
+    /// The value itself, for the one caller that has to act on it.
+    ///
+    /// Deliberately not `Display` and not `Deref`: reading it has to be
+    /// something somebody wrote on purpose, so it cannot slip into a format
+    /// string by accident.
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+
+    /// Whether there is anything here at all.
+    ///
+    /// Whitespace counts as nothing: a box the admin emptied in the window
+    /// means the feature is off, not a value that fails to parse.
+    #[must_use]
+    pub fn is_blank(&self) -> bool {
+        self.0.trim().is_empty()
+    }
+}
+
+impl From<String> for Secret {
+    fn from(value: String) -> Self {
+        Self(value)
+    }
+}
+
+impl From<&str> for Secret {
+    fn from(value: &str) -> Self {
+        Self(value.to_string())
+    }
+}
+
+/// Written by hand rather than derived, and the reason [`Secret`] exists.
+impl std::fmt::Debug for Secret {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("Secret(<redacted>)")
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct ServerSection {
@@ -76,6 +129,15 @@ pub struct ServerSection {
     /// strip was back to its default on the next launch, with the admin left
     /// wondering why nothing came online.
     pub publish_live: Option<bool>,
+    /// Where to announce a new pack, when the admin wants one announced.
+    ///
+    /// Absent by default, and absent means the feature is off: ValhSync
+    /// contacts nobody unless somebody pasted an address here. It is a
+    /// [`Secret`] because a webhook URL carries a token, and it is stored in
+    /// this file rather than asked for each time because publishing happens
+    /// from the window, from `serve` and from the command line, and a value
+    /// that lived in only one of them would announce from only one of them.
+    pub discord_webhook: Option<Secret>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -172,6 +234,7 @@ impl Default for ServerSection {
             public_url: None,
             game_address: "valheim.example.org:2456".into(),
             publish_live: None,
+            discord_webhook: None,
         }
     }
 }
@@ -252,6 +315,11 @@ impl Config {
             bail!("[pack] server_root is not set, and there is no client_extras folder either");
         }
         self.policy_rules()?;
+        // Checked here so that a mistyped address is refused at the moment it
+        // is typed -- the window validates before every save -- rather than at
+        // the end of a publish, when the admin has already moved on and the
+        // announcement they were expecting simply never appears.
+        self.discord_hook()?;
         for root in &self.pack.managed_roots {
             valhsync_core::path::validate(&format!("{root}/_"), &AllowedRoots::bepinex())
                 .map_err(|e| anyhow::anyhow!("[pack] managed_roots {root:?}: {e}"))?;
@@ -297,6 +365,31 @@ impl Config {
         self.server
             .publish_live
             .unwrap_or_else(|| self.is_colocated())
+    }
+
+    /// The Discord webhook to announce a new pack to, if there is one.
+    ///
+    /// `Ok(None)` covers both cases where nothing should be posted: no line in
+    /// the file at all, and a box the admin emptied in the window. `Err` means
+    /// there is something there that is not a Discord webhook, which is worth
+    /// saying out loud -- an admin who pasted the wrong line would otherwise
+    /// spend a week wondering why the channel stays quiet.
+    ///
+    /// The error names the rule that was broken and never repeats the value
+    /// back, because a token that reaches a log or a screenshot has to be
+    /// regenerated in Discord. See [`crate::webhook::parse`].
+    pub fn discord_hook(&self) -> Result<Option<crate::webhook::Hook>> {
+        let Some(raw) = self
+            .server
+            .discord_webhook
+            .as_ref()
+            .filter(|s| !s.is_blank())
+        else {
+            return Ok(None);
+        };
+        let hook = crate::webhook::parse(raw.as_str())
+            .map_err(|e| anyhow::anyhow!("[server] discord_webhook: {e}"))?;
+        Ok(Some(hook))
     }
 
     pub fn is_colocated(&self) -> bool {
@@ -549,6 +642,15 @@ game_address = {game_address}
 # since the game's port is already open. The window follows this setting --
 # with `true`, publishing comes online by itself whenever the game server is up.
 {publish_live}
+# Optional: announce every new pack in a Discord channel. Discord writes the
+# address out for you under Server Settings -> Integrations -> Webhooks ->
+# Copy Webhook URL. The message is the same patch note the launcher shows: what
+# arrived, what moved, what went, and your word to the players from `notes`.
+# TREAT THIS LINE AS A PASSWORD. Anyone who has it can post in that channel as
+# your server, so cut it out before you paste this file into a screenshot, a
+# forum post or a bug report. ValhSync never writes it to a log or an error.
+# Left out: nothing is ever posted, and nothing is ever contacted.
+{discord_webhook}
 
 [pack]
 # Game root of the dedicated server. Everything matching `include` (minus
@@ -644,6 +746,15 @@ restart_on_crash = {restart_on_crash}
         publish_live = match cfg.server.publish_live {
             Some(v) => format!("publish_live = {v}"),
             None => "# publish_live = true".to_string(),
+        },
+        // Rendered whatever it holds, blank included: an empty value means the
+        // feature is off, and turning it into the commented example here would
+        // come back as `None` and fail `check_lossless` on the way out.
+        discord_webhook = match cfg.server.discord_webhook.as_ref() {
+            Some(w) => format!("discord_webhook = {}", toml_str(w.as_str())),
+            None =>
+                "# discord_webhook = 'https://discord.com/api/webhooks/123456789/your-token'"
+                    .to_string(),
         },
         export_dir = toml_opt_path(
             "export_dir",
@@ -772,6 +883,69 @@ mod publish_mode_tests {
         assert_eq!(toml::from_str::<Config>(&blank).unwrap().pack.notes, None);
     }
 
+    /// The webhook is a credential the admin pasted once, so losing it on the
+    /// next save means a channel that quietly stops being told anything.
+    #[test]
+    fn the_webhook_survives_a_round_trip_and_is_never_printed() {
+        const URL: &str = "https://discord.com/api/webhooks/123456789/abcdefTOKENghijkl";
+        let mut cfg = Config::default();
+        cfg.server.discord_webhook = Some(URL.into());
+
+        let text = to_commented_toml(&cfg);
+        let back: Config = toml::from_str(&text).unwrap();
+        assert_eq!(
+            back.server.discord_webhook.as_ref().map(Secret::as_str),
+            Some(URL)
+        );
+        // Writing what was read back must not drift, or every save in the
+        // window would rewrite the file.
+        assert_eq!(to_commented_toml(&back), text);
+        // The file says what the line is and that it is not to be shared.
+        assert!(text.contains("TREAT THIS LINE AS A PASSWORD"), "{text}");
+        assert!(text.contains("Copy Webhook URL"), "{text}");
+
+        // The one thing `Secret` exists for: a configuration in a `{:?}` --
+        // a log line, a panic, a bug report -- carries no token.
+        let shown = format!("{cfg:?}");
+        assert!(!shown.contains("abcdefTOKENghijkl"), "{shown}");
+        assert!(shown.contains("Secret(<redacted>)"), "{shown}");
+
+        // Nothing configured is nothing in the file, and the feature is off.
+        let blank = to_commented_toml(&Config::default());
+        assert!(blank.contains("# discord_webhook = "), "only the example");
+        let read: Config = toml::from_str(&blank).unwrap();
+        assert!(read.discord_hook().unwrap().is_none());
+    }
+
+    /// A value that is not a Discord webhook is refused while the admin is
+    /// still looking at the box, not at the end of a publish.
+    #[test]
+    fn a_webhook_that_is_not_discords_is_refused_when_it_is_typed() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut cfg = Config::default();
+        cfg.pack.server_root = Some(tmp.path().to_path_buf());
+        cfg.validate().unwrap();
+
+        cfg.server.discord_webhook =
+            Some("https://evil.test/api/webhooks/123456789/abcdefTOKENghijkl".into());
+        let err = format!("{:#}", cfg.validate().unwrap_err());
+        assert!(err.contains("discord_webhook"), "{err}");
+        // The admin has to be able to keep using the token they pasted.
+        assert!(!err.contains("abcdefTOKENghijkl"), "{err}");
+
+        // A box the admin emptied is the feature switched off, not an error.
+        cfg.server.discord_webhook = Some("   ".into());
+        cfg.validate().unwrap();
+        assert!(cfg.discord_hook().unwrap().is_none());
+
+        cfg.server.discord_webhook = Some("https://discord.com/api/webhooks/1/token".into());
+        cfg.validate().unwrap();
+        assert_eq!(
+            cfg.discord_hook().unwrap().map(|h| h.host().to_string()),
+            Some("discord.com".to_string())
+        );
+    }
+
     /// `'''` cannot appear inside a TOML literal string, and neither can an
     /// apostrophe touching the closing delimiter.
     #[test]
@@ -852,6 +1026,7 @@ mod tests {
                 game_address: "valheim.example.org:2456".into(),
                 public_url: Some("https://example.org/pack".into()),
                 publish_live: Some(true),
+                discord_webhook: Some("https://discord.com/api/webhooks/1/token".into()),
             },
             game_server: GameServerSection {
                 restart_on_crash: true,
