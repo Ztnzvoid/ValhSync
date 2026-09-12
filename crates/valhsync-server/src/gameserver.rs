@@ -128,9 +128,35 @@ fn spawn_in_new_console(cmd: &mut Command) {
 #[cfg(not(windows))]
 fn spawn_in_new_console(_cmd: &mut Command) {}
 
+/// The `cmd.exe` (or `sh`) ValhSync started the script with.
+///
+/// Worth keeping hold of for one reason: a batch file interrupted by Ctrl+C
+/// leaves cmd.exe asking "Terminate batch job (Y/N)?" and its window sitting
+/// there until somebody answers. Valheim has already written the world and
+/// exited by then, so there is nothing left in that console to protect --
+/// only a question nobody wants to be asked.
+#[derive(Debug)]
+pub struct Shell(std::process::Child);
+
+impl Shell {
+    /// Close the leftover shell, once the game itself is gone.
+    ///
+    /// Does nothing while the dedicated server is still alive: that process
+    /// is the one ValhSync never kills, and a shell still running it is not
+    /// leftover.
+    pub fn close_if_game_gone(&mut self) -> bool {
+        if is_running() {
+            return false;
+        }
+        let _ = self.0.kill();
+        let _ = self.0.wait();
+        true
+    }
+}
+
 /// Start the dedicated server. Returns once it has been spawned; it keeps
 /// running independently of ValhSync.
-pub fn start(launch: &Launch) -> Result<()> {
+pub fn start(launch: &Launch) -> Result<Shell> {
     if is_running() {
         bail!("a Valheim dedicated server is already running on this machine");
     }
@@ -192,9 +218,10 @@ pub fn start(launch: &Launch) -> Result<()> {
         cmd.env("PATH", path);
     }
     spawn_in_new_console(&mut cmd);
-    cmd.spawn()
+    let child = cmd
+        .spawn()
         .with_context(|| format!("cannot start {}", launch.describe()))?;
-    Ok(())
+    Ok(Shell(child))
 }
 
 #[cfg(test)]

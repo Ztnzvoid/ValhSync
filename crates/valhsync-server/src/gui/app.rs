@@ -146,6 +146,9 @@ pub(super) struct App {
     /// The process the poll matched. Shown on the panel: "cannot start, one is
     /// already running" is a dead end unless it says which one.
     game_pid: Option<u32>,
+    /// The shell ValhSync started the script with, kept so the console does
+    /// not sit on "Terminate batch job (Y/N)?" after a stop.
+    game_shell: Option<gameserver::Shell>,
     game_checked: Instant,
 
     tab: Tab,
@@ -270,6 +273,7 @@ impl App {
             new_key_at,
             game_running: false,
             game_pid: None,
+            game_shell: None,
             // Force a process check on the very first frame.
             game_checked: Instant::now()
                 .checked_sub(POLL_GAME_SERVER)
@@ -875,24 +879,7 @@ impl eframe::App for App {
         {
             self.detect_public_ip();
         }
-        if self.game_checked.elapsed() >= POLL_GAME_SERVER {
-            let was = self.game_running;
-            self.game_pid = gameserver::pid();
-            self.game_running = self.game_pid.is_some();
-            self.game_checked = Instant::now();
-            // A server that has just started writes a log that did not exist.
-            if was != self.game_running {
-                self.refresh_log_sources();
-                if self.game_running {
-                    // A restart is a fresh intent, like pressing Start.
-                    self.publish_paused = false;
-                    self.publish_tried = None;
-                } else {
-                    self.session = logs::Session::default();
-                    self.stop_requested = None;
-                }
-            }
-        }
+        self.poll_game_server();
         self.follow_game_with_publishing();
         if self.tab == Tab::Status {
             self.poll_log();
@@ -1279,9 +1266,12 @@ impl App {
         let Some(path) = self.scripts.get(self.script_index).map(|s| s.path.clone()) else {
             return;
         };
-        if let Err(e) = gameserver::start(&gameserver::Launch(path)) {
-            self.notify(format!("{e:#}"), th::BLOOD_LIT);
-            return;
+        match gameserver::start(&gameserver::Launch(path)) {
+            Ok(shell) => self.game_shell = Some(shell),
+            Err(e) => {
+                self.notify(format!("{e:#}"), th::BLOOD_LIT);
+                return;
+            }
         }
         self.game_running = true;
         self.game_checked = Instant::now();
@@ -1299,6 +1289,40 @@ impl App {
         self.publish_paused = false;
         self.publish_tried = None;
         self.follow_game_with_publishing();
+    }
+
+    /// Is the dedicated server up? Everything the window says about a
+    /// session hangs off the answer.
+    fn poll_game_server(&mut self) {
+        if self.game_checked.elapsed() < POLL_GAME_SERVER {
+            return;
+        }
+        let was = self.game_running;
+        self.game_pid = gameserver::pid();
+        self.game_running = self.game_pid.is_some();
+        self.game_checked = Instant::now();
+        if was == self.game_running {
+            return;
+        }
+        // A server that has just started writes a log that did not exist.
+        self.refresh_log_sources();
+        if self.game_running {
+            // A restart is a fresh intent, like pressing Start.
+            self.publish_paused = false;
+            self.publish_tried = None;
+            return;
+        }
+        self.session = logs::Session::default();
+        self.stop_requested = None;
+        // The game is gone; the shell that ran the script is only a question
+        // waiting for an answer.
+        if self
+            .game_shell
+            .as_mut()
+            .is_some_and(gameserver::Shell::close_if_game_gone)
+        {
+            self.game_shell = None;
+        }
     }
 
     /// Publishing follows the game server.
