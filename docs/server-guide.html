@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ValhSync — server guide</title>
+<meta name="description" content="Setting up ValhSync beside a Valheim dedicated server, on Windows and on Linux: install, configure, publish, hand out the launcher, keep it running.">
+<style>
+  :root {
+    --night:      #0F0D0B;
+    --wood:       #17140F;
+    --panel:      #1E1912;
+    --leather:    #262017;
+    --edge:       #4A3C27;
+    --edge-soft:  #332A1D;
+    --bone:       #E0D5BC;
+    --bone-dim:   #ADA089;
+    --gold:       #C7A455;
+    --gold-lit:   #E8CD8B;
+    --rune:       #7E9AA7;
+    --blood:      #9A3421;
+    --moss:       #7E9155;
+
+    --serif:   "Iowan Old Style", "Charter", Constantia, "Palatino Linotype", Georgia, serif;
+    --display: Cinzel, "Trajan Pro", Constantia, "Palatino Linotype", "Book Antiqua", Georgia, serif;
+    --mono:    "Cascadia Code", "JetBrains Mono", Consolas, "DejaVu Sans Mono", monospace;
+  }
+  * { box-sizing: border-box; }
+  html {
+    background: var(--night);
+    color: var(--bone);
+    background-image:
+      radial-gradient(120% 80% at 50% 0%, #241D14 0%, rgba(36,29,20,0) 60%),
+      radial-gradient(90% 60% at 50% 100%, #1A1610 0%, rgba(26,22,16,0) 70%);
+    background-attachment: fixed;
+  }
+  body { margin: 0; font: 17px/1.65 var(--serif); }
+  ::selection { background: rgba(199,164,85,0.3); }
+
+  a { color: var(--gold); text-underline-offset: 2px; text-decoration-color: var(--edge); }
+  a:hover { color: var(--gold-lit); }
+  a:focus-visible { outline: 2px solid var(--gold-lit); outline-offset: 2px; }
+
+  .layout {
+    display: grid;
+    grid-template-columns: 15rem minmax(0, 46rem);
+    gap: 3rem;
+    max-width: 68rem;
+    margin: 0 auto;
+    padding: 0 1.5rem 6rem;
+  }
+
+  nav.toc {
+    position: sticky;
+    top: 1.5rem;
+    align-self: start;
+    margin-top: 3rem;
+    font: 0.86rem/1.6 var(--display);
+    letter-spacing: 0.01em;
+  }
+  nav.toc ol { list-style: none; margin: 0; padding: 0; border-left: 1px solid var(--edge-soft); }
+  nav.toc li { margin: 0; }
+  nav.toc a {
+    display: block;
+    text-decoration: none;
+    color: var(--bone-dim);
+    padding: 0.22rem 0 0.22rem 0.9rem;
+    margin-left: -1px;
+    border-left: 2px solid transparent;
+  }
+  nav.toc a:hover { color: var(--gold-lit); border-left-color: var(--gold); background: rgba(199,164,85,0.05); }
+  nav.toc .n { display: inline-block; width: 2.4rem; color: var(--rune); }
+  nav.toc .back { margin-top: 1rem; padding-left: 0.9rem; display: block; color: var(--rune); text-decoration: none; }
+  nav.toc .back:hover { color: var(--gold-lit); }
+
+  main { min-width: 0; }
+
+  header.hero { padding: 3.5rem 0 2.2rem; border-bottom: 1px solid var(--edge); }
+  header.hero h1 {
+    font: 600 2.6rem/1.05 var(--display);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--gold);
+    margin: 0 0 0.5rem;
+    text-shadow: 0 1px 0 #000, 0 0 28px rgba(199,164,85,0.16);
+  }
+  header.hero .sub { font: 1.05rem/1.5 var(--serif); color: var(--bone-dim); margin: 0; max-width: 40rem; }
+
+  section { padding-top: 2.6rem; }
+  h2 {
+    font: 600 1.5rem/1.25 var(--display);
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--gold);
+    margin: 0 0 1rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid var(--edge-soft);
+    display: flex;
+    gap: 0.7rem;
+    align-items: baseline;
+  }
+  h2 .n { color: var(--rune); font-weight: 400; letter-spacing: 0; text-transform: none; }
+  h3 {
+    font: 600 1.08rem/1.35 var(--display);
+    letter-spacing: 0.02em;
+    color: var(--gold-lit);
+    margin: 1.8rem 0 0.5rem;
+  }
+  p, li { max-width: 42rem; }
+  strong { color: var(--gold-lit); font-weight: 600; }
+  em { color: var(--bone); }
+  ul, ol { padding-left: 1.3rem; }
+  li { margin: 0.32rem 0; }
+  li::marker { color: var(--rune); }
+
+  code {
+    font: 0.86em var(--mono);
+    background: var(--wood);
+    border: 1px solid var(--edge-soft);
+    color: var(--gold-lit);
+    padding: 0.08em 0.34em;
+    border-radius: 2px;
+  }
+  pre {
+    font: 0.82rem/1.6 var(--mono);
+    background: var(--wood);
+    color: #C6BCA6;
+    border: 1px solid var(--edge-soft);
+    border-left: 3px solid var(--edge);
+    padding: 1rem 1.15rem;
+    overflow-x: auto;
+    border-radius: 2px;
+  }
+  pre code { background: none; border: 0; padding: 0; font-size: inherit; color: inherit; }
+
+  table { border-collapse: collapse; width: 100%; margin: 0.9rem 0 1.3rem; font-size: 0.93rem; }
+  th, td { text-align: left; vertical-align: top; padding: 0.6rem 0.75rem; border-bottom: 1px solid var(--edge-soft); }
+  th {
+    font: 600 0.82rem var(--display);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--gold);
+    border-bottom: 2px solid var(--edge);
+  }
+  tbody tr:hover { background: rgba(199,164,85,0.04); }
+
+  .rule {
+    border: 1px solid var(--edge-soft);
+    border-left: 4px solid var(--rune);
+    background: var(--leather);
+    padding: 0.85rem 1.05rem;
+    margin: 1.1rem 0;
+  }
+  .rule.decide { border-left-color: var(--gold); }
+  .rule.never  { border-left-color: var(--blood); }
+  .rule strong:first-child {
+    font-family: var(--display);
+    letter-spacing: 0.03em;
+    color: var(--gold-lit);
+  }
+  .rule.never strong:first-child { color: #D2724F; }
+
+  /* ── Windows and Linux, side by side ────────────────────────────── */
+  .os { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin: 1.2rem 0; }
+  .os > div { border: 1px solid var(--edge-soft); background: var(--panel); padding: 1rem 1.1rem; }
+  .os h3 { margin-top: 0; }
+  .os pre { margin-bottom: 0; }
+  .os ol, .os ul { padding-left: 1.1rem; margin-bottom: 0; }
+
+  footer {
+    margin-top: 4.5rem;
+    padding-top: 1.1rem;
+    border-top: 1px solid var(--edge-soft);
+    font: 0.86rem var(--display);
+    letter-spacing: 0.02em;
+    color: var(--bone-dim);
+  }
+
+  @media (max-width: 900px) {
+    .layout { grid-template-columns: 1fr; gap: 0; }
+    nav.toc { position: static; margin-top: 1.5rem; }
+    header.hero h1 { font-size: 2rem; }
+    .os { grid-template-columns: 1fr; }
+  }
+  @media print {
+    nav.toc { display: none; }
+    .layout { display: block; }
+    html { background: #fff; color: #000; background-image: none; }
+    a, h1, h2, h3, th, strong { color: #000; }
+  }
+</style>
+</head>
+<body>
+<div class="layout">
+
+<nav class="toc" aria-label="Contents">
+  <ol>
+    <li><a href="#s1"><span class="n">§1</span>Before you start</a></li>
+    <li><a href="#s2"><span class="n">§2</span>Install</a></li>
+    <li><a href="#s3"><span class="n">§3</span>First run</a></li>
+    <li><a href="#s4"><span class="n">§4</span>Choose what travels</a></li>
+    <li><a href="#s5"><span class="n">§5</span>Publish</a></li>
+    <li><a href="#s6"><span class="n">§6</span>Hand out the launcher</a></li>
+    <li><a href="#s7"><span class="n">§7</span>Keep it running</a></li>
+    <li><a href="#s8"><span class="n">§8</span>Day to day</a></li>
+    <li><a href="#s9"><span class="n">§9</span>When it goes wrong</a></li>
+  </ol>
+  <a class="back" href="index.html">← ValhSync</a>
+</nav>
+
+<main>
+
+<header class="hero">
+  <h1>Server guide</h1>
+  <p class="sub">Setting up ValhSync beside a Valheim dedicated server, on Windows and on Linux.
+  Twenty minutes the first time, and nothing to redo afterwards.</p>
+</header>
+
+<section id="s1">
+  <h2><span class="n">§1</span>Before you start</h2>
+  <p>You need a Valheim dedicated server that already works: players can join it, with or without
+  mods. ValhSync publishes the mods it is running; it does not install the server for you.</p>
+  <div class="rule never">
+    <strong>The server is a separate Steam application.</strong> The game is app 892970, the
+    dedicated server is 896660, and they update independently. A server left behind refuses every
+    player whose game has updated, whatever the mods say — and the message Valheim shows is the
+    same generic one. ValhSync's window warns when Steam has an update waiting for the server.
+  </div>
+  <p><strong>BepInEx</strong> has to be installed in the server's folder, since that is what
+  ValhSync reads. Nothing else is required: no database, no account, no service to register.</p>
+  <h3>The port</h3>
+  <p>If you publish from your own machine, ValhSync listens on <strong>the game's own port, in
+  TCP</strong> — 2456 by default. Valheim uses that port in UDP only, so a router rule covering
+  both protocols, which is the ordinary shape, carries them both. <em>You do not open a new
+  port.</em> If your rule is UDP-only, widen it to TCP+UDP.</p>
+  <p>If you would rather open nothing at all, export a folder and upload it anywhere — see
+  <a href="#s5">§5</a>.</p>
+</section>
+
+<section id="s2">
+  <h2><span class="n">§2</span>Install</h2>
+  <p>Unpack the admin archive somewhere the service user can read. Keep
+  <code>valhsync.exe</code> beside <code>valhsync-server</code>: that is what lets the publisher
+  offer players an up-to-date launcher later.</p>
+  <div class="os">
+    <div>
+      <h3>Windows</h3>
+      <ol>
+        <li>Unpack <code>valhsync-&lt;version&gt;-x86_64-pc-windows-msvc.zip</code>, for example
+        into <code>C:\valhsync\</code>.</li>
+        <li>Run <code>valhsync-server.exe</code>. A window opens.</li>
+      </ol>
+      <p>Windows may warn on first run: the binaries are not signed with a paid certificate.
+      More info → Run anyway. Release hashes are published if you want to check first.</p>
+    </div>
+    <div>
+      <h3>Linux</h3>
+<pre><code>sudo useradd --system --home /opt/valhsync \
+     --shell /usr/sbin/nologin valhsync
+sudo mkdir -p /opt/valhsync
+sudo tar -xzf valhsync-*-linux-gnu.tar.gz \
+     --strip-components=1 -C /opt/valhsync
+sudo chown -R valhsync: /opt/valhsync</code></pre>
+      <p>The service user needs <strong>read</strong> access to the dedicated server's BepInEx
+      folder — it never writes there — and write access to its own directory.</p>
+    </div>
+  </div>
+  <div class="rule">
+    <strong>On a headless Linux box, use the command line.</strong> The window is built for Linux
+    and its logic is tested there on every commit, but nobody has yet opened one on a Linux
+    desktop. Everything the window does, the CLI does — and that is the path this guide takes for
+    Linux.
+  </div>
+</section>
+
+<section id="s3">
+  <h2><span class="n">§3</span>First run</h2>
+  <div class="os">
+    <div>
+      <h3>Windows: the window</h3>
+      <p>It finds the dedicated server by itself (Steam app 896660, then the usual folders).
+      Check the three things on the <strong>Settings</strong> tab:</p>
+      <ul>
+        <li>the server folder it found;</li>
+        <li>the name players will see;</li>
+        <li>the <strong>game server address</strong>, <code>host:port</code>.</li>
+      </ul>
+      <p>The address is detected and filled in for you when what is there cannot work. There is
+      no Save button: it writes itself.</p>
+    </div>
+    <div>
+      <h3>Linux: <code>init</code></h3>
+<pre><code>sudo -u valhsync /opt/valhsync/valhsync-server \
+  --config /opt/valhsync/valhsync-server.toml init \
+  --server-root /home/steam/valheim \
+  --name "My server" \
+  --game-address valheim.example.org:2456 \
+  --public-url http://valheim.example.org:2456</code></pre>
+      <p>It writes a commented configuration, generates the signing key and prints the invite
+      code.</p>
+    </div>
+  </div>
+  <h3>Where things live</h3>
+  <table>
+    <thead><tr><th></th><th>Windows</th><th>Linux</th></tr></thead>
+    <tbody>
+      <tr><td>Configuration</td><td><code>%APPDATA%\valhsync\valhsync-server.toml</code></td><td><code>~/.config/valhsync/valhsync-server.toml</code></td></tr>
+      <tr><td>Key, store, manifest</td><td colspan="2"><code>valhsync-server-data/</code>, beside that file</td></tr>
+    </tbody>
+  </table>
+  <p>A <code>valhsync-server.toml</code> already sitting beside the executable is honoured
+  instead — a portable install, which is what <code>--config</code> also gives you.</p>
+  <div class="rule never">
+    <strong>Back up <code>valhsync-server-data/keys/server.key</code>.</strong> It is your
+    server's identity. Every player pins it; lose it and all of them are refused until they
+    import a fresh invite code. It lives beside the configuration, not beside the executable, so
+    unpacking a new build does not mint a new one — and if you have a key from an older install,
+    <em>Settings → Invite code → Take over another install's key</em> adopts it.
+  </div>
+</section>
+
+<section id="s4">
+  <h2><span class="n">§4</span>Choose what travels</h2>
+  <p>Everything in the server's <code>BepInEx/plugins</code> is published unless you say
+  otherwise. Two things usually should not travel:</p>
+  <ul>
+    <li><strong>Server-only mods</strong> — admin tools, Discord bridges, anything with no effect
+    on a client. On Windows, the <strong>Mods</strong> tab: each row is either <em>sent to
+    players</em> or <em>server only</em>. On Linux, list them under <code>[pack] exclude</code>.</li>
+    <li><strong>Client-only mods</strong> — the ones that are not installed on the server at all,
+    so ValhSync cannot find them there. Put them in the <code>client-extras/</code> folder, laid
+    out like a game root (<code>BepInEx/plugins/...</code>).</li>
+  </ul>
+  <p>Check what a publish would contain before it goes out:</p>
+<pre><code>valhsync-server scan</code></pre>
+</section>
+
+<section id="s5">
+  <h2><span class="n">§5</span>Publish</h2>
+  <div class="os">
+    <div>
+      <h3>Live server</h3>
+      <p>ValhSync serves the pack from this machine, on the game's port in TCP.</p>
+<pre><code>valhsync-server serve</code></pre>
+      <p>On Windows the window does it for you, and <em>publishing follows the game server</em>:
+      bring the game up, however you bring it up, and the pack goes online behind it.</p>
+      <p>It rebuilds whenever the pack changes, and whenever the configuration does.</p>
+    </div>
+    <div>
+      <h3>Static files</h3>
+      <p>No port at all. Writes a folder to upload anywhere — GitHub Pages, S3, a web host.</p>
+<pre><code>valhsync-server export ./pack-site</code></pre>
+      <p>Then point <code>public_url</code> at wherever that folder ends up. Pair
+      <code>export --watch</code> with whatever already uploads for you.</p>
+    </div>
+  </div>
+  <h3>No local server at all?</h3>
+  <p>A hosted server (G-Portal, Nitrado and the like) has no folder you can read. Leave
+  <code>server_root</code> out, keep a copy of the pack in <code>client_extras</code>, and point
+  <code>game_address</code> at the host. The publisher can run anywhere — your desktop, a small
+  VPS. <em>This path has a test, but no real hosting provider has been on the other end of it.</em></p>
+</section>
+
+<section id="s6">
+  <h2><span class="n">§6</span>Hand out the launcher</h2>
+  <p>Give players the invite code — <code>valhsync-server invite</code> prints it again, and the
+  window has a copy button. Better: send them a zip containing <code>valhsync.exe</code> and a
+  file named <code>valhsync-invite.txt</code> holding the code. The launcher imports it on first
+  start and they have nothing to type.</p>
+  <p>Players joining by address alone instead should be given your <strong>key fingerprint</strong>
+  to check against what the launcher shows them. That is the only thing standing between them and
+  somebody else answering at that address.</p>
+  <p>After that, you do not have to send anything again: if <code>valhsync.exe</code> sits beside
+  the publisher, players are offered each new launcher through the same signed channel.</p>
+</section>
+
+<section id="s7">
+  <h2><span class="n">§7</span>Keep it running</h2>
+  <div class="os">
+    <div>
+      <h3>Linux: systemd</h3>
+<pre><code>sudo cp valhsync-server.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now valhsync-server
+journalctl -u valhsync-server -f</code></pre>
+      <p>The unit in <a href="deploy/valhsync-server.service">docs/deploy</a> runs as a dedicated
+      user with <code>ProtectSystem=strict</code> and a read-only home; its header carries the
+      whole setup.</p>
+    </div>
+    <div>
+      <h3>Windows: Task Scheduler</h3>
+      <ol>
+        <li>Create Task → run whether logged on or not.</li>
+        <li>Trigger: at startup.</li>
+        <li>Action: <code>valhsync-server.exe</code>, arguments
+        <code>--config C:\valhsync\valhsync-server.toml serve</code>, starting in
+        <code>C:\valhsync</code>.</li>
+        <li>Settings: restart every minute on failure.</li>
+      </ol>
+      <p>Or NSSM, for a real service entry. Both are written out in
+      <a href="deploy/README.md">docs/deploy</a>.</p>
+    </div>
+  </div>
+  <div class="rule">
+    <strong>Run it as its own user, with read-only access to the game folder.</strong> ValhSync
+    never writes into the dedicated server's directory, so nothing is lost by refusing it the
+    right to.
+  </div>
+</section>
+
+<section id="s8">
+  <h2><span class="n">§8</span>Day to day</h2>
+  <p>Adding or updating a mod is: put it in the server's <code>BepInEx/plugins</code>, restart the
+  dedicated server, done. The pack is rebuilt and re-signed on its own, and the next time each
+  player presses Play they are brought in line.</p>
+  <p>From the window, on Windows:</p>
+  <ul>
+    <li><strong>Start, Restart, Stop and save.</strong> Stopping sends Ctrl+C to the server's
+    console, so Valheim writes the world before it exits; the process is never killed. Restart
+    waits for it to actually be gone before starting again.</li>
+    <li><strong>The console</strong>, followed live, with a prompt to type into it.</li>
+    <li><strong>A note to players</strong>, on the Mods tab. The list of what changed is computed
+    for you; the note is for what no diff can say — that a mod resets its own config, that a chest
+    mod wants an empty base first.</li>
+  </ul>
+  <p>From the command line, on either platform: <code>start-game</code>, <code>stop-game</code>,
+  <code>scan</code>, <code>invite</code>, <code>rotate-key</code>.</p>
+</section>
+
+<section id="s9">
+  <h2><span class="n">§9</span>When it goes wrong</h2>
+  <table>
+    <thead><tr><th>What you see</th><th>What it is</th></tr></thead>
+    <tbody>
+      <tr><td>Players get “Incompatible version” with the right mods</td><td>The dedicated server and the game are on different Valheim versions. Update the server through Steam — they are separate applications.</td></tr>
+      <tr><td>Launchers say “server offline”</td><td>Nothing is listening. Check publishing is online, and that your router rule covers <strong>TCP</strong> as well as UDP on the game's port.</td></tr>
+      <tr><td>“The server's signing key does not match”</td><td>The key changed. Usually a fresh install that minted a new one: take over the old key from Settings, or send everyone a new invite code.</td></tr>
+      <tr><td>Publishing will not start</td><td>The card says why, and keeps saying it. Most often the configuration has never been written, or the address is still the template's.</td></tr>
+      <tr><td>A player has a mod you do not</td><td>It is moved aside into a folder inside their game, never deleted, and the launcher tells them where.</td></tr>
+    </tbody>
+  </table>
+  <p>The server's log is on the <strong>Console</strong> tab, with a copy button. It holds your
+  public address and the crossplay join code, so it is not something to screen-share.</p>
+</section>
+
+<footer>
+  ValhSync — <a href="index.html">overview</a> ·
+  <a href="player-guide.md">player guide</a> ·
+  <a href="https://github.com/Ztnzvoid/ValhSync">github.com/Ztnzvoid/ValhSync</a>
+</footer>
+
+</main>
+</div>
+</body>
+</html>

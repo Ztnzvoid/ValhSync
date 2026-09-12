@@ -1,5 +1,9 @@
 # ValhSync admin guide
 
+> Setting a server up for the first time, on Windows or Linux, is quicker from
+> the [server guide](server-guide.html). This page is the reference: every
+> option, every field, and the cases the guide does not stop for.
+
 You run a modded Valheim server and want every player to have exactly the
 right mods, in the right versions, without sending zips around. This is the
 whole procedure, from an installed dedicated server to a launcher your players
@@ -178,7 +182,7 @@ outbound tunnel (Cloudflare Tunnel, ngrok) in front of it.
 
 Run it as a service: see [deploy/](deploy/).
 
-## 4b. The Server tab
+## 5. The Server tab
 
 Double-clicked, `valhsync-server` opens a window with two tabs.
 
@@ -216,7 +220,7 @@ It also sets `-saveinterval` and `-backups`, which the file Iron Gate ships
 leaves out. The password is written in plain text, as it is in that file;
 ValhSync never reads it back out of the script, stores it, or publishes it.
 
-## 5. Distribute the launcher
+## 6. Distribute the launcher
 
 Two options, the second is friendlier:
 
@@ -229,7 +233,7 @@ The invite code contains the URL, the server name and the **public key**. It
 is not secret, but it is the trust anchor: players should get it from you, not
 from a random link.
 
-## 6. Day to day
+## 7. Day to day
 
 - **Updating a mod**: replace the files in the server's `BepInEx/plugins` (or in
   `client-extras/`). `serve` republishes within seconds. Players get the change
@@ -241,14 +245,14 @@ from a random link.
 - **Rotating the key** (`valhsync-server rotate-key --yes`): only if the key
   leaked. Every player must import the new invite code.
 
-## 7. Hosted servers (G-Portal, Nitrado, ...)
+## 8. Hosted servers (G-Portal, Nitrado, ...)
 
 You cannot run `valhsync-server` on the game host. You do not need to: run it on
 your own PC or a VPS with a local copy of the pack in `client_extras`, leave
 `server_root` out, and set `game_address` to the hosted server. Keep that copy
 in sync with what you upload to the host.
 
-## 7b. What players type
+## 9. What players type
 
 One address: the game server's. It is the one they already have, it is the one
 ValhSync listens on, and the launcher takes it as it is. The invite code carries
@@ -259,7 +263,7 @@ PlayFab's relay, which carries no file transfer — no launcher can fetch a pack
 through it. The launcher recognises one and says so rather than trying to
 resolve it as a host.
 
-## 7c. Crossplay servers and `game_address`
+## 10. Crossplay servers and `game_address`
 
 If your server runs with `-crossplay` (the PlayFab backend), players never
 reach it by local IP. Iron Gate's manual is explicit: *"You can connect to a
@@ -276,7 +280,7 @@ there.
 Without `-crossplay` (the Steam backend), the opposite is true for LAN play: a
 local address works, and internet players need UDP 2456-2457 forwarded.
 
-## 8. Network and reverse proxies
+## 11. Network and reverse proxies
 
 `valhsync-server` speaks plain HTTP. Integrity does not depend on the transport
 (the manifest is signed, every file is verified by digest), so HTTP is fine.
@@ -286,7 +290,7 @@ and set `public_url` to the `https://` address. The launcher accepts both.
 Ports: the game's own port in TCP for ValhSync (`bind`, configurable), UDP 2456-2457 for the game itself,
 as before.
 
-## 9. Things to say to your players
+## 12. Things to say to your players
 
 - The launcher needs Valheim to be closed while it syncs.
 - Console players (PS5, Switch 2) cannot use mods; a modded server excludes

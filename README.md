@@ -156,8 +156,10 @@ game root. **No local dedicated server** (G-Portal, Nitrado...)? Leave
 `server_root` out and keep a copy of the pack in `client_extras`: the
 publisher can run anywhere, only `game_address` has to point at the game host.
 
-Full details: [docs/admin-guide.md](docs/admin-guide.md). Running it as a
-service: [docs/deploy](docs/deploy).
+Setting up a server on Windows or Linux, start to finish:
+**[docs/server-guide.html](docs/server-guide.html)**. Reference for every
+option: [docs/admin-guide.md](docs/admin-guide.md). Running it unattended:
+[docs/deploy](docs/deploy).
 
 ### Updating the launcher your players run
 
