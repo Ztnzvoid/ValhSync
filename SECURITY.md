@@ -1,5 +1,9 @@
 # Security
 
+ValhSync is an early version, and has never been audited by anyone but its
+authors. The design below is what it is meant to do; treat it as a statement of
+intent that has not been independently checked.
+
 ## Reporting
 
 Open a private security advisory on the GitHub repository. Please do not file

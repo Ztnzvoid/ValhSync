@@ -45,6 +45,23 @@
   a:hover { color: var(--gold-lit); }
   a:focus-visible { outline: 2px solid var(--gold-lit); outline-offset: 2px; }
 
+  /* Early-version notice. Blood on leather, not a yellow browser warning:
+     it belongs to the document, and is meant to be read rather than
+     dismissed. */
+  .early {
+    margin: 2rem 0 0;
+    padding: 1rem 1.25rem;
+    background: var(--leather);
+    border: 1px solid var(--edge);
+    border-left: 3px solid var(--blood);
+    border-radius: 2px;
+    font-size: 0.95rem;
+    color: var(--bone-dim);
+  }
+  .early strong { color: var(--bone); font-family: var(--display); letter-spacing: 0.02em; }
+  .early p { margin: 0.6rem 0 0; }
+  .early p:first-child { margin-top: 0; }
+
   .layout {
     display: grid;
     grid-template-columns: 15rem minmax(0, 46rem);
@@ -381,6 +398,16 @@ nav.toc a.here .n { color: var(--gold); }
   <p class="verdict">The player did not have the right mods, was thrown out, and saw only
   “Incompatible version”. ValhSync exists so that stops happening.</p>
 </header>
+<div class="early">
+  <p><strong>This is an early version.</strong> 0.2.0 is the second release there has ever
+  been. One server has actually run it — a Windows machine, a dedicated server beside it, a
+  handful of players — and the whole chain works there. Everything else is tested but has not
+  met a real server: Linux, hosted providers, Proton, any setup that is not the one above.</p>
+  <p>So: back up the server's <code>BepInEx</code> folder before pointing ValhSync at one that
+  matters, and expect to find things. Finding them is what this stage is for — say so on the
+  repository when you do.</p>
+</div>
+
 
 <section id="s1">
   <h2><span class="n">§1</span>What it is</h2>

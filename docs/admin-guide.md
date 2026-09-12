@@ -4,6 +4,11 @@
 > the [server guide](server-guide.html). This page is the reference: every
 > option, every field, and the cases the guide does not stop for.
 
+> **Early version.** One server has actually run ValhSync: Windows, a dedicated
+> server beside it, a handful of players. Linux, hosted providers and anything
+> else here is tested but has not met a real server yet. Back up the server's
+> `BepInEx` folder before pointing ValhSync at one that matters.
+
 You run a modded Valheim server and want every player to have exactly the
 right mods, in the right versions, without sending zips around. This is the
 whole procedure, from an installed dedicated server to a launcher your players

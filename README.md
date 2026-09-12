@@ -8,6 +8,14 @@ hand after every mod update.
 
 > Version française plus bas : [En français](#en-français).
 
+> **Early version.** 0.2.0 is the second release there has ever been. One
+> server has actually run it — Windows, a dedicated server beside it, a handful
+> of players — and the whole chain works there. Linux, hosted providers, Proton
+> and anything that is not that setup are tested but have not met a real server
+> yet. Back up the server's `BepInEx` folder before pointing ValhSync at one
+> that matters, and open an issue when something breaks: that is what this
+> stage is for.
+
 ```
 [Warning:AzuCraftyBoxes] Peer (Steam_7656119xxxxxxxxxx) never sent version
                          or couldn't due to previous disconnect, disconnecting
@@ -301,6 +309,14 @@ licence (`crates/valhsync-ui/assets/OFL-SourceSerif.txt`).
 ---
 
 ## En français
+
+> **Version très précoce.** La 0.2.0 est la deuxième version qui ait jamais
+> existé. Un seul serveur l'a réellement fait tourner — une machine Windows, un
+> serveur dédié à côté, une poignée de joueurs — et toute la chaîne y fonctionne.
+> Linux, les hébergeurs, Proton et tout ce qui n'est pas cette configuration sont
+> testés mais n'ont pas encore rencontré de vrai serveur. Sauvegardez le dossier
+> `BepInEx` du serveur avant d'y pointer ValhSync, et ouvrez une issue quand
+> quelque chose casse : c'est à ça que sert ce stade.
 
 ValhSync synchronise les mods d'un serveur Valheim avec ceux des joueurs. Le
 serveur publie un manifeste signé de son pack BepInEx ; le launcher du joueur

@@ -7,7 +7,11 @@ use crate::theme as th;
 
 /// The product header: the valknut and the name, carved in gold over a
 /// faint glow. The glow is the document's `text-shadow` on `h1`.
-pub fn header(ui: &mut egui::Ui, title: &str) {
+///
+/// `tag` is the stage of the thing, set beside the name and not in gold:
+/// somebody who has this window open should be able to see, without going
+/// looking for it, that they are running something early.
+pub fn header(ui: &mut egui::Ui, title: &str, tag: Option<&str>) {
     ui.horizontal(|ui| {
         // Algiz, struck like a maker's mark to the left of the name.
         let mark = 30.0;
@@ -26,6 +30,17 @@ pub fn header(ui: &mut egui::Ui, title: &str) {
         let (rect, _) = ui.allocate_exact_size(galley.size(), egui::Sense::hover());
         th::glow(ui.painter(), rect, th::GOLD.gamma_multiply(0.18));
         ui.painter().galley(rect.min, galley, th::GOLD);
+        if let Some(tag) = tag {
+            ui.add_space(10.0);
+            let galley =
+                ui.painter()
+                    .layout_no_wrap(tag.to_owned(), th::display_font(12.0), th::BONE_DIM);
+            // Sat on the baseline of the name rather than centred on it: level
+            // with the name it qualifies, the way a version sits on a spine.
+            let (rect, _) = ui.allocate_exact_size(galley.size(), egui::Sense::hover());
+            let drop = egui::vec2(0.0, 9.0);
+            ui.painter().galley(rect.min + drop, galley, th::BONE_DIM);
+        }
     });
 }
 

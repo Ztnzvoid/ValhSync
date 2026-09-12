@@ -2,6 +2,10 @@
 
 Notable changes, newest first. Dates are ISO 8601.
 
+ValhSync is early: 0.2.0 is the second release, and one server has run it in
+anger. Nothing here is settled yet, including the shape of the configuration
+file and the wire format.
+
 ## 0.2.0 — 2026-09-12
 
 - **What changed, before agreeing to it.** A sync that touches mods now says

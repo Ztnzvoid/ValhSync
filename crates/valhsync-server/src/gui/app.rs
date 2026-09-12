@@ -1015,7 +1015,11 @@ impl App {
             .show(ctx, |ui| {
                 chrome::draggable(ui, ui.max_rect());
                 ui.horizontal(|ui| {
-                    w::header(ui, "V A L H S Y N C   ·   S E R V E U R");
+                    w::header(
+                        ui,
+                        "V A L H S Y N C   ·   S E R V E U R",
+                        Some(concat!("v", env!("CARGO_PKG_VERSION"), " · alpha")),
+                    );
                     ui.with_layout(Layout::right_to_left(Align::Min), |ui| {
                         chrome::window_controls(ui);
                         ui.add_space(8.0);

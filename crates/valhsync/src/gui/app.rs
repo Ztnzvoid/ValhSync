@@ -896,7 +896,11 @@ impl App {
             .show(ctx, |ui| {
                 chrome::draggable(ui, ui.max_rect());
                 ui.horizontal(|ui| {
-                    valhsync_ui::widgets::header(ui, "V A L H S Y N C");
+                    valhsync_ui::widgets::header(
+                        ui,
+                        "V A L H S Y N C",
+                        Some(concat!("v", env!("CARGO_PKG_VERSION"), " · alpha")),
+                    );
                     ui.with_layout(Layout::right_to_left(Align::Min), |ui| {
                         chrome::window_controls(ui);
                         ui.add_space(8.0);
@@ -1905,7 +1909,7 @@ impl App {
                     ui.add_space(14.0);
                     valhsync_ui::widgets::section(ui, self.t(Key::AboutValhSync));
                     ui.label(
-                        RichText::new(format!("Version {}", env!("CARGO_PKG_VERSION")))
+                        RichText::new(format!("Version {} · alpha", env!("CARGO_PKG_VERSION")))
                             .small()
                             .color(th::BONE_DIM),
                     );

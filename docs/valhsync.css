@@ -37,6 +37,23 @@
   a:hover { color: var(--gold-lit); }
   a:focus-visible { outline: 2px solid var(--gold-lit); outline-offset: 2px; }
 
+  /* Early-version notice. Blood on leather, not a yellow browser warning:
+     it belongs to the document, and is meant to be read rather than
+     dismissed. */
+  .early {
+    margin: 2rem 0 0;
+    padding: 1rem 1.25rem;
+    background: var(--leather);
+    border: 1px solid var(--edge);
+    border-left: 3px solid var(--blood);
+    border-radius: 2px;
+    font-size: 0.95rem;
+    color: var(--bone-dim);
+  }
+  .early strong { color: var(--bone); font-family: var(--display); letter-spacing: 0.02em; }
+  .early p { margin: 0.6rem 0 0; }
+  .early p:first-child { margin-top: 0; }
+
   .layout {
     display: grid;
     grid-template-columns: 15rem minmax(0, 46rem);
