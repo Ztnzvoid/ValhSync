@@ -404,3 +404,235 @@ fn older_manifest_is_refused_as_replay() {
     ctx.allow_older = true;
     engine::prepare(&ctx, &server, &mut Silent).unwrap();
 }
+
+// ── The update channel, over real HTTP ──────────────────────────────────
+//
+// The one path in the project that ends in executing a downloaded binary, and
+// the only one with no end-to-end coverage until now: the server half and the
+// launcher half were each unit-tested against their own idea of the contract.
+// This runs the launcher's real client against a real listener, so it also
+// runs on Linux in CI, where nobody has ever opened a window.
+
+struct OfferServer {
+    addr: SocketAddr,
+    stop: Option<tokio::sync::oneshot::Sender<()>>,
+    thread: Option<JoinHandle<()>>,
+}
+
+impl OfferServer {
+    /// Serve one signed offer and one build. `build` is what the bytes route
+    /// actually returns, which is not always what the offer promises.
+    fn start(doc: Vec<u8>, sig: String, hash: String, build: Vec<u8>) -> Self {
+        use axum::routing::get;
+        use valhsync_core::update;
+
+        let (addr_tx, addr_rx) = mpsc::channel();
+        let (stop_tx, stop_rx) = tokio::sync::oneshot::channel::<()>();
+        let thread = std::thread::spawn(move || {
+            let rt = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .unwrap();
+            rt.block_on(async move {
+                let app = axum::Router::new()
+                    .route(update::OFFER_PATH, get(async move || doc))
+                    .route(update::SIGNATURE_PATH, get(async move || sig))
+                    .route(
+                        &format!("{}{{hash}}", update::BUILD_PREFIX),
+                        get(
+                            async move |axum::extract::Path(asked): axum::extract::Path<String>| {
+                                if asked == hash {
+                                    Ok(build)
+                                } else {
+                                    Err(axum::http::StatusCode::NOT_FOUND)
+                                }
+                            },
+                        ),
+                    );
+                let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+                addr_tx.send(listener.local_addr().unwrap()).unwrap();
+                let shutdown = async {
+                    let _ = stop_rx.await;
+                };
+                axum::serve(listener, app)
+                    .with_graceful_shutdown(shutdown)
+                    .await
+                    .unwrap();
+            });
+        });
+        let addr = addr_rx.recv().unwrap();
+        Self {
+            addr,
+            stop: Some(stop_tx),
+            thread: Some(thread),
+        }
+    }
+
+    fn url(&self) -> String {
+        format!("http://{}", self.addr)
+    }
+}
+
+impl Drop for OfferServer {
+    fn drop(&mut self) {
+        if let Some(stop) = self.stop.take() {
+            let _ = stop.send(());
+        }
+        if let Some(t) = self.thread.take() {
+            let _ = t.join();
+        }
+    }
+}
+
+/// A signed offer for `build`, as a publisher would produce it.
+fn sign_offer(kp: &Keypair, build: &[u8], version: &str) -> (Vec<u8>, String, String) {
+    use valhsync_core::hash;
+    let digest = hash::to_hex(&hash::hash_bytes(build));
+    let offer = valhsync_core::UpdateOffer {
+        format: valhsync_core::update::UPDATE_FORMAT,
+        version: version.to_string(),
+        target: valhsync::selfupdate::current_target().to_string(),
+        exe: "valhsync-test".to_string(),
+        size: build.len() as u64,
+        blake3: digest.clone(),
+        generated_at: valhsync_core::clock::now_rfc3339(),
+    };
+    let doc = serde_json::to_vec(&offer).unwrap();
+    let sig = valhsync_core::sign::encode_signature(&kp.sign(&doc));
+    (doc, sig, digest)
+}
+
+#[test]
+fn an_offered_build_is_verified_then_written() {
+    let kp = Keypair::generate();
+    let build = b"a newer launcher, honestly".to_vec();
+    let (doc, sig, hash) = sign_offer(&kp, &build, "99.0.0");
+    let srv = OfferServer::start(doc, sig, hash, build.clone());
+
+    let client = valhsync::http::Client::new().unwrap();
+    let offer = client
+        .fetch_update_offer(&srv.url(), &kp.public())
+        .unwrap()
+        .expect("the server is offering one");
+    assert!(
+        valhsync::selfupdate::wanted(&offer),
+        "99.0.0 for this target should be wanted"
+    );
+
+    let dir = tempfile::tempdir().unwrap();
+    let dest = dir.path().join("staged");
+    client
+        .download_update(&srv.url(), &offer, &dest, &mut |_| {})
+        .unwrap();
+    assert_eq!(std::fs::read(&dest).unwrap(), build, "byte for byte");
+}
+
+#[test]
+fn a_build_that_does_not_match_its_digest_is_not_written() {
+    let kp = Keypair::generate();
+    let promised = b"the build that was signed".to_vec();
+    let (doc, sig, hash) = sign_offer(&kp, &promised, "99.0.0");
+    // Same length, different bytes: the size check passes and only the digest
+    // stands between the offer and something else entirely.
+    let served = b"the build that was sent!!".to_vec();
+    assert_eq!(promised.len(), served.len());
+    let srv = OfferServer::start(doc, sig, hash, served);
+
+    let client = valhsync::http::Client::new().unwrap();
+    let offer = client
+        .fetch_update_offer(&srv.url(), &kp.public())
+        .unwrap()
+        .unwrap();
+    let dir = tempfile::tempdir().unwrap();
+    let dest = dir.path().join("staged");
+    assert!(
+        client
+            .download_update(&srv.url(), &offer, &dest, &mut |_| {})
+            .is_err()
+    );
+    assert!(!dest.exists(), "a build that failed its digest is removed");
+}
+
+#[test]
+fn an_offer_from_another_key_is_not_an_offer() {
+    let theirs = Keypair::generate();
+    let build = b"someone else's launcher".to_vec();
+    let (doc, sig, hash) = sign_offer(&theirs, &build, "99.0.0");
+    let srv = OfferServer::start(doc, sig, hash, build);
+
+    let ours = Keypair::generate();
+    let client = valhsync::http::Client::new().unwrap();
+    assert!(
+        client
+            .fetch_update_offer(&srv.url(), &ours.public())
+            .is_err(),
+        "a signature from a key we did not pin must not read as an offer"
+    );
+}
+
+/// An empty router: every path is a 404, which is what a publisher with no
+/// launcher beside it, or one built before the update channel existed, looks
+/// like from here. Most servers will look like this, so it must not read as a
+/// failure -- a player would see an error on a server that is working.
+struct SilentServer {
+    addr: SocketAddr,
+    stop: Option<tokio::sync::oneshot::Sender<()>>,
+    thread: Option<JoinHandle<()>>,
+}
+
+impl SilentServer {
+    fn start() -> Self {
+        let (addr_tx, addr_rx) = mpsc::channel();
+        let (stop_tx, stop_rx) = tokio::sync::oneshot::channel::<()>();
+        let thread = std::thread::spawn(move || {
+            let rt = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .unwrap();
+            rt.block_on(async move {
+                let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+                addr_tx.send(listener.local_addr().unwrap()).unwrap();
+                let shutdown = async {
+                    let _ = stop_rx.await;
+                };
+                axum::serve(listener, axum::Router::new())
+                    .with_graceful_shutdown(shutdown)
+                    .await
+                    .unwrap();
+            });
+        });
+        let addr = addr_rx.recv().unwrap();
+        Self {
+            addr,
+            stop: Some(stop_tx),
+            thread: Some(thread),
+        }
+    }
+
+    fn url(&self) -> String {
+        format!("http://{}", self.addr)
+    }
+}
+
+impl Drop for SilentServer {
+    fn drop(&mut self) {
+        if let Some(stop) = self.stop.take() {
+            let _ = stop.send(());
+        }
+        if let Some(t) = self.thread.take() {
+            let _ = t.join();
+        }
+    }
+}
+
+#[test]
+fn a_server_offering_nothing_is_not_an_error() {
+    let srv = SilentServer::start();
+    let client = valhsync::http::Client::new().unwrap();
+    assert_eq!(
+        client
+            .fetch_update_offer(&srv.url(), &Keypair::generate().public())
+            .expect("404 is an answer, not a failure"),
+        None
+    );
+}

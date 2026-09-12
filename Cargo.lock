@@ -3676,6 +3676,7 @@ name = "valhsync"
 version = "0.2.0"
 dependencies = [
  "anyhow",
+ "axum",
  "clap",
  "directories",
  "eframe",
