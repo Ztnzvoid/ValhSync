@@ -18,7 +18,7 @@ use valhsync_ui::widgets as w;
 use super::i18n::{Key, Lang, text};
 use super::worker::{self, Msg, Reporter};
 use crate::config::{self, Config};
-use crate::{detect, gameserver, install, logs, names, players, wizard};
+use crate::{detect, gameserver, install, logs, names, players, wizard, worldbackup};
 
 const POLL_GAME_SERVER: Duration = Duration::from_secs(2);
 /// How long the configuration has to stop changing before it is written.
@@ -1079,6 +1079,11 @@ impl eframe::App for App {
                             self.card_status(ui);
                             ui.add_space(12.0);
                             self.card_logs(ui);
+                            ui.add_space(12.0);
+                            // Operating the server, not configuring it: a
+                            // world is backed up before a change, which is a
+                            // thing done on the tab where changes are made.
+                            self.card_world(ui);
                         }
                         Tab::Mods => self.card_mods(ui),
                         Tab::Players => self.card_players(ui),
@@ -2053,6 +2058,80 @@ impl App {
                 self.cfg.game_server.restart_on_crash = back;
             }
             w::hint(ui, self.t(Key::RestartOnCrashHint));
+        });
+    }
+
+    /// The world, and copies of it.
+    ///
+    /// ValhSync backs up every file it puts on a player's machine, journals
+    /// the change and can roll it back exactly. It has never done anything for
+    /// the one file on the admin's machine that cannot be downloaded again.
+    /// Adding or updating a mod is precisely when a world gets corrupted.
+    fn card_world(&mut self, ui: &mut egui::Ui) {
+        let Some(root) = self.cfg.pack.server_root.clone() else {
+            return;
+        };
+        let args = self.scripts.get(self.script_index).map(|s| s.args.clone());
+        let world = args.as_ref().and_then(|a| logs::world_save(&root, a));
+        let into = worldbackup::dir_for(&root, args.as_ref());
+
+        th::card(ui, |ui| {
+            ui.set_width(ui.available_width());
+            w::section(ui, self.t(Key::SectionWorld));
+            w::hint(ui, self.t(Key::BackupHint));
+            ui.add_space(6.0);
+
+            let Some(world) = world else {
+                w::notice(ui, th::GOLD, self.t(Key::NoWorldFound));
+                return;
+            };
+            ui.label(
+                RichText::new(world.display().to_string())
+                    .monospace()
+                    .small()
+                    .color(th::RUNE),
+            );
+            // Said before the click, not after: whether the copy can be
+            // trusted is the one thing worth knowing beforehand.
+            if let Some(warning) = worldbackup::trust_now().warning() {
+                ui.add_space(4.0);
+                w::notice(ui, th::GOLD, warning);
+            }
+            ui.add_space(6.0);
+
+            let Some(into) = into else {
+                return;
+            };
+            let mut take = false;
+            ui.horizontal(|ui| {
+                take = ui.button(self.t(Key::BackupWorld)).clicked();
+                if let Ok(kept) = worldbackup::list(&into) {
+                    ui.label(
+                        RichText::new(format!("{} {}", kept.len(), self.t(Key::BackupsKept)))
+                            .text_style(th::label_style())
+                            .color(th::BONE_DIM),
+                    );
+                    if !kept.is_empty() && ui.small_button(self.t(Key::Open)).clicked() {
+                        open_path(&into);
+                    }
+                }
+            });
+            if take {
+                match worldbackup::take(&world, &into, "by hand") {
+                    Ok(done) => {
+                        // Ten is a lot of worlds and not much disk, and the
+                        // oldest is the least likely to be wanted.
+                        let _ = worldbackup::prune(&into, 10);
+                        let msg = self.t(Key::BackupTaken).replacen(
+                            "{}",
+                            &done.path.display().to_string(),
+                            1,
+                        );
+                        self.notify(msg, th::MOSS);
+                    }
+                    Err(e) => self.notify(format!("{e:#}"), th::BLOOD_LIT),
+                }
+            }
         });
     }
 
