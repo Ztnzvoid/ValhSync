@@ -1,7 +1,7 @@
 # ValhSync palette
 
 Derived from Valheim's in-game UI: burnt wood, polished bone, worn brass,
-northern mist. Used by `docs/cahier-des-charges.html` today and by the egui
+northern mist. Used by the documents under `docs/` and by the egui
 launcher at M5, so both read as the same product.
 
 | Token       | Hex       | Role                                        | egui usage                    |

@@ -208,7 +208,8 @@ against everything else: tampering in transit (signature + digests), a swapped
 server key (pinned key, explicit re-import required), path tricks in a manifest
 (`../`, drive letters, UNC, reserved names, symlinks: the whole manifest is
 rejected), oversized packs (size and count limits), and its own bugs (journaled
-backups, rollback). See [§8 of the spec](docs/cahier-des-charges.html).
+backups, rollback). The whole of it is in
+[SECURITY.md](SECURITY.md).
 
 ## What has been tested
 

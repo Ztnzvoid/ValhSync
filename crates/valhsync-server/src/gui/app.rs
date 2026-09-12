@@ -2336,16 +2336,44 @@ impl App {
                         .color(th::RUNE),
                     );
                 }
+                ui.add_space(6.0);
+                // Against the code itself. It used to sit under the key field
+                // below, which put two unrelated things between an admin and
+                // the one button they came to this card for.
+                let code = self.invite.clone();
+                if ui
+                    .add_enabled(
+                        !code.is_empty(),
+                        egui::Button::new(
+                            RichText::new(self.t("Copier le code", "Copy the code"))
+                                .strong()
+                                .color(if code.is_empty() {
+                                    th::BONE_DIM
+                                } else {
+                                    th::NIGHT
+                                }),
+                        )
+                        .fill(if code.is_empty() {
+                            th::LEATHER
+                        } else {
+                            th::GOLD
+                        }),
+                    )
+                    .on_hover_text(self.t(
+                        "À envoyer à vos joueurs. Le launcher l'importe et épingle votre clé.",
+                        "Send this to your players. The launcher imports it and pins your key.",
+                    ))
+                    .clicked()
+                {
+                    ui.ctx().copy_text(code);
+                    let msg = self.t("Code copié.", "Code copied.").to_string();
+                    self.notify(msg, th::MOSS);
+                }
             });
             ui.add_space(8.0);
             self.key_takeover(ui);
             ui.add_space(8.0);
             ui.horizontal(|ui| {
-                if ui.button(self.t("Copier", "Copy")).clicked() {
-                    ui.ctx().copy_text(self.invite.clone());
-                    let msg = self.t("Code copié.", "Code copied.").to_string();
-                    self.notify(msg, th::MOSS);
-                }
                 if ui
                     .add_enabled(
                         !self.busy,
