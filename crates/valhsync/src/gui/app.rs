@@ -1303,8 +1303,22 @@ impl App {
             }
             Status::Error(failure) => {
                 let message = failure.message.clone();
+                // A server that is simply down is the commonest thing that
+                // goes wrong here, and it is not the player's problem to
+                // solve: two words and the fact that it retries by itself.
+                // The URL and the transport error stay one hover away, and
+                // the command line still prints them in full.
+                let offline = failure.offline;
+                let (title, hint) = (self.t(Key::ServerDown), self.t(Key::ServerDownHint));
                 th::callout(ui, th::BLOOD, |ui| {
-                    ui.label(RichText::new(message).color(th::BLOOD_LIT));
+                    if offline {
+                        ui.label(RichText::new(title).strong().color(th::BLOOD_LIT))
+                            .on_hover_text(&message);
+                        ui.label(RichText::new(hint).small().color(th::BONE_DIM))
+                            .on_hover_text(&message);
+                    } else {
+                        ui.label(RichText::new(message).color(th::BLOOD_LIT));
+                    }
                 });
             }
         }
