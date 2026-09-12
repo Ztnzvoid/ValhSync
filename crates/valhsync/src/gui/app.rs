@@ -1599,10 +1599,10 @@ impl App {
             });
             if let Some(notes) = &notes {
                 ui.add_space(4.0);
-                // Bounded, and scrolled past that. An admin is allowed two
-                // thousand characters, and a note that long would otherwise
-                // push the mod list, the button and the whole point of the
-                // screen off the bottom of the window.
+                // Bounded, and scrolled past that. An admin is allowed
+                // eight thousand characters, and a note anywhere near that
+                // would otherwise push the mod list, the button and the whole
+                // point of the screen off the bottom of the window.
                 egui::ScrollArea::vertical()
                     .id_salt("pack-notes")
                     .max_height(170.0)
@@ -1613,7 +1613,17 @@ impl App {
             }
             if !changes.is_empty() {
                 ui.add_space(4.0);
-                self.change_lines(ui, &changes);
+                // Bounded for the same reason as the note above it. A first
+                // sync moves every mod the server has -- eighteen of them
+                // here, one to a line -- and the card is not the place to
+                // read a list that long without a way to stop it growing.
+                egui::ScrollArea::vertical()
+                    .id_salt("pack-changes")
+                    .max_height(200.0)
+                    .auto_shrink([false, true])
+                    .show(ui, |ui| {
+                        self.change_lines(ui, &changes);
+                    });
             }
         });
         ui.add_space(10.0);
@@ -1671,12 +1681,17 @@ impl App {
             .as_deref()
             .map(|id| self.news.for_server(id).cloned().collect())
             .unwrap_or_default();
+        let room = ctx.screen_rect().height() * 0.8;
         egui::Window::new(self.t(Key::WhatsNew))
             .collapsible(false)
             .resizable(false)
             .open(&mut open)
             .anchor(egui::Align2::CENTER_CENTER, egui::vec2(0.0, 0.0))
             .default_width(520.0)
+            // Belt as well as braces: the inner scroll area bounds the list,
+            // this bounds the dialog. Either alone left one way for a long
+            // note to push the window past the edges of the screen.
+            .max_height(room)
             .show(ctx, |ui| {
                 if entries.is_empty() {
                     ui.label(RichText::new(self.t(Key::NewsNone)).color(th::BONE_DIM));
@@ -1698,7 +1713,18 @@ impl App {
                             );
                             if let Some(notes) = &entry.notes {
                                 ui.add_space(2.0);
-                                ui.label(RichText::new(notes).color(th::BONE));
+                                // Each note in its own bounded frame. One
+                                // long enough to fill the dialog would
+                                // otherwise bury every entry under it, and
+                                // the history exists to be scrolled back
+                                // through.
+                                egui::ScrollArea::vertical()
+                                    .id_salt(("news-note", i))
+                                    .max_height(190.0)
+                                    .auto_shrink([false, true])
+                                    .show(ui, |ui| {
+                                        ui.label(RichText::new(notes).color(th::BONE));
+                                    });
                             }
                             ui.add_space(2.0);
                             self.change_lines(ui, &entry.changes);
@@ -1714,12 +1740,14 @@ impl App {
             return;
         }
         let mut open = true;
+        let room = ctx.screen_rect().height() * 0.8;
         egui::Window::new(self.t(Key::ServerMods))
             .collapsible(false)
             .resizable(false)
             .open(&mut open)
             .anchor(egui::Align2::CENTER_CENTER, egui::vec2(0.0, 0.0))
             .default_width(520.0)
+            .max_height(room)
             .show(ctx, |ui| {
                 egui::ScrollArea::vertical()
                     .max_height(valhsync_ui::widgets::dialog_room(ui, 230.0))

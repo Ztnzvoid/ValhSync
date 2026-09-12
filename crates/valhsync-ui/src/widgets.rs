@@ -137,7 +137,14 @@ pub fn dialog_body<R>(ui: &mut egui::Ui, add_contents: impl FnOnce(&mut egui::Ui
 /// right on the window it was written for and overflows every smaller one.
 #[must_use]
 pub fn dialog_room(ui: &egui::Ui, reserve: f32) -> f32 {
-    (ui.ctx().screen_rect().height() - reserve).max(120.0)
+    // A share of the window as well as a margin off it. Subtracting a fixed
+    // reserve was tuned when a note could not pass two thousand characters;
+    // at four times that, on a tall screen, the result was a dialog taller
+    // than the window it belongs to -- text running off the top and the
+    // bottom with nothing to scroll, because the thing overflowing was the
+    // dialog itself and not its contents.
+    let screen = ui.ctx().screen_rect().height();
+    (screen - reserve).clamp(120.0, screen * 0.72)
 }
 
 /// Dimmed explanatory line under a control.
