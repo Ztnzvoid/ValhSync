@@ -18,10 +18,14 @@ use valhsync_ui::theme;
 /// uses, so both faces of the program work on one configuration.
 pub fn run(config_path: PathBuf, data_dir: PathBuf) -> Result<()> {
     let options = eframe::NativeOptions {
+        // Tall enough that the server tab opens with the whole of it on
+        // screen -- the card, the log and the prompt -- without a scroll to
+        // discover. Clamped to the display in `run`, since not every screen
+        // is this tall.
         viewport: valhsync_ui::frame::viewport(
             "ValhSync · Serveur",
-            [780.0, 780.0],
-            [680.0, 560.0],
+            [820.0, 940.0],
+            [680.0, 520.0],
         ),
         ..Default::default()
     };

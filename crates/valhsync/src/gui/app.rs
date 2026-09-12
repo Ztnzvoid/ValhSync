@@ -774,6 +774,7 @@ impl eframe::App for App {
             }
         }
 
+        chrome::clamp_to_display(ctx);
         chrome::handle_edge_resize(ctx);
         self.header(ctx);
         self.notice_bar(ctx);

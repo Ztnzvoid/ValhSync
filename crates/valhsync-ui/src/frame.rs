@@ -26,6 +26,32 @@ pub fn viewport(title: &str, size: [f32; 2], min_size: [f32; 2]) -> egui::Viewpo
         .with_icon(th::icon())
 }
 
+/// Shrink a window that opened taller than the screen it landed on.
+///
+/// The default sizes are chosen so a whole page is visible at once. On a
+/// shorter display that same number puts the bottom bar under the taskbar,
+/// where the save button cannot be reached at all -- worse than a scroll.
+/// Runs once, as soon as the monitor's size is known.
+pub fn clamp_to_display(ctx: &egui::Context) {
+    let id = egui::Id::new("valhsync-clamped");
+    if ctx.memory(|m| m.data.get_temp::<bool>(id)).is_some() {
+        return;
+    }
+    let Some(monitor) = ctx.input(|i| i.viewport().monitor_size) else {
+        return; // not known yet; try again next frame
+    };
+    ctx.memory_mut(|m| m.data.insert_temp(id, true));
+    // Room for a taskbar and the window's own trim.
+    let usable = monitor * 0.92;
+    let have = ctx.screen_rect().size();
+    if have.x > usable.x || have.y > usable.y {
+        ctx.send_viewport_cmd(ViewportCommand::InnerSize(egui::vec2(
+            have.x.min(usable.x),
+            have.y.min(usable.y),
+        )));
+    }
+}
+
 /// Size the window to what it actually shows, between `min` and `max`.
 ///
 /// Call at the end of a frame. A few pixels of slack stop the window from

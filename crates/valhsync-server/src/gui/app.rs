@@ -901,6 +901,7 @@ impl eframe::App for App {
             self.notice = None;
         }
 
+        chrome::clamp_to_display(ctx);
         chrome::handle_edge_resize(ctx);
         self.update_title(ctx);
         self.top_bar(ctx);
@@ -1014,6 +1015,13 @@ impl App {
                         ui.label(RichText::new(message).color(th::BONE));
                     });
                     ui.add_space(6.0);
+                }
+                // The console line lives down here, where a prompt belongs:
+                // always in reach whichever tab is open, and out of the card
+                // that describes the server rather than drives it.
+                if self.game_running {
+                    self.console_line(ui);
+                    ui.add_space(8.0);
                 }
                 ui.horizontal(|ui| {
                     let dirty = self.dirty();
@@ -1140,10 +1148,6 @@ impl App {
                     ),
                 );
             }
-            if self.game_running {
-                ui.add_space(8.0);
-                self.console_line(ui);
-            }
             ui.add_space(8.0);
             w::hint(
                 ui,
@@ -1173,8 +1177,12 @@ impl App {
             "Server command, e.g. \"help\"",
         );
         let send_label = self.t("Envoyer", "Send");
+        let tip = self.t(
+            "Tapée dans la console du serveur. La réponse arrive dans le journal, pas ici.",
+            "Typed into the server's console. Its answer lands in the log, not here.",
+        );
         ui.horizontal(|ui| {
-            let send = ui.button(send_label).clicked();
+            let send = ui.button(send_label).on_hover_text(tip).clicked();
             let typed = ui
                 .add(
                     egui::TextEdit::singleline(&mut self.command)
@@ -1198,13 +1206,6 @@ impl App {
                 }
             }
         });
-        w::hint(
-            ui,
-            self.t(
-                "La commande est tapée dans la console du serveur. La réponse arrive dans le journal ci-dessous, pas ici.",
-                "The command is typed into the server's console. Its answer lands in the log below, not here.",
-            ),
-        );
     }
 
     /// What the log says about the session: players, join code, which
