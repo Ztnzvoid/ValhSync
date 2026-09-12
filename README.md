@@ -211,6 +211,21 @@ rejected), oversized packs (size and count limits), and its own bugs (journaled
 backups, rollback). The whole of it is in
 [SECURITY.md](SECURITY.md).
 
+## Languages
+
+The launcher speaks English, Français, Deutsch, Español, Italiano, Polski,
+Português and Русский, chosen from a menu in its header and remembered.
+English is the default and the fallback for anything else.
+
+Translations other than English and French were written to be idiomatic rather
+than literal and have not been reviewed by native speakers — corrections are
+very welcome, and they are one row each in
+[`crates/valhsync/src/gui/i18n.rs`](crates/valhsync/src/gui/i18n.rs).
+
+The admin window is English and French only: its strings sit inline at 172
+call sites rather than in a table, and that wants restructuring before it can
+carry more.
+
 ## What has been tested
 
 Narrower than the code's reach, and worth saying so.

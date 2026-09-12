@@ -48,20 +48,27 @@ fn install_fonts(ctx: &egui::Context) {
         DISPLAY.to_owned(),
         std::sync::Arc::new(egui::FontData::from_static(CINZEL)),
     );
+    fonts.font_data.insert(
+        "text".to_owned(),
+        std::sync::Arc::new(egui::FontData::from_static(SOURCE_SERIF)),
+    );
+
+    // Cinzel is a Roman inscriptional face and carries no Cyrillic: a Russian
+    // heading falls through it. Source Serif sits behind it rather than
+    // egui's own sans, so what falls through lands in a serif and the window
+    // keeps one voice. Anything neither of them has still reaches the
+    // bundled default, which is what stops a missing glyph being a box.
     let mut display = fonts
         .families
         .get(&FontFamily::Proportional)
         .cloned()
         .unwrap_or_default();
+    display.insert(0, "text".to_owned());
     display.insert(0, DISPLAY.to_owned());
     fonts
         .families
         .insert(FontFamily::Name(DISPLAY.into()), display);
 
-    fonts.font_data.insert(
-        "text".to_owned(),
-        std::sync::Arc::new(egui::FontData::from_static(SOURCE_SERIF)),
-    );
     if let Some(family) = fonts.families.get_mut(&FontFamily::Proportional) {
         family.insert(0, "text".to_owned());
     }

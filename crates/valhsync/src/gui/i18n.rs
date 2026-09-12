@@ -1,34 +1,89 @@
-//! Two languages, one enum. French first because that is who plays on the
-//! server this was built for; English because the project is public.
+//! What the launcher says, in every language it says it in.
+//!
+//! One arm per string rather than one function per language: the translations
+//! of a sentence sit on the same rows, where a drifting one is visible, and
+//! the match stays exhaustive so a new key cannot be added in one language and
+//! forgotten in the rest -- that is a compile error, not a box somebody reads
+//! in the wrong tongue three months later.
+//!
+//! English is the default everywhere. The others were written to be idiomatic
+//! rather than literal; none has been reviewed by a native speaker, and a
+//! correction from one is worth more than an argument from here.
 
+/// Languages the launcher speaks, English first because it is the fallback.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Lang {
-    Fr,
     En,
+    Fr,
+    De,
+    Es,
+    It,
+    Pl,
+    Pt,
+    Ru,
 }
 
+/// How many there are, and therefore how wide every row below is.
+pub const LANGS: usize = 8;
+
 impl Lang {
-    /// English unless the player chose French: the project is public, and the
-    /// other language is one click away in the header.
+    /// In the order they are offered, which is the order of the rows.
+    pub const ALL: [Self; LANGS] = [
+        Self::En,
+        Self::Fr,
+        Self::De,
+        Self::Es,
+        Self::It,
+        Self::Pl,
+        Self::Pt,
+        Self::Ru,
+    ];
+
+    /// English unless something else was chosen and is understood.
+    ///
+    /// Matched on the prefix, so `fr-FR`, `pt-BR` and `de_DE` all land where
+    /// they should. Anything unknown falls back rather than guessing.
+    #[must_use]
     pub fn detect(setting: Option<&str>) -> Self {
-        match setting.map(str::to_lowercase) {
-            Some(code) if code.starts_with("fr") => Self::Fr,
-            _ => Self::En,
+        let Some(code) = setting.map(str::to_lowercase) else {
+            return Self::En;
+        };
+        for lang in Self::ALL {
+            if code.starts_with(lang.code()) {
+                return lang;
+            }
         }
+        Self::En
     }
 
+    /// The tag stored in settings.
+    #[must_use]
     pub fn code(self) -> &'static str {
         match self {
-            Self::Fr => "fr",
             Self::En => "en",
+            Self::Fr => "fr",
+            Self::De => "de",
+            Self::Es => "es",
+            Self::It => "it",
+            Self::Pl => "pl",
+            Self::Pt => "pt",
+            Self::Ru => "ru",
         }
     }
 
+    /// The name of the language in itself. A menu offering "German" to
+    /// somebody who only reads German has offered them nothing.
     #[must_use]
-    pub fn other(self) -> Self {
+    pub fn name(self) -> &'static str {
         match self {
-            Self::Fr => Self::En,
-            Self::En => Self::Fr,
+            Self::En => "English",
+            Self::Fr => "Français",
+            Self::De => "Deutsch",
+            Self::Es => "Español",
+            Self::It => "Italiano",
+            Self::Pl => "Polski",
+            Self::Pt => "Português",
+            Self::Ru => "Русский",
         }
     }
 }
@@ -125,239 +180,860 @@ pub enum Key {
     Remaining,
 }
 
+#[must_use]
 pub fn text(lang: Lang, key: Key) -> &'static str {
-    match lang {
-        Lang::Fr => fr(key),
-        Lang::En => en(key),
-    }
+    strings(key)[lang as usize]
 }
 
-#[allow(clippy::too_many_lines)] // one arm per string, and there are many
-fn fr(key: Key) -> &'static str {
+/// Every string, in the order of [`Lang::ALL`]: en, fr, de, es, it, pl, pt, ru.
+#[allow(clippy::too_many_lines)] // one row per string, and there are many
+fn strings(key: Key) -> [&'static str; LANGS] {
     match key {
-        Key::Subtitle => "Vos mods, alignés sur le serveur. Puis on joue.",
-        Key::AddServer => "Ajouter un serveur",
-        Key::NoServerHint => {
-            "Collez le code d'invitation que l'admin vous a envoyé, ou placez son fichier valhsync-invite.txt à côté de valhsync.exe."
-        }
-        Key::Checking => "Vérification auprès du serveur…",
-        Key::GameUp => "Serveur de jeu en ligne",
-        Key::GameDown => "Serveur de jeu arrêté — vous ne pourrez pas vous connecter",
-        Key::UpToDate => "À jour",
-        Key::FirstSync => "Première synchronisation",
-        Key::Pending => "Mise à jour disponible",
-        Key::Play => "JOUER",
-        Key::Update => "METTRE À JOUR",
-        Key::Launching2 => "Démarrage de Valheim",
-        Key::Repair => "Réparer",
-        Key::RepairHint => {
-            "Revérifie chaque fichier et remet en place tout ce qui diffère du serveur, y compris vos configurations."
-        }
-        Key::ForgetServer => "Retirer ce serveur de la liste",
-        Key::SetAsideCount => "mods mis de côté",
-        Key::Rollback => "Revenir à la version précédente",
-        Key::SetAside => "Mods mis de côté",
-        Key::SetAsideHint => {
-            "Fichiers de mods trouvés chez vous mais absents du pack du serveur : ValhSync les a déplacés pour qu'ils ne bloquent pas la connexion. Rien n'est supprimé, vous pouvez les récupérer."
-        }
-        Key::SetAsideNone => "Aucun mod mis de côté.",
-        Key::GameFolder => "Dossier du jeu",
-        Key::GameFolderHint => {
-            "Laissez vide pour que ValhSync trouve Valheim tout seul via Steam. Remplissez seulement si la détection échoue."
-        }
-        Key::GameFolderInUse => "Utilisé actuellement",
-        Key::GameFolderAuto => "Détection automatique",
-        Key::ThisServer => "Ce serveur",
-        Key::AboutValhSync => "ValhSync",
-        Key::OpenFolder => "Ouvrir le dossier",
-        Key::ResetAll => "Tout réinitialiser",
-        Key::ResetAllHint => {
-            "Oublie tous les serveurs et les réglages de ValhSync. Ne touche pas au jeu ni aux mods installés."
-        }
-        Key::ResetDone => "ValhSync réinitialisé.",
-        Key::Apply => "Appliquer",
-        Key::Cancel => "Annuler",
-        Key::Close => "Fermer",
-        Key::InvitePrompt => {
-            "Code d'invitation, ou simplement l'adresse du serveur de jeu — la même que dans Valheim"
-        }
-        Key::InviteHint => "valhsync1:…  ou  monserveur.exemple.org:2456",
-        Key::Crashed => "ValhSync a rencontré une erreur inattendue",
-        Key::VersionGap => {
-            "Votre Valheim et ce serveur ne tournent pas sur la même version du jeu. Valheim refusera la connexion, quels que soient les mods. Le jeu et le serveur dédié se mettent à jour séparément : prévenez votre administrateur."
-        }
-        Key::JoinCodeNotAnAddress => {
-            "Ça, c'est le code de connexion Valheim : il sert à rejoindre la partie, pas à récupérer les mods. Demandez à votre admin son code d'invitation ValhSync, ou l'adresse du serveur."
-        }
-        Key::Checking2 => "Interrogation du serveur…",
-        Key::ConfirmKeyTitle => "Vérifiez l'empreinte",
-        Key::ConfirmKeyBody => {
-            "Vous ajoutez ce serveur par son adresse, sans code d'invitation. Comparez cette empreinte avec celle que l'administrateur vous a donnée : c'est elle qui garantit que les mods viennent bien de lui."
-        }
-        Key::Trust => "L'empreinte correspond, ajouter",
-        Key::Added => "Serveur ajouté",
-        Key::Launching => "Valheim démarre via Steam…",
-        Key::SyncDone => "Synchronisation terminée",
-        Key::RolledBack => "Version précédente restaurée",
-        Key::Downloading => "Téléchargement",
-        Key::Applying => "Application des changements…",
-        Key::Contacting => "Connexion au serveur…",
-        Key::PlanInstall | Key::ModToInstall => "à installer",
-        Key::PlanUpdate | Key::ModToUpdate => "à mettre à jour",
-        Key::PlanRemove => "à retirer",
-        Key::PlanQuarantine => "à mettre en quarantaine",
-        Key::PlanDownload => "à télécharger",
-        Key::ConfirmTitle => "Ce que ValhSync va faire",
-        Key::ConfirmBody => {
-            "Première synchronisation avec ce serveur. Les fichiers inconnus trouvés dans les dossiers de mods seront déplacés en quarantaine, pas supprimés. Une sauvegarde est faite avant tout changement."
-        }
-        Key::Forget => "Oublier ce serveur",
-        Key::Refresh => "Revérifier",
-        Key::UpdateReady => "Nouvelle version de ValhSync",
-        Key::UpdateInstall => "Mettre à jour et redémarrer",
-        Key::UpdateDownloading => "Téléchargement de la mise à jour…",
-        Key::UpdateFailed => "Mise à jour impossible",
-        Key::UpdateFrom => "Build fourni par ce serveur, signé de sa clé",
-        Key::UpdateReplaces => "Remplace ValhSync par ce fichier, puis redémarre.",
-        Key::UpdateReplayed => "Offre de mise à jour plus ancienne que la dernière vue : ignorée.",
-        Key::ServerDown => "Serveur hors ligne",
-        Key::ServerDownHint => "Nouvelle tentative dans quelques secondes.",
-        Key::WhatsNew => "Nouveautés",
-        Key::NewsHistory => "Historique",
-        Key::NewsNone => "Rien de neuf pour l'instant.",
-        Key::NewsFromAdmin => "Mot de l'admin",
-        Key::NewsAdded => "Ajouté",
-        Key::NewsUpdated => "Mis à jour",
-        Key::NewsRemoved => "Retiré",
-        Key::Settings => "Réglages",
-        Key::Language => "Langue",
-        Key::Busy => "Opération en cours…",
-        Key::KeyFingerprint => "Empreinte de la clé",
-        Key::TrustLine => {
-            "Fichiers signés par ce serveur et vérifiés un par un. ValhSync n'écrit que dans le dossier du jeu (BepInEx) et n'exécute rien lui-même : c'est Steam qui lance Valheim."
-        }
+        Key::Subtitle => [
+            "Your mods, matched to the server. Then play.",
+            "Vos mods, alignés sur le serveur. Puis on joue.",
+            "Deine Mods, abgeglichen mit dem Server. Dann spielen.",
+            "Tus mods, iguales a los del servidor. Y a jugar.",
+            "I tuoi mod, allineati al server. Poi si gioca.",
+            "Twoje mody, zgodne z serwerem. I do gry.",
+            "Seus mods, iguais aos do servidor. E jogar.",
+            "Ваши моды — как на сервере. И можно играть.",
+        ],
+        Key::AddServer => [
+            "Add a server",
+            "Ajouter un serveur",
+            "Server hinzufügen",
+            "Añadir un servidor",
+            "Aggiungi un server",
+            "Dodaj serwer",
+            "Adicionar um servidor",
+            "Добавить сервер",
+        ],
+        Key::NoServerHint => [
+            "Paste the invite code your admin sent you, or drop their valhsync-invite.txt next to valhsync.exe.",
+            "Collez le code d'invitation que l'admin vous a envoyé, ou placez son fichier valhsync-invite.txt à côté de valhsync.exe.",
+            "Füge den Einladungscode deines Admins ein oder lege dessen valhsync-invite.txt neben valhsync.exe.",
+            "Pega el código de invitación que te dio el administrador, o deja su valhsync-invite.txt junto a valhsync.exe.",
+            "Incolla il codice d'invito che ti ha dato l'admin, oppure metti il suo valhsync-invite.txt accanto a valhsync.exe.",
+            "Wklej kod zaproszenia od administratora albo połóż jego plik valhsync-invite.txt obok valhsync.exe.",
+            "Cole o código de convite que o administrador enviou, ou coloque o valhsync-invite.txt dele ao lado do valhsync.exe.",
+            "Вставьте код приглашения от администратора или положите его файл valhsync-invite.txt рядом с valhsync.exe.",
+        ],
+        Key::Checking => [
+            "Checking with the server…",
+            "Vérification auprès du serveur…",
+            "Abgleich mit dem Server…",
+            "Comprobando con el servidor…",
+            "Verifica con il server…",
+            "Sprawdzanie na serwerze…",
+            "Verificando com o servidor…",
+            "Проверка на сервере…",
+        ],
+        Key::GameUp => [
+            "Game server online",
+            "Serveur de jeu en ligne",
+            "Spielserver online",
+            "Servidor de juego en línea",
+            "Server di gioco online",
+            "Serwer gry działa",
+            "Servidor do jogo online",
+            "Игровой сервер работает",
+        ],
+        Key::GameDown => [
+            "Game server stopped — you will not be able to join",
+            "Serveur de jeu arrêté — vous ne pourrez pas vous connecter",
+            "Spielserver gestoppt — du kannst nicht beitreten",
+            "Servidor de juego detenido: no podrás conectarte",
+            "Server di gioco spento — non potrai connetterti",
+            "Serwer gry wyłączony — nie dołączysz",
+            "Servidor do jogo parado — você não conseguirá entrar",
+            "Игровой сервер выключен — подключиться не получится",
+        ],
+        Key::UpToDate => [
+            "Up to date",
+            "À jour",
+            "Aktuell",
+            "Al día",
+            "Aggiornato",
+            "Aktualne",
+            "Atualizado",
+            "Всё актуально",
+        ],
+        Key::FirstSync => [
+            "First sync",
+            "Première synchronisation",
+            "Erste Synchronisierung",
+            "Primera sincronización",
+            "Prima sincronizzazione",
+            "Pierwsza synchronizacja",
+            "Primeira sincronização",
+            "Первая синхронизация",
+        ],
+        Key::Pending => [
+            "Update available",
+            "Mise à jour disponible",
+            "Update verfügbar",
+            "Actualización disponible",
+            "Aggiornamento disponibile",
+            "Dostępna aktualizacja",
+            "Atualização disponível",
+            "Есть обновление",
+        ],
+        Key::Play => [
+            "PLAY",
+            "JOUER",
+            "SPIELEN",
+            "JUGAR",
+            "GIOCA",
+            "GRAJ",
+            "JOGAR",
+            "ИГРАТЬ",
+        ],
+        Key::Update => [
+            "UPDATE",
+            "METTRE À JOUR",
+            "AKTUALISIEREN",
+            "ACTUALIZAR",
+            "AGGIORNA",
+            "AKTUALIZUJ",
+            "ATUALIZAR",
+            "ОБНОВИТЬ",
+        ],
+        Key::Launching2 => [
+            "Starting Valheim",
+            "Démarrage de Valheim",
+            "Valheim startet",
+            "Iniciando Valheim",
+            "Avvio di Valheim",
+            "Uruchamianie Valheim",
+            "Iniciando o Valheim",
+            "Запуск Valheim",
+        ],
+        Key::Repair => [
+            "Repair",
+            "Réparer",
+            "Reparieren",
+            "Reparar",
+            "Ripara",
+            "Napraw",
+            "Reparar",
+            "Восстановить",
+        ],
+        Key::RepairHint => [
+            "Check every file again and put back anything that differs from the server, your configuration included.",
+            "Revérifie chaque fichier et remet en place tout ce qui diffère du serveur, y compris vos configurations.",
+            "Prüft jede Datei erneut und ersetzt alles, was vom Server abweicht — auch deine Konfigurationen.",
+            "Vuelve a comprobar cada archivo y repone todo lo que difiera del servidor, incluida tu configuración.",
+            "Ricontrolla ogni file e ripristina tutto ciò che differisce dal server, configurazioni comprese.",
+            "Ponownie sprawdza każdy plik i przywraca wszystko, co różni się od serwera — łącznie z konfiguracją.",
+            "Verifica cada arquivo de novo e repõe tudo o que diferir do servidor, inclusive suas configurações.",
+            "Заново проверяет каждый файл и возвращает всё, что отличается от сервера, включая ваши настройки.",
+        ],
+        Key::ForgetServer => [
+            "Remove this server from the list",
+            "Retirer ce serveur de la liste",
+            "Diesen Server aus der Liste entfernen",
+            "Quitar este servidor de la lista",
+            "Rimuovi questo server dall'elenco",
+            "Usuń ten serwer z listy",
+            "Remover este servidor da lista",
+            "Убрать сервер из списка",
+        ],
+        Key::SetAsideCount => [
+            "mods set aside",
+            "mods mis de côté",
+            "beiseitegelegte Mods",
+            "mods apartados",
+            "mod messi da parte",
+            "odłożone mody",
+            "mods postos de lado",
+            "модов отложено",
+        ],
+        Key::Rollback => [
+            "Go back to the previous version",
+            "Revenir à la version précédente",
+            "Zur vorherigen Version zurück",
+            "Volver a la versión anterior",
+            "Torna alla versione precedente",
+            "Wróć do poprzedniej wersji",
+            "Voltar à versão anterior",
+            "Вернуться к прошлой версии",
+        ],
+        Key::SetAside => [
+            "Mods set aside",
+            "Mods mis de côté",
+            "Beiseitegelegte Mods",
+            "Mods apartados",
+            "Mod messi da parte",
+            "Odłożone mody",
+            "Mods postos de lado",
+            "Отложенные моды",
+        ],
+        Key::SetAsideHint => [
+            "Mod files found on your machine but absent from the server's pack: ValhSync moved them so they cannot block your connection. Nothing is deleted, you can take them back.",
+            "Fichiers de mods trouvés chez vous mais absents du pack du serveur : ValhSync les a déplacés pour qu'ils ne bloquent pas la connexion. Rien n'est supprimé, vous pouvez les récupérer.",
+            "Mod-Dateien, die es bei dir gibt, im Server-Pack aber nicht: ValhSync hat sie verschoben, damit sie die Verbindung nicht blockieren. Nichts wird gelöscht, du kannst sie zurückholen.",
+            "Archivos de mods que tienes pero no están en el paquete del servidor: ValhSync los apartó para que no bloqueen la conexión. No se borra nada, puedes recuperarlos.",
+            "File di mod presenti da te ma assenti nel pacchetto del server: ValhSync li ha spostati per non bloccare la connessione. Non viene eliminato nulla, puoi riprenderli.",
+            "Pliki modów, które masz, a których nie ma w paczce serwera: ValhSync je odłożył, żeby nie blokowały połączenia. Nic nie jest usuwane, możesz je odzyskać.",
+            "Arquivos de mods que você tem mas não estão no pacote do servidor: o ValhSync os moveu para não bloquearem a conexão. Nada é apagado, você pode recuperá-los.",
+            "Файлы модов, которые есть у вас, но отсутствуют в сборке сервера: ValhSync отложил их, чтобы они не мешали подключению. Ничего не удалено, их можно вернуть.",
+        ],
+        Key::SetAsideNone => [
+            "Nothing set aside.",
+            "Aucun mod mis de côté.",
+            "Nichts beiseitegelegt.",
+            "No hay nada apartado.",
+            "Niente messo da parte.",
+            "Nic nie odłożono.",
+            "Nada foi posto de lado.",
+            "Ничего не отложено.",
+        ],
+        Key::GameFolder => [
+            "Game folder",
+            "Dossier du jeu",
+            "Spielordner",
+            "Carpeta del juego",
+            "Cartella del gioco",
+            "Folder gry",
+            "Pasta do jogo",
+            "Папка игры",
+        ],
+        Key::GameFolderHint => [
+            "Leave empty and ValhSync finds Valheim by itself through Steam. Fill it in only if detection fails.",
+            "Laissez vide pour que ValhSync trouve Valheim tout seul via Steam. Remplissez seulement si la détection échoue.",
+            "Leer lassen — ValhSync findet Valheim selbst über Steam. Nur ausfüllen, wenn das fehlschlägt.",
+            "Déjalo vacío y ValhSync encuentra Valheim solo a través de Steam. Rellénalo solo si falla la detección.",
+            "Lascia vuoto: ValhSync trova Valheim da solo tramite Steam. Compila solo se il rilevamento fallisce.",
+            "Zostaw puste — ValhSync sam znajdzie Valheim przez Steam. Wypełnij tylko, jeśli wykrywanie zawiedzie.",
+            "Deixe vazio e o ValhSync encontra o Valheim sozinho pela Steam. Preencha só se a detecção falhar.",
+            "Оставьте пустым — ValhSync сам найдёт Valheim через Steam. Заполняйте, только если не нашёл.",
+        ],
+        Key::GameFolderInUse => [
+            "Currently used",
+            "Utilisé actuellement",
+            "Aktuell verwendet",
+            "En uso",
+            "In uso",
+            "Obecnie używany",
+            "Em uso",
+            "Используется сейчас",
+        ],
+        Key::GameFolderAuto => [
+            "Automatic detection",
+            "Détection automatique",
+            "Automatisch erkannt",
+            "Detección automática",
+            "Rilevamento automatico",
+            "Wykrywanie automatyczne",
+            "Detecção automática",
+            "Определено автоматически",
+        ],
+        Key::ThisServer => [
+            "This server",
+            "Ce serveur",
+            "Dieser Server",
+            "Este servidor",
+            "Questo server",
+            "Ten serwer",
+            "Este servidor",
+            "Этот сервер",
+        ],
+        Key::AboutValhSync => ["ValhSync"; LANGS],
+        Key::OpenFolder => [
+            "Open the folder",
+            "Ouvrir le dossier",
+            "Ordner öffnen",
+            "Abrir la carpeta",
+            "Apri la cartella",
+            "Otwórz folder",
+            "Abrir a pasta",
+            "Открыть папку",
+        ],
+        Key::ResetAll => [
+            "Reset everything",
+            "Tout réinitialiser",
+            "Alles zurücksetzen",
+            "Restablecer todo",
+            "Reimposta tutto",
+            "Zresetuj wszystko",
+            "Redefinir tudo",
+            "Сбросить всё",
+        ],
+        Key::ResetAllHint => [
+            "Forgets every server and every ValhSync setting. Leaves the game and the installed mods alone.",
+            "Oublie tous les serveurs et les réglages de ValhSync. Ne touche pas au jeu ni aux mods installés.",
+            "Vergisst alle Server und alle ValhSync-Einstellungen. Spiel und installierte Mods bleiben unberührt.",
+            "Olvida todos los servidores y los ajustes de ValhSync. No toca el juego ni los mods instalados.",
+            "Dimentica tutti i server e le impostazioni di ValhSync. Non tocca il gioco né i mod installati.",
+            "Zapomina wszystkie serwery i ustawienia ValhSync. Nie rusza gry ani zainstalowanych modów.",
+            "Esquece todos os servidores e as configurações do ValhSync. Não mexe no jogo nem nos mods instalados.",
+            "Забывает все серверы и настройки ValhSync. Игру и установленные моды не трогает.",
+        ],
+        Key::ResetDone => [
+            "ValhSync reset.",
+            "ValhSync réinitialisé.",
+            "ValhSync zurückgesetzt.",
+            "ValhSync restablecido.",
+            "ValhSync reimpostato.",
+            "ValhSync zresetowany.",
+            "ValhSync redefinido.",
+            "ValhSync сброшен.",
+        ],
+        Key::Apply => [
+            "Apply",
+            "Appliquer",
+            "Übernehmen",
+            "Aplicar",
+            "Applica",
+            "Zastosuj",
+            "Aplicar",
+            "Применить",
+        ],
+        Key::Cancel => [
+            "Cancel",
+            "Annuler",
+            "Abbrechen",
+            "Cancelar",
+            "Annulla",
+            "Anuluj",
+            "Cancelar",
+            "Отмена",
+        ],
+        Key::Close => [
+            "Close",
+            "Fermer",
+            "Schließen",
+            "Cerrar",
+            "Chiudi",
+            "Zamknij",
+            "Fechar",
+            "Закрыть",
+        ],
+        Key::InvitePrompt => [
+            "Invite code, or simply the game server's address — the same one you use in Valheim",
+            "Code d'invitation, ou simplement l'adresse du serveur de jeu — la même que dans Valheim",
+            "Einladungscode oder einfach die Adresse des Spielservers — dieselbe wie in Valheim",
+            "Código de invitación, o simplemente la dirección del servidor — la misma que usas en Valheim",
+            "Codice d'invito, o semplicemente l'indirizzo del server — lo stesso che usi in Valheim",
+            "Kod zaproszenia albo po prostu adres serwera — ten sam co w Valheim",
+            "Código de convite, ou simplesmente o endereço do servidor — o mesmo que você usa no Valheim",
+            "Код приглашения или просто адрес сервера — тот же, что и в Valheim",
+        ],
+        Key::InviteHint => [
+            "valhsync1:…  or  myserver.example.org:2456",
+            "valhsync1:…  ou  monserveur.exemple.org:2456",
+            "valhsync1:…  oder  meinserver.beispiel.org:2456",
+            "valhsync1:…  o  miservidor.ejemplo.org:2456",
+            "valhsync1:…  o  ilmioserver.esempio.org:2456",
+            "valhsync1:…  lub  mojserwer.przyklad.org:2456",
+            "valhsync1:…  ou  meuservidor.exemplo.org:2456",
+            "valhsync1:…  или  myserver.example.org:2456",
+        ],
+        Key::Crashed => [
+            "ValhSync hit an unexpected error",
+            "ValhSync a rencontré une erreur inattendue",
+            "ValhSync ist auf einen unerwarteten Fehler gestoßen",
+            "ValhSync encontró un error inesperado",
+            "ValhSync ha incontrato un errore imprevisto",
+            "ValhSync napotkał nieoczekiwany błąd",
+            "O ValhSync encontrou um erro inesperado",
+            "ValhSync столкнулся с неожиданной ошибкой",
+        ],
+        Key::VersionGap => [
+            "Your Valheim and this server are not on the same version of the game. Valheim will refuse the connection, whatever the mods say. The game and the dedicated server update separately: tell your admin.",
+            "Votre Valheim et ce serveur ne tournent pas sur la même version du jeu. Valheim refusera la connexion, quels que soient les mods. Le jeu et le serveur dédié se mettent à jour séparément : prévenez votre administrateur.",
+            "Dein Valheim und dieser Server laufen auf verschiedenen Spielversionen. Valheim verweigert die Verbindung, egal welche Mods. Spiel und Dedicated Server werden getrennt aktualisiert: sag deinem Admin Bescheid.",
+            "Tu Valheim y este servidor no están en la misma versión del juego. Valheim rechazará la conexión, digan lo que digan los mods. El juego y el servidor dedicado se actualizan por separado: avisa a tu administrador.",
+            "Il tuo Valheim e questo server non sono sulla stessa versione del gioco. Valheim rifiuterà la connessione, qualunque cosa dicano i mod. Gioco e server dedicato si aggiornano separatamente: avvisa il tuo admin.",
+            "Twój Valheim i ten serwer mają różne wersje gry. Valheim odrzuci połączenie, niezależnie od modów. Gra i serwer dedykowany aktualizują się osobno: powiadom administratora.",
+            "Seu Valheim e este servidor não estão na mesma versão do jogo. O Valheim vai recusar a conexão, não importa os mods. O jogo e o servidor dedicado atualizam separadamente: avise seu administrador.",
+            "У вашего Valheim и у сервера разные версии игры. Valheim откажет в подключении, какие бы ни были моды. Игра и выделенный сервер обновляются отдельно — сообщите администратору.",
+        ],
+        Key::JoinCodeNotAnAddress => [
+            "That is Valheim's join code: it gets you into the game, not to the mods. Ask your admin for their ValhSync invite code, or the server's address.",
+            "Ça, c'est le code de connexion Valheim : il sert à rejoindre la partie, pas à récupérer les mods. Demandez à votre admin son code d'invitation ValhSync, ou l'adresse du serveur.",
+            "Das ist Valheims Join-Code: er bringt dich ins Spiel, nicht an die Mods. Frag deinen Admin nach dem ValhSync-Einladungscode oder der Serveradresse.",
+            "Ese es el código de unión de Valheim: sirve para entrar a la partida, no para los mods. Pídele a tu administrador el código de invitación de ValhSync, o la dirección del servidor.",
+            "Quello è il codice di accesso di Valheim: serve a entrare in partita, non a prendere i mod. Chiedi al tuo admin il codice d'invito ValhSync, o l'indirizzo del server.",
+            "To jest kod dołączenia Valheim: wpuszcza do gry, ale nie do modów. Poproś administratora o kod zaproszenia ValhSync albo adres serwera.",
+            "Esse é o código de entrada do Valheim: serve para entrar no jogo, não para os mods. Peça ao administrador o código de convite do ValhSync, ou o endereço do servidor.",
+            "Это код подключения Valheim: он пускает в игру, но не к модам. Попросите у администратора код приглашения ValhSync или адрес сервера.",
+        ],
+        Key::Checking2 => [
+            "Asking the server…",
+            "Interrogation du serveur…",
+            "Server wird gefragt…",
+            "Consultando al servidor…",
+            "Interrogazione del server…",
+            "Pytanie serwera…",
+            "Consultando o servidor…",
+            "Запрос к серверу…",
+        ],
+        Key::ConfirmKeyTitle => [
+            "Check the fingerprint",
+            "Vérifiez l'empreinte",
+            "Fingerabdruck prüfen",
+            "Comprueba la huella",
+            "Verifica l'impronta",
+            "Sprawdź odcisk klucza",
+            "Confira a impressão digital",
+            "Проверьте отпечаток",
+        ],
+        Key::ConfirmKeyBody => [
+            "You are adding this server by address, without an invite code. Compare this fingerprint with the one your admin gave you: it is what proves the mods really come from them.",
+            "Vous ajoutez ce serveur par son adresse, sans code d'invitation. Comparez cette empreinte avec celle que l'administrateur vous a donnée : c'est elle qui garantit que les mods viennent bien de lui.",
+            "Du fügst diesen Server über die Adresse hinzu, ohne Einladungscode. Vergleiche diesen Fingerabdruck mit dem deines Admins: er belegt, dass die Mods wirklich von ihm stammen.",
+            "Estás añadiendo este servidor por dirección, sin código de invitación. Compara esta huella con la que te dio tu administrador: es lo que prueba que los mods vienen de él.",
+            "Stai aggiungendo questo server tramite indirizzo, senza codice d'invito. Confronta questa impronta con quella che ti ha dato il tuo admin: è ciò che prova che i mod vengono davvero da lui.",
+            "Dodajesz ten serwer po adresie, bez kodu zaproszenia. Porównaj ten odcisk z tym, który dał ci administrator: to on dowodzi, że mody naprawdę pochodzą od niego.",
+            "Você está adicionando este servidor pelo endereço, sem código de convite. Compare esta impressão digital com a que seu administrador lhe deu: é ela que prova que os mods vêm mesmo dele.",
+            "Вы добавляете сервер по адресу, без кода приглашения. Сравните этот отпечаток с тем, что дал администратор: именно он подтверждает, что моды действительно от него.",
+        ],
+        Key::Trust => [
+            "The fingerprint matches, add it",
+            "L'empreinte correspond, ajouter",
+            "Der Fingerabdruck stimmt, hinzufügen",
+            "La huella coincide, añadir",
+            "L'impronta corrisponde, aggiungi",
+            "Odcisk się zgadza, dodaj",
+            "A impressão digital confere, adicionar",
+            "Отпечаток совпадает, добавить",
+        ],
+        Key::Added => [
+            "Server added",
+            "Serveur ajouté",
+            "Server hinzugefügt",
+            "Servidor añadido",
+            "Server aggiunto",
+            "Serwer dodany",
+            "Servidor adicionado",
+            "Сервер добавлен",
+        ],
+        Key::Launching => [
+            "Valheim is starting via Steam…",
+            "Valheim démarre via Steam…",
+            "Valheim startet über Steam…",
+            "Valheim se inicia a través de Steam…",
+            "Valheim si avvia tramite Steam…",
+            "Valheim uruchamia się przez Steam…",
+            "O Valheim está iniciando pela Steam…",
+            "Valheim запускается через Steam…",
+        ],
+        Key::SyncDone => [
+            "Sync complete",
+            "Synchronisation terminée",
+            "Synchronisierung abgeschlossen",
+            "Sincronización completada",
+            "Sincronizzazione completata",
+            "Synchronizacja zakończona",
+            "Sincronização concluída",
+            "Синхронизация завершена",
+        ],
+        Key::RolledBack => [
+            "Previous version restored",
+            "Version précédente restaurée",
+            "Vorherige Version wiederhergestellt",
+            "Versión anterior restaurada",
+            "Versione precedente ripristinata",
+            "Przywrócono poprzednią wersję",
+            "Versão anterior restaurada",
+            "Прошлая версия восстановлена",
+        ],
+        Key::Downloading => [
+            "Downloading",
+            "Téléchargement",
+            "Wird heruntergeladen",
+            "Descargando",
+            "Download",
+            "Pobieranie",
+            "Baixando",
+            "Загрузка",
+        ],
+        Key::Applying => [
+            "Applying changes…",
+            "Application des changements…",
+            "Änderungen werden angewendet…",
+            "Aplicando cambios…",
+            "Applicazione delle modifiche…",
+            "Wprowadzanie zmian…",
+            "Aplicando as mudanças…",
+            "Применение изменений…",
+        ],
+        Key::Contacting => [
+            "Contacting the server…",
+            "Connexion au serveur…",
+            "Verbindung zum Server…",
+            "Contactando con el servidor…",
+            "Connessione al server…",
+            "Łączenie z serwerem…",
+            "Conectando ao servidor…",
+            "Соединение с сервером…",
+        ],
+        Key::PlanInstall | Key::ModToInstall => [
+            "to install",
+            "à installer",
+            "zu installieren",
+            "por instalar",
+            "da installare",
+            "do instalacji",
+            "a instalar",
+            "к установке",
+        ],
+        Key::PlanUpdate | Key::ModToUpdate => [
+            "to update",
+            "à mettre à jour",
+            "zu aktualisieren",
+            "por actualizar",
+            "da aggiornare",
+            "do aktualizacji",
+            "a atualizar",
+            "к обновлению",
+        ],
+        Key::PlanRemove => [
+            "to remove",
+            "à retirer",
+            "zu entfernen",
+            "por quitar",
+            "da rimuovere",
+            "do usunięcia",
+            "a remover",
+            "к удалению",
+        ],
+        Key::PlanQuarantine => [
+            "to quarantine",
+            "à mettre en quarantaine",
+            "in Quarantäne",
+            "a cuarentena",
+            "in quarantena",
+            "do kwarantanny",
+            "para quarentena",
+            "в карантин",
+        ],
+        Key::PlanDownload => [
+            "to download",
+            "à télécharger",
+            "herunterzuladen",
+            "por descargar",
+            "da scaricare",
+            "do pobrania",
+            "a baixar",
+            "к загрузке",
+        ],
+        Key::ConfirmTitle => [
+            "What ValhSync is about to do",
+            "Ce que ValhSync va faire",
+            "Was ValhSync gleich tut",
+            "Lo que ValhSync va a hacer",
+            "Cosa sta per fare ValhSync",
+            "Co zaraz zrobi ValhSync",
+            "O que o ValhSync vai fazer",
+            "Что сейчас сделает ValhSync",
+        ],
+        Key::ConfirmBody => [
+            "First sync with this server. Unknown files found in the mod folders are moved to a quarantine, never deleted. A backup is taken before anything changes.",
+            "Première synchronisation avec ce serveur. Les fichiers inconnus trouvés dans les dossiers de mods seront déplacés en quarantaine, pas supprimés. Une sauvegarde est faite avant tout changement.",
+            "Erste Synchronisierung mit diesem Server. Unbekannte Dateien in den Mod-Ordnern wandern in eine Quarantäne, sie werden nie gelöscht. Vor jeder Änderung wird gesichert.",
+            "Primera sincronización con este servidor. Los archivos desconocidos que haya en las carpetas de mods se mueven a cuarentena, nunca se borran. Se hace una copia de seguridad antes de cambiar nada.",
+            "Prima sincronizzazione con questo server. I file sconosciuti trovati nelle cartelle dei mod vengono spostati in quarantena, mai eliminati. Prima di ogni modifica viene fatto un backup.",
+            "Pierwsza synchronizacja z tym serwerem. Nieznane pliki znalezione w folderach modów trafiają do kwarantanny, nigdy nie są usuwane. Przed każdą zmianą powstaje kopia zapasowa.",
+            "Primeira sincronização com este servidor. Arquivos desconhecidos nas pastas de mods vão para uma quarentena, nunca são apagados. Um backup é feito antes de qualquer mudança.",
+            "Первая синхронизация с этим сервером. Незнакомые файлы в папках модов отправляются в карантин, их никогда не удаляют. Перед любыми изменениями делается резервная копия.",
+        ],
+        Key::Forget => [
+            "Forget this server",
+            "Oublier ce serveur",
+            "Diesen Server vergessen",
+            "Olvidar este servidor",
+            "Dimentica questo server",
+            "Zapomnij ten serwer",
+            "Esquecer este servidor",
+            "Забыть этот сервер",
+        ],
+        Key::Refresh => [
+            "Check again",
+            "Revérifier",
+            "Erneut prüfen",
+            "Comprobar de nuevo",
+            "Ricontrolla",
+            "Sprawdź ponownie",
+            "Verificar de novo",
+            "Проверить снова",
+        ],
+        Key::UpdateReady => [
+            "A new ValhSync is available",
+            "Nouvelle version de ValhSync",
+            "Ein neues ValhSync ist verfügbar",
+            "Hay un ValhSync nuevo",
+            "È disponibile un nuovo ValhSync",
+            "Dostępny jest nowy ValhSync",
+            "Há um novo ValhSync disponível",
+            "Доступна новая версия ValhSync",
+        ],
+        Key::UpdateInstall => [
+            "Update and restart",
+            "Mettre à jour et redémarrer",
+            "Aktualisieren und neu starten",
+            "Actualizar y reiniciar",
+            "Aggiorna e riavvia",
+            "Zaktualizuj i uruchom ponownie",
+            "Atualizar e reiniciar",
+            "Обновить и перезапустить",
+        ],
+        Key::UpdateDownloading => [
+            "Downloading the update…",
+            "Téléchargement de la mise à jour…",
+            "Update wird heruntergeladen…",
+            "Descargando la actualización…",
+            "Download dell'aggiornamento…",
+            "Pobieranie aktualizacji…",
+            "Baixando a atualização…",
+            "Загрузка обновления…",
+        ],
+        Key::UpdateFailed => [
+            "Update failed",
+            "Mise à jour impossible",
+            "Update fehlgeschlagen",
+            "No se pudo actualizar",
+            "Aggiornamento non riuscito",
+            "Aktualizacja nie powiodła się",
+            "Falha na atualização",
+            "Не удалось обновить",
+        ],
+        Key::UpdateFrom => [
+            "Build supplied by this server, signed with its key",
+            "Build fourni par ce serveur, signé de sa clé",
+            "Von diesem Server bereitgestellt, mit seinem Schlüssel signiert",
+            "Versión facilitada por este servidor, firmada con su clave",
+            "Build fornita da questo server, firmata con la sua chiave",
+            "Wersja udostępniona przez ten serwer, podpisana jego kluczem",
+            "Versão fornecida por este servidor, assinada com a chave dele",
+            "Сборка предоставлена этим сервером и подписана его ключом",
+        ],
+        Key::UpdateReplaces => [
+            "Replaces ValhSync with that file, then restarts.",
+            "Remplace ValhSync par ce fichier, puis redémarre.",
+            "Ersetzt ValhSync durch diese Datei und startet neu.",
+            "Sustituye ValhSync por ese archivo y reinicia.",
+            "Sostituisce ValhSync con quel file, poi riavvia.",
+            "Zastępuje ValhSync tym plikiem i uruchamia się ponownie.",
+            "Substitui o ValhSync por esse arquivo e reinicia.",
+            "Заменяет ValhSync этим файлом и перезапускается.",
+        ],
+        Key::UpdateReplayed => [
+            "Update offer older than the last one seen: ignored.",
+            "Offre de mise à jour plus ancienne que la dernière vue : ignorée.",
+            "Update-Angebot älter als das zuletzt gesehene: ignoriert.",
+            "Oferta de actualización más antigua que la última vista: ignorada.",
+            "Offerta di aggiornamento più vecchia dell'ultima vista: ignorata.",
+            "Oferta aktualizacji starsza niż ostatnio widziana: pominięta.",
+            "Oferta de atualização mais antiga que a última vista: ignorada.",
+            "Предложение обновления старее последнего: пропущено.",
+        ],
+        Key::ServerDown => [
+            "Server offline",
+            "Serveur hors ligne",
+            "Server offline",
+            "Servidor sin conexión",
+            "Server offline",
+            "Serwer offline",
+            "Servidor offline",
+            "Сервер недоступен",
+        ],
+        Key::ServerDownHint => [
+            "Trying again in a few seconds.",
+            "Nouvelle tentative dans quelques secondes.",
+            "Neuer Versuch in einigen Sekunden.",
+            "Se reintenta en unos segundos.",
+            "Nuovo tentativo tra qualche secondo.",
+            "Ponowna próba za kilka sekund.",
+            "Nova tentativa em alguns segundos.",
+            "Повторная попытка через несколько секунд.",
+        ],
+        Key::WhatsNew => [
+            "What's new",
+            "Nouveautés",
+            "Neuerungen",
+            "Novedades",
+            "Novità",
+            "Nowości",
+            "Novidades",
+            "Что нового",
+        ],
+        Key::NewsHistory => [
+            "History",
+            "Historique",
+            "Verlauf",
+            "Historial",
+            "Cronologia",
+            "Historia",
+            "Histórico",
+            "История",
+        ],
+        Key::NewsNone => [
+            "Nothing new yet.",
+            "Rien de neuf pour l'instant.",
+            "Noch nichts Neues.",
+            "Nada nuevo por ahora.",
+            "Ancora niente di nuovo.",
+            "Na razie nic nowego.",
+            "Nada de novo por enquanto.",
+            "Пока ничего нового.",
+        ],
+        Key::NewsFromAdmin => [
+            "From the admin",
+            "Mot de l'admin",
+            "Vom Admin",
+            "Del administrador",
+            "Dall'admin",
+            "Od administratora",
+            "Do administrador",
+            "От администратора",
+        ],
+        Key::NewsAdded => [
+            "Added",
+            "Ajouté",
+            "Hinzugefügt",
+            "Añadido",
+            "Aggiunto",
+            "Dodano",
+            "Adicionado",
+            "Добавлено",
+        ],
+        Key::NewsUpdated => [
+            "Updated",
+            "Mis à jour",
+            "Aktualisiert",
+            "Actualizado",
+            "Aggiornato",
+            "Zaktualizowano",
+            "Atualizado",
+            "Обновлено",
+        ],
+        Key::NewsRemoved => [
+            "Removed",
+            "Retiré",
+            "Entfernt",
+            "Quitado",
+            "Rimosso",
+            "Usunięto",
+            "Removido",
+            "Удалено",
+        ],
+        Key::Settings => [
+            "Settings",
+            "Réglages",
+            "Einstellungen",
+            "Ajustes",
+            "Impostazioni",
+            "Ustawienia",
+            "Configurações",
+            "Настройки",
+        ],
+        Key::Language => [
+            "Language", "Langue", "Sprache", "Idioma", "Lingua", "Język", "Idioma", "Язык",
+        ],
+        Key::Busy => [
+            "Working…",
+            "Opération en cours…",
+            "Wird ausgeführt…",
+            "Trabajando…",
+            "Operazione in corso…",
+            "Pracuję…",
+            "Trabalhando…",
+            "Выполняется…",
+        ],
+        Key::KeyFingerprint => [
+            "Key fingerprint",
+            "Empreinte de la clé",
+            "Schlüssel-Fingerabdruck",
+            "Huella de la clave",
+            "Impronta della chiave",
+            "Odcisk klucza",
+            "Impressão digital da chave",
+            "Отпечаток ключа",
+        ],
+        Key::TrustLine => [
+            "Files are signed by this server and verified one by one. ValhSync only writes inside the game folder (BepInEx) and runs nothing itself: Steam starts Valheim.",
+            "Fichiers signés par ce serveur et vérifiés un par un. ValhSync n'écrit que dans le dossier du jeu (BepInEx) et n'exécute rien lui-même : c'est Steam qui lance Valheim.",
+            "Die Dateien sind von diesem Server signiert und werden einzeln geprüft. ValhSync schreibt nur in den Spielordner (BepInEx) und führt selbst nichts aus: Valheim startet über Steam.",
+            "Los archivos están firmados por este servidor y se verifican uno a uno. ValhSync solo escribe dentro de la carpeta del juego (BepInEx) y no ejecuta nada: es Steam quien inicia Valheim.",
+            "I file sono firmati da questo server e verificati uno per uno. ValhSync scrive solo nella cartella del gioco (BepInEx) e non esegue nulla: è Steam ad avviare Valheim.",
+            "Pliki są podpisane przez ten serwer i sprawdzane po kolei. ValhSync zapisuje tylko w folderze gry (BepInEx) i sam nic nie uruchamia: Valheim startuje przez Steam.",
+            "Os arquivos são assinados por este servidor e verificados um a um. O ValhSync só escreve dentro da pasta do jogo (BepInEx) e não executa nada: quem inicia o Valheim é a Steam.",
+            "Файлы подписаны этим сервером и проверяются по одному. ValhSync пишет только в папку игры (BepInEx) и сам ничего не запускает: Valheim стартует через Steam.",
+        ],
         // The count beside it is files, not mods: one mod is many files.
-        Key::Installed => "fichiers installés",
-        Key::Nothing => "Rien à faire.",
-        Key::ServerMods => "Mods du serveur",
-        Key::ShowAll => "Tout afficher",
-        Key::ModInstalled => "installé",
-        Key::Speed => "vitesse",
-        Key::Remaining => "restant",
-    }
-}
-
-#[allow(clippy::too_many_lines)] // one arm per string, and there are many
-fn en(key: Key) -> &'static str {
-    match key {
-        Key::Subtitle => "Your mods, matched to the server. Then play.",
-        Key::AddServer => "Add a server",
-        Key::NoServerHint => {
-            "Paste the invite code your admin sent you, or drop their valhsync-invite.txt next to valhsync.exe."
-        }
-        Key::Checking => "Checking with the server…",
-        Key::GameUp => "Game server online",
-        Key::GameDown => "Game server stopped — you will not be able to join",
-        Key::UpToDate => "Up to date",
-        Key::FirstSync => "First sync",
-        Key::Pending => "Update available",
-        Key::Play => "PLAY",
-        Key::Update => "UPDATE",
-        Key::Launching2 => "Starting Valheim",
-        Key::Repair => "Repair",
-        Key::RepairHint => {
-            "Check every file again and put back anything that differs from the server, your configuration included."
-        }
-        Key::ForgetServer => "Remove this server from the list",
-        Key::SetAsideCount => "mods set aside",
-        Key::Rollback => "Go back to the previous version",
-        Key::SetAside => "Mods set aside",
-        Key::SetAsideHint => {
-            "Mod files found on your machine but absent from the server's pack: ValhSync moved them so they cannot block your connection. Nothing is deleted, you can take them back."
-        }
-        Key::SetAsideNone => "Nothing set aside.",
-        Key::GameFolder => "Game folder",
-        Key::GameFolderHint => {
-            "Leave empty and ValhSync finds Valheim by itself through Steam. Fill it in only if detection fails."
-        }
-        Key::GameFolderInUse => "Currently used",
-        Key::GameFolderAuto => "Automatic detection",
-        Key::ThisServer => "This server",
-        Key::AboutValhSync => "ValhSync",
-        Key::OpenFolder => "Open the folder",
-        Key::ResetAll => "Reset everything",
-        Key::ResetAllHint => {
-            "Forgets every server and every ValhSync setting. Leaves the game and the installed mods alone."
-        }
-        Key::ResetDone => "ValhSync reset.",
-        Key::Apply => "Apply",
-        Key::Cancel => "Cancel",
-        Key::Close => "Close",
-        Key::InvitePrompt => {
-            "Invite code, or simply the game server's address — the same one you use in Valheim"
-        }
-        Key::InviteHint => "valhsync1:…  or  myserver.example.org:2456",
-        Key::Crashed => "ValhSync hit an unexpected error",
-        Key::VersionGap => {
-            "Your Valheim and this server are not on the same version of the game. Valheim will refuse the connection, whatever the mods say. The game and the dedicated server update separately: tell your admin."
-        }
-        Key::JoinCodeNotAnAddress => {
-            "That is Valheim's join code: it gets you into the game, not to the mods. Ask your admin for their ValhSync invite code, or the server's address."
-        }
-        Key::Checking2 => "Asking the server…",
-        Key::ConfirmKeyTitle => "Check the fingerprint",
-        Key::ConfirmKeyBody => {
-            "You are adding this server by address, without an invite code. Compare this fingerprint with the one your admin gave you: it is what proves the mods really come from them."
-        }
-        Key::Trust => "The fingerprint matches, add it",
-        Key::Added => "Server added",
-        Key::Launching => "Valheim is starting via Steam…",
-        Key::SyncDone => "Sync complete",
-        Key::RolledBack => "Previous version restored",
-        Key::Downloading => "Downloading",
-        Key::Applying => "Applying changes…",
-        Key::Contacting => "Contacting the server…",
-        Key::PlanInstall | Key::ModToInstall => "to install",
-        Key::PlanUpdate | Key::ModToUpdate => "to update",
-        Key::PlanRemove => "to remove",
-        Key::PlanQuarantine => "to quarantine",
-        Key::PlanDownload => "to download",
-        Key::ConfirmTitle => "What ValhSync is about to do",
-        Key::ConfirmBody => {
-            "First sync with this server. Unknown files found in the mod folders are moved to a quarantine, never deleted. A backup is taken before anything changes."
-        }
-        Key::Forget => "Forget this server",
-        Key::Refresh => "Check again",
-        Key::UpdateReady => "A new ValhSync is available",
-        Key::UpdateInstall => "Update and restart",
-        Key::UpdateDownloading => "Downloading the update…",
-        Key::UpdateFailed => "Update failed",
-        Key::UpdateFrom => "Build supplied by this server, signed with its key",
-        Key::UpdateReplaces => "Replaces ValhSync with that file, then restarts.",
-        Key::UpdateReplayed => "Update offer older than the last one seen: ignored.",
-        Key::ServerDown => "Server offline",
-        Key::ServerDownHint => "Trying again in a few seconds.",
-        Key::WhatsNew => "What's new",
-        Key::NewsHistory => "History",
-        Key::NewsNone => "Nothing new yet.",
-        Key::NewsFromAdmin => "From the admin",
-        Key::NewsAdded => "Added",
-        Key::NewsUpdated => "Updated",
-        Key::NewsRemoved => "Removed",
-        Key::Settings => "Settings",
-        Key::Language => "Language",
-        Key::Busy => "Working…",
-        Key::KeyFingerprint => "Key fingerprint",
-        Key::TrustLine => {
-            "Files are signed by this server and verified one by one. ValhSync only writes inside the game folder (BepInEx) and runs nothing itself: Steam starts Valheim."
-        }
-        Key::Installed => "files installed",
-        Key::ModInstalled => "installed",
-        Key::Nothing => "Nothing to do.",
-        Key::ServerMods => "Server mods",
-        Key::ShowAll => "Show all",
-        Key::Speed => "speed",
-        Key::Remaining => "left",
+        Key::Installed => [
+            "files installed",
+            "fichiers installés",
+            "Dateien installiert",
+            "archivos instalados",
+            "file installati",
+            "plików zainstalowanych",
+            "arquivos instalados",
+            "файлов установлено",
+        ],
+        Key::Nothing => [
+            "Nothing to do.",
+            "Rien à faire.",
+            "Nichts zu tun.",
+            "Nada que hacer.",
+            "Niente da fare.",
+            "Nic do zrobienia.",
+            "Nada a fazer.",
+            "Делать нечего.",
+        ],
+        Key::ServerMods => [
+            "Server mods",
+            "Mods du serveur",
+            "Server-Mods",
+            "Mods del servidor",
+            "Mod del server",
+            "Mody serwera",
+            "Mods do servidor",
+            "Моды сервера",
+        ],
+        Key::ShowAll => [
+            "Show all",
+            "Tout afficher",
+            "Alle anzeigen",
+            "Mostrar todo",
+            "Mostra tutto",
+            "Pokaż wszystkie",
+            "Mostrar tudo",
+            "Показать все",
+        ],
+        Key::ModInstalled => [
+            "installed",
+            "installé",
+            "installiert",
+            "instalado",
+            "installato",
+            "zainstalowany",
+            "instalado",
+            "установлен",
+        ],
+        Key::Speed => [
+            "speed",
+            "vitesse",
+            "Tempo",
+            "velocidad",
+            "velocità",
+            "prędkość",
+            "velocidade",
+            "скорость",
+        ],
+        Key::Remaining => [
+            "left",
+            "restant",
+            "verbleibend",
+            "restante",
+            "rimanente",
+            "pozostało",
+            "restante",
+            "осталось",
+        ],
     }
 }
 
@@ -366,11 +1042,62 @@ mod tests {
     use super::*;
 
     #[test]
-    fn english_unless_french_was_chosen() {
-        assert_eq!(Lang::detect(Some("fr-FR")), Lang::Fr);
+    fn english_unless_something_else_was_chosen() {
+        assert_eq!(Lang::detect(None), Lang::En);
         assert_eq!(Lang::detect(Some("en")), Lang::En);
-        assert_eq!(Lang::detect(Some("de")), Lang::En);
-        assert_eq!(Lang::detect(None), Lang::En);
-        assert_eq!(Lang::detect(None), Lang::En);
+        assert_eq!(Lang::detect(Some("fr-FR")), Lang::Fr);
+        assert_eq!(Lang::detect(Some("de_DE")), Lang::De);
+        assert_eq!(Lang::detect(Some("pt-BR")), Lang::Pt);
+        assert_eq!(Lang::detect(Some("RU")), Lang::Ru);
+        // Nothing is guessed: a language we do not speak reads English rather
+        // than whichever code happens to sort first.
+        assert_eq!(Lang::detect(Some("sv")), Lang::En);
+        assert_eq!(Lang::detect(Some("")), Lang::En);
+    }
+
+    #[test]
+    fn a_code_round_trips_through_detection() {
+        for lang in Lang::ALL {
+            assert_eq!(Lang::detect(Some(lang.code())), lang, "{}", lang.code());
+        }
+    }
+
+    /// A hole in a row would put an English sentence inside an otherwise
+    /// translated window, which reads as a bug rather than as a gap.
+    #[test]
+    fn nothing_is_left_unsaid() {
+        let keys = [
+            Key::Subtitle,
+            Key::Play,
+            Key::Update,
+            Key::ConfirmBody,
+            Key::TrustLine,
+            Key::WhatsNew,
+            Key::ServerDown,
+            Key::Remaining,
+        ];
+        for key in keys {
+            for lang in Lang::ALL {
+                assert!(
+                    !text(lang, key).trim().is_empty(),
+                    "{lang:?} says nothing for {key:?}"
+                );
+            }
+        }
+    }
+
+    /// Every language names itself in itself, so the menu is legible to the
+    /// person who needs it.
+    #[test]
+    fn languages_name_themselves() {
+        let mut seen = Vec::new();
+        for lang in Lang::ALL {
+            let name = lang.name();
+            assert!(!name.is_empty());
+            assert!(!seen.contains(&name), "two languages named {name}");
+            seen.push(name);
+        }
+        assert_eq!(Lang::Fr.name(), "Français");
+        assert_eq!(Lang::Ru.name(), "Русский");
     }
 }

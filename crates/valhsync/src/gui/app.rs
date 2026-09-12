@@ -903,14 +903,21 @@ impl App {
                         if ui.button(self.t(Key::Settings)).clicked() {
                             self.settings_open = !self.settings_open;
                         }
-                        let other = self.lang.other();
-                        if ui
-                            .button(other.code().to_uppercase())
-                            .on_hover_text(self.t(Key::Language))
-                            .clicked()
-                        {
-                            self.lang = other;
-                            self.settings.language = Some(other.code().to_string());
+                        // Each language named in itself: "Deutsch", not
+                        // "German". Somebody who has landed in a window they
+                        // cannot read needs to recognise their own word for
+                        // their own language, not ours for it.
+                        let before = self.lang;
+                        egui::ComboBox::from_id_salt("language")
+                            .selected_text(self.lang.name())
+                            .width(124.0)
+                            .show_ui(ui, |ui| {
+                                for lang in Lang::ALL {
+                                    ui.selectable_value(&mut self.lang, lang, lang.name());
+                                }
+                            });
+                        if self.lang != before {
+                            self.settings.language = Some(self.lang.code().to_string());
                             self.save_settings();
                         }
                     });
