@@ -235,6 +235,20 @@ from a random link.
 
 ## 7. Day to day
 
+- **Adding a mod, on Windows**: drop it on the Mods tab. A `.zip` from
+  Thunderstore, Nexus, a GitHub release page or anywhere else; a mod folder; or
+  a bare `.dll`. ValhSync works out whether the files sit at the archive's root,
+  under `plugins/` or under a whole `BepInEx/` tree, names the folder from the
+  manifest when the archive carries one, and clears the previous version out
+  first so BepInEx is never asked to load two. Nothing is written outside
+  `BepInEx/plugins`, whatever paths the archive claims.
+
+  Stored, deflate and deflate64 are read — which is every archive anyone has
+  ever published a mod in. An archive packed with bzip2, LZMA, zstandard or xz
+  is refused by the name of its compression rather than half-read: extract it
+  yourself and drop the folder. (bzip2 would mean shipping a C library, and the
+  pure-Rust LZMA decoder available does not read the ZIP variant of LZMA
+  correctly, which is worse than not offering it.)
 - **Updating a mod**: replace the files in the server's `BepInEx/plugins` (or in
   `client-extras/`). `serve` republishes within seconds. Players get the change
   at their next PLAY, downloading only what changed.

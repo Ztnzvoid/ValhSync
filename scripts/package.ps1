@@ -72,7 +72,11 @@ foreach ($name in @("valhsync$exe", "valhsync-server$exe")) {
     if (-not (Test-Path "$bin/$name")) { throw "missing $bin/$name" }
 }
 
-$dist = "dist"
+# Absolute, because the .NET calls below resolve a relative path against the
+# process's working directory, which Set-Location does not change. It only
+# shows up when the two differ -- and then the archive is written, or not
+# written, somewhere nobody asked for.
+$dist = Join-Path (Get-Location).Path "dist"
 New-Item -ItemType Directory -Force -Path $dist | Out-Null
 
 # Compress-Archive writes Windows separators into the entry names, which the
@@ -136,13 +140,18 @@ New-Archive "valhsync-$version-$Target" {
     foreach ($as in $licences.Keys) { Copy-Item $licences[$as] (Join-Path $stage $as) }
     $docs = Join-Path $stage "docs"
     New-Item -ItemType Directory -Force -Path $docs | Out-Null
+    # The HTML pages too, and not only the markdown: each one is self-contained,
+    # so an admin offline in a server room can open the guide by double-clicking
+    # it. Without them, player-guide.md points at a file that is not here.
     Copy-Item docs/admin-guide.md, docs/player-guide.md $docs
+    Copy-Item docs/index.html, docs/server-guide.html, docs/player-guide.html $docs
     Copy-Item -Recurse docs/deploy $docs
 }
 
 New-Archive "valhsync-launcher-$version-$Target" {
     param($stage)
     Copy-Item "$bin/valhsync$exe" $stage
+    Copy-Item docs/player-guide.html $stage
     Copy-Item docs/player-guide.md (Join-Path $stage "README.md")
     foreach ($as in $licences.Keys) { Copy-Item $licences[$as] (Join-Path $stage $as) }
 }
