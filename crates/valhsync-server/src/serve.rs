@@ -72,7 +72,13 @@ impl std::fmt::Debug for Server {
 
 /// Build the pack and the router. Must run inside a Tokio runtime: the
 /// watcher rebuilds on a Tokio task. `watch = false` disables it (tests).
-pub fn prepare(cfg: &Config, keypair: Keypair, data_dir: PathBuf, watch: bool) -> Result<Server> {
+pub fn prepare(
+    cfg: &Config,
+    keypair: Keypair,
+    data_dir: PathBuf,
+    config_path: Option<PathBuf>,
+    watch: bool,
+) -> Result<Server> {
     let outcome = pack::build(cfg, &keypair, &data_dir)?;
     pack::print_summary(&outcome);
 
@@ -105,7 +111,13 @@ pub fn prepare(cfg: &Config, keypair: Keypair, data_dir: PathBuf, watch: bool) -
     });
 
     let watcher = if watch {
-        Some(spawn_watcher(cfg, keypair, data_dir, Arc::clone(&state))?)
+        Some(spawn_watcher(
+            cfg,
+            config_path,
+            keypair,
+            data_dir,
+            Arc::clone(&state),
+        )?)
     } else {
         None
     };
@@ -133,8 +145,13 @@ pub fn prepare(cfg: &Config, keypair: Keypair, data_dir: PathBuf, watch: bool) -
 }
 
 /// Serve on the configured bind address until Ctrl+C.
-pub async fn run(cfg: Config, keypair: Keypair, data_dir: PathBuf) -> Result<()> {
-    let server = prepare(&cfg, keypair, data_dir, true)?;
+pub async fn run(
+    cfg: Config,
+    keypair: Keypair,
+    data_dir: PathBuf,
+    config_path: PathBuf,
+) -> Result<()> {
+    let server = prepare(&cfg, keypair, data_dir, Some(config_path), true)?;
     let addr = cfg.bind_addr()?;
     let listener = tokio::net::TcpListener::bind(addr)
         .await
@@ -210,6 +227,7 @@ async fn shutdown_signal(watch_game: bool) {
 /// the data directory are ignored so our own writes never trigger a rebuild.
 fn spawn_watcher(
     cfg: &Config,
+    config_path: Option<PathBuf>,
     keypair: Keypair,
     data_dir: PathBuf,
     state: Arc<AppState>,
@@ -238,8 +256,24 @@ fn spawn_watcher(
             .with_context(|| format!("cannot watch {}", path.display()))?;
         tracing::info!("watching {}", path.display());
     }
+    // The configuration too, not only the mods. What goes in the manifest
+    // comes from both: a note for players, the server's name, the address,
+    // what is excluded. Watching the pack alone meant an admin could save a
+    // change, see it on disk, and have the running server go on publishing
+    // the manifest it built at startup -- with nothing anywhere saying so.
+    //
+    // The folder rather than the file: saving writes a temporary file and
+    // renames it over the old one, and a watch on the old inode sees nothing.
+    if let Some(dir) = config_path.as_ref().and_then(|p| p.parent())
+        && !dir.as_os_str().is_empty()
+    {
+        match watcher.watch(dir, RecursiveMode::NonRecursive) {
+            Ok(()) => tracing::info!("watching {}", dir.display()),
+            Err(e) => tracing::warn!("cannot watch {}: {e}", dir.display()),
+        }
+    }
 
-    let cfg = cfg.clone();
+    let mut cfg = cfg.clone();
     tokio::spawn(async move {
         let mut ticker = tokio::time::interval(Duration::from_millis(500));
         loop {
@@ -258,7 +292,22 @@ fn spawn_watcher(
             if !due {
                 continue;
             }
-            tracing::info!("pack changed, rebuilding");
+            tracing::info!("something changed, rebuilding");
+            // Re-read the configuration rather than reusing the one captured
+            // at startup: it is half of what the manifest says. Anything the
+            // running server cannot change -- the port it is bound to, the
+            // key it signs with -- is simply not read from here.
+            if let Some(path) = &config_path {
+                match Config::load(path) {
+                    Ok(fresh) => match fresh.validate() {
+                        Ok(()) => cfg = fresh,
+                        Err(e) => tracing::warn!(
+                            "the configuration on disk is not usable, keeping the last good one: {e:#}"
+                        ),
+                    },
+                    Err(e) => tracing::warn!("cannot re-read {}: {e:#}", path.display()),
+                }
+            }
             let cfg = cfg.clone();
             let keypair = keypair.clone();
             let data_dir = data_dir.clone();
@@ -491,7 +540,7 @@ mod tests {
 
     impl Running {
         async fn start(kp: &Keypair, server_root: &std::path::Path, data_dir: PathBuf) -> Self {
-            let server = prepare(&config(server_root), kp.clone(), data_dir, false).unwrap();
+            let server = prepare(&config(server_root), kp.clone(), data_dir, None, false).unwrap();
             let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
             let addr = listener.local_addr().unwrap();
             let (stop, rx) = oneshot::channel();

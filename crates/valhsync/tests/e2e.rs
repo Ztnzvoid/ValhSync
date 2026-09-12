@@ -51,7 +51,7 @@ impl TestServer {
                 .build()
                 .unwrap();
             rt.block_on(async move {
-                let server = serve::prepare(&cfg, kp, data_dir, false).unwrap();
+                let server = serve::prepare(&cfg, kp, data_dir, None, false).unwrap();
                 let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
                 addr_tx.send(listener.local_addr().unwrap()).unwrap();
                 serve::serve_until(listener, server, async {

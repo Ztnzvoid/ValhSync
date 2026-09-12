@@ -708,8 +708,9 @@ impl App {
         self.serve_rx = Some(rx);
         let cfg = self.cfg.clone();
         let data = self.data_dir.clone();
+        let path = self.config_path.clone();
         std::thread::spawn(move || {
-            worker::serve_blocking(cfg, data, stop_rx, &rep);
+            worker::serve_blocking(cfg, data, path, stop_rx, &rep);
         });
     }
 

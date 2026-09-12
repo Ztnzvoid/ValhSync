@@ -86,6 +86,7 @@ enum Cmd {
     },
 }
 
+#[allow(clippy::too_many_lines)] // one subcommand per arm, read top to bottom
 fn main() -> Result<()> {
     let cli = Cli::parse();
     install_crash_hook(cli.config.as_deref());
@@ -142,7 +143,12 @@ fn main() -> Result<()> {
             let cfg = Config::load(&config_path)?;
             print_warnings(&cfg);
             let kp = keys::load(&data_dir)?;
-            tokio::runtime::Runtime::new()?.block_on(serve::run(cfg, kp, data_dir))
+            tokio::runtime::Runtime::new()?.block_on(serve::run(
+                cfg,
+                kp,
+                data_dir,
+                config_path.clone(),
+            ))
         }
         Cmd::Export { dir, watch } => {
             let cfg = Config::load(&config_path)?;

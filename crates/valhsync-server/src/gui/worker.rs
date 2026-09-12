@@ -110,6 +110,7 @@ pub(super) fn invite_code(cfg: &Config, kp: &Keypair) -> Result<String> {
 pub(super) fn serve_blocking(
     cfg: Config,
     data_dir: PathBuf,
+    config_path: PathBuf,
     stop: tokio::sync::oneshot::Receiver<()>,
     rep: &Reporter,
 ) {
@@ -120,7 +121,7 @@ pub(super) fn serve_blocking(
             .build()
             .context("cannot start the async runtime")?;
         rt.block_on(async move {
-            let server = serve::prepare(&cfg, kp, data_dir, true)?;
+            let server = serve::prepare(&cfg, kp, data_dir, Some(config_path), true)?;
             let addr = cfg.bind_addr()?;
             let listener = tokio::net::TcpListener::bind(addr).await.with_context(|| {
                 format!("cannot listen on {addr}; is another valhsync-server running?")
