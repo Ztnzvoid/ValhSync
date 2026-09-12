@@ -1,8 +1,7 @@
 //! The admin window: detect, configure, publish, invite.
 //!
-//! Text is inline in both languages rather than in a key table: this window
-//! has few strings and keeping the French and the English side by side makes
-//! it obvious when one drifts.
+//! Every string it says lives in [`super::i18n`], one key per sentence: the
+//! pairs that used to sit inline could hold two languages and no more.
 
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, Receiver};
@@ -15,6 +14,7 @@ use valhsync_ui::frame as chrome;
 use valhsync_ui::theme as th;
 use valhsync_ui::widgets as w;
 
+use super::i18n::{Key, Lang, text};
 use super::worker::{self, Msg, Reporter};
 use crate::config::{self, Config};
 use crate::{detect, gameserver, logs, wizard};
@@ -55,51 +55,6 @@ enum Tab {
     Mods,
     Status,
     Settings,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Lang {
-    Fr,
-    En,
-}
-
-impl Lang {
-    /// English by default; the header switches language in one click.
-    fn detect() -> Self {
-        Self::En
-    }
-
-    /// What the configuration says, or the system's answer when it says
-    /// nothing.
-    fn from_code(code: Option<&str>) -> Self {
-        match code {
-            Some(c) if c.eq_ignore_ascii_case("fr") => Self::Fr,
-            Some(c) if c.eq_ignore_ascii_case("en") => Self::En,
-            _ => Self::detect(),
-        }
-    }
-
-    fn other(self) -> Self {
-        match self {
-            Self::Fr => Self::En,
-            Self::En => Self::Fr,
-        }
-    }
-
-    fn code(self) -> &'static str {
-        match self {
-            Self::Fr => "FR",
-            Self::En => "EN",
-        }
-    }
-
-    /// Pick the French or the English wording.
-    fn t<'a>(self, fr: &'a str, en: &'a str) -> &'a str {
-        match self {
-            Self::Fr => fr,
-            Self::En => en,
-        }
-    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -278,7 +233,7 @@ impl App {
         });
 
         let mut app = Self {
-            lang: Lang::from_code(cfg.language.as_deref()),
+            lang: Lang::detect(cfg.language.as_deref()),
             name: cfg.server.name.clone(),
             game_address: cfg.server.game_address.clone(),
             server_root: cfg
@@ -355,13 +310,7 @@ impl App {
         };
         app.refresh_detection();
         if !loaded {
-            let msg = app
-                .lang
-                .t(
-                    "Aucune configuration trouvée : ValhSync a rempli ce qu'il a pu détecter. Vérifiez, puis Enregistrer.",
-                    "No configuration found: ValhSync filled in what it could detect. Check it, then Save.",
-                )
-                .to_string();
+            let msg = app.t(Key::NoConfigFound).to_string();
             app.notify(msg, th::GOLD_LIT);
         }
         app.refresh_invite();
@@ -407,8 +356,9 @@ impl App {
         }
     }
 
-    fn t(&self, fr: &'static str, en: &'static str) -> &'static str {
-        self.lang.t(fr, en)
+    /// Short on purpose: it is written a hundred and seventy-five times.
+    fn t(&self, key: Key) -> &'static str {
+        text(self.lang, key)
     }
 
     fn notify(&mut self, message: String, color: Color32) {
@@ -818,12 +768,7 @@ impl App {
             self.serve_rx = None;
             if self.serving_at.take().is_some() {
                 self.stop_serving = None;
-                let msg = self
-                    .t(
-                        "Le serveur local s'est arrêté.",
-                        "The live server has stopped.",
-                    )
-                    .to_string();
+                let msg = self.t(Key::LiveServerStopped).to_string();
                 self.notify(msg, th::GOLD);
             }
         }
@@ -847,8 +792,8 @@ impl App {
                 });
                 let msg = format!(
                     "{} {files} {} · {}",
-                    self.t("Pack construit :", "Pack built:"),
-                    self.t("fichiers", "files"),
+                    self.t(Key::PackBuilt),
+                    self.t(Key::Files),
                     human_bytes(bytes)
                 );
                 self.notify(msg, th::MOSS);
@@ -856,10 +801,10 @@ impl App {
             Msg::Exported { dir, files, copied } => {
                 let msg = format!(
                     "{} {files} {} → {} ({copied} {})",
-                    self.t("Export :", "Export:"),
-                    self.t("fichiers", "files"),
+                    self.t(Key::ExportPrefix),
+                    self.t(Key::Files),
                     dir.display(),
-                    self.t("copiés", "copied")
+                    self.t(Key::Copied)
                 );
                 self.notify(msg, th::MOSS);
             }
@@ -880,10 +825,7 @@ impl App {
                 // left alone.
                 if !self.address_is_usable() {
                     self.game_address = format!("{ip}:{}", self.game_port());
-                    let msg = format!(
-                        "{} {ip}",
-                        self.t("Adresse publique détectée :", "Public address detected:")
-                    );
+                    let msg = format!("{} {ip}", self.t(Key::PublicAddressDetected));
                     self.notify(msg, th::MOSS);
                 }
                 // Start was pressed before this answer arrived.
@@ -894,7 +836,7 @@ impl App {
             }
             Msg::LinkChecked(detail) => {
                 self.link_ok = Some(true);
-                let msg = format!("{} {detail}", self.t("Lien joignable :", "Link reachable:"));
+                let msg = format!("{} {detail}", self.t(Key::LinkReachable));
                 self.notify(msg, th::MOSS);
             }
             Msg::Error(e) => {
@@ -953,6 +895,7 @@ fn exclude_pattern(name: &str, loose: bool) -> String {
 impl eframe::App for App {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         self.drain();
+        self.take_dropped_files(ctx);
         if self
             .ip_checked
             .is_none_or(|at| at.elapsed() >= POLL_PUBLIC_IP)
@@ -986,9 +929,9 @@ impl eframe::App for App {
             .show(ctx, |ui| {
                 th::backdrop(ui.ctx(), ui.painter(), ui.max_rect().expand(18.0));
                 let (status, mods, settings) = (
-                    self.t("État du serveur", "Server"),
-                    self.t("Mods", "Mods"),
-                    self.t("Paramètres", "Settings"),
+                    self.t(Key::TabStatus),
+                    self.t(Key::TabMods),
+                    self.t(Key::TabSettings),
                 );
                 w::tabs(
                     ui,
@@ -1005,24 +948,14 @@ impl eframe::App for App {
                 // automatic, so reaching here means something is stopping it,
                 // and that is worth more than a line at the bottom.
                 if self.never_saved && self.save_error.is_some() {
-                    w::notice(
-                        ui,
-                        th::GOLD,
-                        self.t(
-                            "La configuration n'a jamais pu être écrite, donc rien n'est publié et vos joueurs ne trouveront pas le serveur. La raison est en bas de la fenêtre ; elle s'enregistrera seule une fois corrigée.",
-                            "This configuration has never been written, so nothing is published and your players will not find the server. The reason is at the bottom of the window; it saves itself once that is fixed.",
-                        ),
-                    );
+                    w::notice(ui, th::GOLD, self.t(Key::NeverSavedWarning));
                     ui.add_space(12.0);
                 }
                 if let Some(path) = self.new_key_at.clone() {
                     let text = format!(
                         "{}
 {path}",
-                        self.t(
-                            "Nouvelle clé de signature générée. C'est l'identité de ce serveur : sauvegardez ce dossier. Si elle change, tous vos joueurs sont refusés et doivent réimporter un code d'invitation.",
-                            "A new signing key was generated. It is this server's identity: back this folder up. If it changes, every player is refused and has to import a fresh invite code.",
-                        )
+                        self.t(Key::NewKeyGenerated)
                     );
                     w::notice(ui, th::GOLD, &text);
                     ui.add_space(12.0);
@@ -1082,9 +1015,20 @@ impl App {
                     ui.with_layout(Layout::right_to_left(Align::Min), |ui| {
                         chrome::window_controls(ui);
                         ui.add_space(8.0);
-                        if ui.button(self.lang.other().code()).clicked() {
-                            self.lang = self.lang.other();
-                        }
+                        // Each language named in itself: "Deutsch", not
+                        // "German". Somebody who has landed in a window they
+                        // cannot read needs to recognise their own word for
+                        // their own language, not ours for it. The choice
+                        // goes into the configuration through `edited()`,
+                        // like every other field, and autosave writes it.
+                        egui::ComboBox::from_id_salt("language")
+                            .selected_text(self.lang.name())
+                            .width(124.0)
+                            .show_ui(ui, |ui| {
+                                for lang in Lang::ALL {
+                                    ui.selectable_value(&mut self.lang, lang, lang.name());
+                                }
+                            });
                     });
                 });
             });
@@ -1119,17 +1063,14 @@ impl App {
                     if let Some(why) = self.save_error.clone() {
                         w::dot(ui, th::BLOOD_LIT);
                         ui.label(
-                            RichText::new(format!(
-                                "{} {why}",
-                                self.t("Non enregistré :", "Not saved:")
-                            ))
-                            .small()
-                            .color(th::BLOOD_LIT),
+                            RichText::new(format!("{} {why}", self.t(Key::NotSaved)))
+                                .small()
+                                .color(th::BLOOD_LIT),
                         );
                     } else if self.dirty() {
                         w::dot(ui, th::GOLD);
                         ui.label(
-                            RichText::new(self.t("Enregistrement…", "Saving…"))
+                            RichText::new(self.t(Key::Saving))
                                 .small()
                                 .color(th::BONE_DIM),
                         );
@@ -1161,17 +1102,10 @@ impl App {
     fn card_status(&mut self, ui: &mut egui::Ui) {
         th::card(ui, |ui| {
             ui.set_width(ui.available_width());
-            w::section(ui, self.t("I · Serveur de jeu", "I · Game server"));
+            w::section(ui, self.t(Key::SectionGameServer));
 
             if self.server_outdated {
-                w::notice(
-                    ui,
-                    th::BLOOD_LIT,
-                    self.t(
-                        "Steam a une mise à jour en attente pour le serveur dédié. Tant qu'elle n'est pas faite, les joueurs dont Valheim est à jour seront refusés : « Version incompatible ». Steam → Bibliothèque → Outils → Valheim Dedicated Server.",
-                        "Steam has an update waiting for the dedicated server. Until it is applied, players whose Valheim is current will be refused with \"Version incompatible\". Steam → Library → Tools → Valheim Dedicated Server.",
-                    ),
-                );
+                w::notice(ui, th::BLOOD_LIT, self.t(Key::ServerUpdatePending));
                 ui.add_space(8.0);
             }
 
@@ -1185,14 +1119,11 @@ impl App {
                         th::GOLD.gamma_multiply(0.25)
                     },
                     if stopping {
-                        self.t(
-                            "Arrêt en cours, sauvegarde du monde",
-                            "Stopping, saving the world",
-                        )
+                        self.t(Key::StoppingSavingWorld)
                     } else if self.game_running {
-                        self.t("En ligne", "Online")
+                        self.t(Key::Online)
                     } else {
-                        self.t("Hors ligne", "Offline")
+                        self.t(Key::Offline)
                     },
                 );
                 ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
@@ -1207,46 +1138,27 @@ impl App {
                 self.session_facts(ui);
             } else if let Some(ip) = self.public_ip.clone() {
                 ui.label(
-                    RichText::new(format!("{} {ip}", self.t("IP publique", "public IP")))
+                    RichText::new(format!("{} {ip}", self.t(Key::PublicIp)))
                         .text_style(th::label_style())
                         .color(th::RUNE),
                 );
             }
             ui.add_space(8.0);
             if self.scripts.is_empty() {
-                w::notice(
-                    ui,
-                    th::GOLD,
-                    self.t(
-                        "Aucun script de démarrage. Créez-en un dans Paramètres.",
-                        "No start script yet. Write one from the Settings tab.",
-                    ),
-                );
+                w::notice(ui, th::GOLD, self.t(Key::NoStartScript));
             } else if let Some(s) = self.scripts.get(self.script_index) {
                 w::hint(
                     ui,
                     &format!(
                         "{} {}",
-                        self.t("Lancé par", "Started by"),
+                        self.t(Key::StartedBy),
                         s.path.file_name().unwrap_or_default().to_string_lossy()
                     ),
                 );
             }
             ui.add_space(8.0);
-            w::hint(
-                ui,
-                self.t(
-                    "Démarrer lance le serveur de jeu, renseigne l'adresse publique si besoin, et met la publication en ligne derrière.",
-                    "Start brings up the game server, fills in the public address if it needs filling, and puts publishing online behind it.",
-                ),
-            );
-            w::hint(
-                ui,
-                self.t(
-                    "Arrêter, c'est envoyer Ctrl+C à sa fenêtre : Valheim écrit le monde sur le disque avant de quitter. ValhSync ne tue jamais le processus.",
-                    "Stopping sends Ctrl+C to its window: Valheim writes the world to disk before it quits. ValhSync never kills the process.",
-                ),
-            );
+            w::hint(ui, self.t(Key::StartHint));
+            w::hint(ui, self.t(Key::StopHint));
         });
     }
 
@@ -1260,7 +1172,7 @@ impl App {
         if self.mode != PublishMode::Live {
             return;
         }
-        let label = self.t("Publication", "Publishing");
+        let label = self.t(Key::Publishing);
         if let Some(url) = self.serving_at.clone() {
             ui.horizontal(|ui| {
                 w::dot(ui, th::MOSS);
@@ -1274,25 +1186,21 @@ impl App {
             {
                 let why = self.publish_error.clone().unwrap_or_else(|| {
                     if self.game_running {
-                        self.t("démarrage…", "starting…").to_string()
+                        self.t(Key::PublishStarting).to_string()
                     } else {
-                        self.t("suit le serveur de jeu", "follows the game server")
-                            .to_string()
+                        self.t(Key::PublishFollowsGame).to_string()
                     }
                 });
                 ui.horizontal_wrapped(|ui| {
                     w::dot(ui, th::GOLD);
                     ui.label(
-                        RichText::new(format!(
-                            "{label} · {} — {why}",
-                            self.t("hors ligne", "offline")
-                        ))
-                        .text_style(th::label_style())
-                        .color(if self.publish_error.is_some() {
-                            th::BLOOD_LIT
-                        } else {
-                            th::BONE_DIM
-                        }),
+                        RichText::new(format!("{label} · {} — {why}", self.t(Key::OfflineLower)))
+                            .text_style(th::label_style())
+                            .color(if self.publish_error.is_some() {
+                                th::BLOOD_LIT
+                            } else {
+                                th::BONE_DIM
+                            }),
                     );
                 });
             }
@@ -1305,23 +1213,14 @@ impl App {
     /// is on the next card down. The field says so rather than leaving an
     /// admin waiting for a reply that is never coming back here.
     fn console_line(&mut self, ui: &mut egui::Ui) {
-        let hint = self.t(
-            "Commande serveur, par ex. « help »",
-            "Server command, e.g. \"help\"",
-        );
-        let send_label = self.t("Envoyer", "Send");
-        let tip = self.t(
-            "Tapée dans la console du serveur. La réponse arrive dans la console ci-dessus, pas ici.",
-            "Typed into the server's console. Its answer lands in the console above, not here.",
-        );
+        let hint = self.t(Key::ConsolePrompt);
+        let send_label = self.t(Key::Send);
+        let tip = self.t(Key::ConsoleTip);
         // Shown whether the server is up or not. A prompt that disappears
         // when there is nothing to talk to cannot be found again, and leaves
         // an admin wondering whether the window has one at all.
         let running = self.game_running;
-        let why = self.t(
-            "Le serveur de jeu est arrêté : il n'y a pas de console où taper.",
-            "The game server is stopped: there is no console to type into.",
-        );
+        let why = self.t(Key::ConsoleNoServer);
         ui.horizontal(|ui| {
             let send = ui
                 .add_enabled(running, egui::Button::new(send_label))
@@ -1342,7 +1241,7 @@ impl App {
                 let line = std::mem::take(&mut self.command);
                 match gameserver::send_command(&line) {
                     Ok(()) => {
-                        let msg = format!("{} {line}", self.t("Envoyé :", "Sent:"));
+                        let msg = format!("{} {line}", self.t(Key::SentPrefix));
                         self.notify(msg, th::MOSS);
                     }
                     Err(e) => {
@@ -1362,39 +1261,29 @@ impl App {
             facts.push(format!(
                 "{n} {}",
                 if n == 1 {
-                    self.t("joueur connecté", "player online")
+                    self.t(Key::PlayerOnline)
                 } else {
-                    self.t("joueurs connectés", "players online")
+                    self.t(Key::PlayersOnline)
                 }
             ));
         }
         if let Some(code) = &self.session.join_code {
-            facts.push(format!("{} {code}", self.t("code crossplay", "join code")));
+            facts.push(format!("{} {code}", self.t(Key::JoinCode)));
         }
         if let Some(version) = &self.game_version {
             facts.push(format!("Valheim {version}"));
         }
         if let Some(ip) = &self.public_ip {
-            facts.push(format!("{} {ip}", self.t("IP publique", "public IP")));
+            facts.push(format!("{} {ip}", self.t(Key::PublicIp)));
         }
         if let Some(pid) = self.game_pid {
-            facts.push(format!("{} {pid}", self.t("processus", "process")));
+            facts.push(format!("{} {pid}", self.t(Key::Process)));
         }
         if let Some(saved) = self.world_saved {
-            facts.push(format!(
-                "{} {}",
-                self.t("sauvegardé il y a", "saved"),
-                Self::ago(saved)
-            ));
+            facts.push(format!("{} {}", self.t(Key::SavedAgo), Self::ago(saved)));
         }
         if facts.is_empty() {
-            w::hint(
-                ui,
-                self.t(
-                    "En attente de la première ligne de session dans la console.",
-                    "Waiting for the first session line in the console.",
-                ),
-            );
+            w::hint(ui, self.t(Key::WaitingSessionLine));
         } else {
             ui.label(
                 RichText::new(facts.join("   ·   "))
@@ -1408,9 +1297,9 @@ impl App {
     fn server_buttons(&mut self, ui: &mut egui::Ui, stopping: bool) {
         if stopping {
             let label = if self.restart_after_stop {
-                self.t("Redémarrage…", "Restarting…")
+                self.t(Key::Restarting)
             } else {
-                self.t("Arrêt en cours…", "Stopping…")
+                self.t(Key::Stopping)
             };
             ui.add_enabled(
                 false,
@@ -1423,19 +1312,15 @@ impl App {
             // window brings it back up once the process has actually gone.
             // Laid out right to left, so it sits left of Stop.
             if ui
-                .small_button(self.t("Redémarrer", "Restart"))
-                .on_hover_text(self.t(
-                    "Arrête proprement, attend que le monde soit écrit, puis relance.",
-                    "Stops cleanly, waits for the world to be written, then starts it again.",
-                ))
+                .small_button(self.t(Key::Restart))
+                .on_hover_text(self.t(Key::RestartHint))
                 .clicked()
             {
                 self.request_stop(true);
             }
             if ui
                 .add(egui::Button::new(
-                    RichText::new(self.t("Arrêter et sauvegarder", "Stop and save"))
-                        .color(th::BONE),
+                    RichText::new(self.t(Key::StopAndSave)).color(th::BONE),
                 ))
                 .clicked()
             {
@@ -1448,16 +1333,13 @@ impl App {
             .add_enabled(
                 can_start,
                 egui::Button::new(
-                    RichText::new(self.t("Démarrer", "Start"))
+                    RichText::new(self.t(Key::Start))
                         .strong()
                         .color(if can_start { th::NIGHT } else { th::BONE_DIM }),
                 )
                 .fill(if can_start { th::GOLD } else { th::LEATHER }),
             )
-            .on_disabled_hover_text(self.t(
-                "Aucun script de démarrage : onglet Paramètres, carte « Dossier du serveur ».",
-                "No start script: Settings tab, \"Server folder\" card.",
-            ))
+            .on_disabled_hover_text(self.t(Key::NoStartScriptHint))
             .clicked()
         {
             self.start_everything();
@@ -1475,15 +1357,9 @@ impl App {
                 self.stop_requested = Some(Instant::now());
                 self.restart_after_stop = then_restart;
                 let msg = if then_restart {
-                    self.t(
-                        "Ctrl+C envoyé. Le monde est sauvegardé, puis le serveur repart.",
-                        "Ctrl+C sent. The world is saved, then the server comes back.",
-                    )
+                    self.t(Key::StopThenRestartSent)
                 } else {
-                    self.t(
-                        "Ctrl+C envoyé. Valheim sauvegarde le monde puis quitte.",
-                        "Ctrl+C sent. Valheim saves the world, then quits.",
-                    )
+                    self.t(Key::StopSent)
                 }
                 .to_string();
                 self.notify(msg, th::MOSS);
@@ -1515,12 +1391,7 @@ impl App {
         self.game_checked = Instant::now();
         self.game_pid = None;
         self.stop_requested = None;
-        let msg = self
-            .t(
-                "Serveur de jeu lancé dans sa propre fenêtre.",
-                "Game server started in its own window.",
-            )
-            .to_string();
+        let msg = self.t(Key::GameServerStarted).to_string();
         self.notify(msg, th::MOSS);
 
         // Pressing Start is a fresh intent: it undoes an earlier stop.
@@ -1608,7 +1479,7 @@ impl App {
         if self.serving_at.is_some() {
             if ui
                 .add(egui::Button::new(
-                    RichText::new(self.t("Arrêter", "Stop")).color(th::BONE),
+                    RichText::new(self.t(Key::Stop)).color(th::BONE),
                 ))
                 .clicked()
             {
@@ -1623,11 +1494,11 @@ impl App {
         if ui
             .add_enabled(
                 can,
-                egui::Button::new(
-                    RichText::new(self.t("Démarrer", "Start"))
-                        .strong()
-                        .color(if can { th::NIGHT } else { th::BONE_DIM }),
-                )
+                egui::Button::new(RichText::new(self.t(Key::Start)).strong().color(if can {
+                    th::NIGHT
+                } else {
+                    th::BONE_DIM
+                }))
                 .fill(if can { th::GOLD } else { th::LEATHER }),
             )
             .clicked()
@@ -1643,9 +1514,9 @@ impl App {
     fn card_server_folder(&mut self, ui: &mut egui::Ui) {
         th::card(ui, |ui| {
             ui.set_width(ui.available_width());
-            w::section(ui, self.t("I · Serveur dédié", "I · Dedicated server"));
+            w::section(ui, self.t(Key::SectionDedicatedServer));
 
-            let hint_text = self.t("Dossier du serveur dédié", "Dedicated server folder");
+            let hint_text = self.t(Key::DedicatedServerFolder);
             ui.horizontal(|ui| {
                 ui.add(
                     egui::TextEdit::singleline(&mut self.server_root)
@@ -1653,23 +1524,15 @@ impl App {
                         .font(egui::TextStyle::Monospace)
                         .hint_text(hint_text),
                 );
-                if ui.button(self.t("Détecter", "Detect")).clicked() {
+                if ui.button(self.t(Key::Detect)).clicked() {
                     if let Some(p) = detect::detect_server_root() {
                         self.server_root = p.display().to_string();
                         self.pull_fields();
                         self.refresh_detection();
-                        let msg = format!(
-                            "{} {}",
-                            self.t("Serveur dédié trouvé :", "Dedicated server found:"),
-                            p.display()
-                        );
+                        let msg = format!("{} {}", self.t(Key::DedicatedServerFound), p.display());
                         self.notify(msg, th::MOSS);
                     } else {
-                        let msg = self.t(
-                            "Aucun serveur dédié trouvé. Indiquez le dossier contenant valheim_server.exe.",
-                            "No dedicated server found. Point to the folder containing valheim_server.exe.",
-                        )
-                        .to_string();
+                        let msg = self.t(Key::DedicatedServerNotFound).to_string();
                         self.notify(msg, th::BLOOD_LIT);
                     }
                 }
@@ -1684,26 +1547,13 @@ impl App {
                         ui,
                         if bep { th::MOSS } else { th::GOLD },
                         if bep {
-                            self.t(
-                                "Serveur dédié avec BepInEx",
-                                "Dedicated server with BepInEx",
-                            )
+                            self.t(Key::ServerWithBepInEx)
                         } else {
-                            self.t(
-                                "Serveur dédié trouvé, mais sans BepInEx : installez BepInExPack_Valheim d'abord",
-                                "Dedicated server found, but no BepInEx: install BepInExPack_Valheim first",
-                            )
+                            self.t(Key::ServerWithoutBepInEx)
                         },
                     );
                 } else {
-                    w::notice(
-                        ui,
-                        th::BLOOD_LIT,
-                        self.t(
-                            "Ce dossier ne contient pas valheim_server.exe.",
-                            "This folder has no valheim_server.exe in it.",
-                        ),
-                    );
+                    w::notice(ui, th::BLOOD_LIT, self.t(Key::NotAServerFolder));
                 }
             }
 
@@ -1711,7 +1561,7 @@ impl App {
                 ui.add_space(8.0);
                 ui.horizontal(|ui| {
                     ui.label(
-                        RichText::new(self.t("Script de démarrage", "Start script"))
+                        RichText::new(self.t(Key::StartScript))
                             .small()
                             .color(th::BONE_DIM),
                     );
@@ -1755,12 +1605,12 @@ impl App {
                         bits.push("crossplay".into());
                     }
                     match a.public {
-                        Some(true) => bits.push(self.t("public", "public").into()),
-                        Some(false) => bits.push(self.t("privé", "private").into()),
+                        Some(true) => bits.push(self.t(Key::Public).into()),
+                        Some(false) => bits.push(self.t(Key::Private).into()),
                         None => {}
                     }
                     if a.has_password {
-                        bits.push(self.t("mot de passe défini", "password set").to_string());
+                        bits.push(self.t(Key::PasswordSet).to_string());
                     }
                     ui.label(
                         RichText::new(bits.join(" · "))
@@ -1775,27 +1625,16 @@ impl App {
     fn card_identity(&mut self, ui: &mut egui::Ui) {
         th::card(ui, |ui| {
             ui.set_width(ui.available_width());
-            w::section(
-                ui,
-                self.t("II · Identité et adresse", "II · Identity and address"),
-            );
+            w::section(ui, self.t(Key::SectionIdentity));
 
             let width = (ui.available_width() - 24.0).max(200.0);
-            w::field(
-                ui,
-                self.t("Nom affiché aux joueurs", "Name shown to players"),
-                &mut self.name,
-                width,
-            );
+            w::field(ui, self.t(Key::NameShownToPlayers), &mut self.name, width);
             ui.add_space(6.0);
 
             ui.label(
-                RichText::new(self.t(
-                    "Adresse du serveur de jeu (host:port)",
-                    "Game server address (host:port)",
-                ))
-                .small()
-                .color(th::BONE_DIM),
+                RichText::new(self.t(Key::GameAddressLabel))
+                    .small()
+                    .color(th::BONE_DIM),
             );
             ui.horizontal(|ui| {
                 ui.add(
@@ -1810,7 +1649,7 @@ impl App {
                 match detected {
                     Some(addr) if addr != self.game_address.trim() => {
                         if ui
-                            .button(self.t("Utiliser l'IP détectée", "Use detected IP"))
+                            .button(self.t(Key::UseDetectedIp))
                             .on_hover_text(format!("{addr}  ·  {}", worker::IP_ECHO_SERVICE))
                             .clicked()
                         {
@@ -1819,17 +1658,15 @@ impl App {
                     }
                     Some(_) => {
                         ui.label(
-                            RichText::new(
-                                self.t("Correspond à votre IP publique", "Matches your public IP"),
-                            )
-                            .small()
-                            .color(th::MOSS),
+                            RichText::new(self.t(Key::MatchesPublicIp))
+                                .small()
+                                .color(th::MOSS),
                         )
                         .on_hover_text(worker::IP_ECHO_SERVICE);
                     }
                     None => {
                         ui.label(
-                            RichText::new(self.t("Détection de l'IP…", "Detecting your IP…"))
+                            RichText::new(self.t(Key::DetectingIp))
                                 .small()
                                 .color(th::BONE_DIM),
                         )
@@ -1849,27 +1686,14 @@ impl App {
                     ui,
                     th::BLOOD_LIT,
                     if crossplay {
-                        self.t(
-                            "Adresse locale, et votre serveur tourne en crossplay : personne ne pourra se connecter, pas même sur votre réseau. Iron Gate : « it's not possible to connect using a local IP address ». Utilisez votre IP publique.",
-                            "Local address, and your server runs with crossplay: nobody will connect, not even on your own network. Iron Gate: \"it's not possible to connect using a local IP address\". Use your public IP.",
-                        )
+                        self.t(Key::LocalAddressCrossplay)
                     } else {
-                        self.t(
-                            "Adresse locale : seuls les joueurs de votre réseau pourront se connecter.",
-                            "Local address: only players on your own network will connect.",
-                        )
+                        self.t(Key::LocalAddress)
                     },
                 );
             } else if !addr.is_empty() && !valhsync_core::manifest::is_valid_game_address(addr) {
                 ui.add_space(4.0);
-                w::notice(
-                    ui,
-                    th::BLOOD_LIT,
-                    self.t(
-                        "Adresse invalide : uniquement lettres, chiffres, . - _ : [ ]",
-                        "Invalid address: only letters, digits, . - _ : [ ]",
-                    ),
-                );
+                w::notice(ui, th::BLOOD_LIT, self.t(Key::InvalidAddress));
             }
         });
     }
@@ -1881,22 +1705,94 @@ impl App {
             ui.add_space(10.0);
             th::hairline(ui);
             ui.add_space(8.0);
+            self.drop_zone(ui);
+            ui.add_space(10.0);
+            th::hairline(ui);
+            ui.add_space(8.0);
             self.pack_notes(ui);
         });
+    }
+
+    /// Where a mod is dropped to be installed.
+    ///
+    /// The manual version is a download, a guess at whether the files go at
+    /// the root or under `plugins/`, a folder named by hand, and remembering
+    /// to delete the old version first. Each of those is a way to end up with
+    /// two versions of one mod loaded, which BepInEx settles by refusing both.
+    fn drop_zone(&mut self, ui: &mut egui::Ui) {
+        let hovering = ui.ctx().input(|i| !i.raw.hovered_files.is_empty());
+        let (title, hint) = (self.t(Key::DropTitle), self.t(Key::DropHint));
+        let label = if hovering {
+            self.t(Key::DropHover)
+        } else {
+            title
+        };
+
+        let colour = if hovering { th::GOLD_LIT } else { th::GOLD };
+        th::callout(ui, colour, |ui| {
+            ui.label(RichText::new(label).strong().color(colour));
+            w::hint(ui, hint);
+        });
+    }
+
+    /// Install whatever was dropped on the window, wherever it was dropped.
+    ///
+    /// On the window rather than on the rectangle: somebody dragging a file
+    /// aims at the words, not at a hit box, and a drop that lands two pixels
+    /// outside and silently does nothing is the worst version of this.
+    fn take_dropped_files(&mut self, ctx: &egui::Context) {
+        let dropped: Vec<PathBuf> = ctx.input(|i| {
+            i.raw
+                .dropped_files
+                .iter()
+                .filter_map(|f| f.path.clone())
+                .collect()
+        });
+        if dropped.is_empty() {
+            return;
+        }
+        let Some(root) = self.cfg.pack.server_root.clone() else {
+            let msg = self.t(Key::DropNeedsRoot).to_string();
+            self.notify(msg, th::BLOOD_LIT);
+            return;
+        };
+        let mut installed = 0;
+        for path in dropped {
+            match crate::install::install(&root, &path) {
+                Ok(done) => {
+                    installed += 1;
+                    let what = if done.replaced {
+                        self.t(Key::DropReplaced)
+                    } else {
+                        self.t(Key::DropInstalled)
+                    };
+                    let msg = format!(
+                        "{what} {} ({} {})",
+                        done.name,
+                        done.files,
+                        self.t(Key::Files)
+                    );
+                    self.notify(msg, th::MOSS);
+                }
+                Err(e) => self.notify(format!("{e:#}"), th::BLOOD_LIT),
+            }
+        }
+        if installed > 0 {
+            // The pack is rebuilt by the folder watcher on its own; what the
+            // window has to refresh is its own idea of what is in there.
+            self.mods = self.collect_mods();
+            self.tab = Tab::Mods;
+            let msg = self.t(Key::DropRestart).to_string();
+            self.notify(msg, th::GOLD);
+        }
     }
 
     /// The mods found on the server, and which side each one runs on.
     #[allow(clippy::too_many_lines)] // one list, read top to bottom
     fn mod_list(&mut self, ui: &mut egui::Ui) {
-        w::section(ui, self.t("Mods du pack", "Pack mods"));
+        w::section(ui, self.t(Key::PackMods));
         if self.mods.is_empty() {
-            w::hint(
-                ui,
-                self.t(
-                    "Aucun mod trouvé dans BepInEx/plugins.",
-                    "No mod found in BepInEx/plugins.",
-                ),
-            );
+            w::hint(ui, self.t(Key::NoModsFound));
             return;
         }
         // Say where the list comes from: it is read from the server's own
@@ -1909,25 +1805,19 @@ impl App {
             .map(|r| r.join("BepInEx").join("plugins"))
         {
             ui.horizontal(|ui| {
-                w::hint(ui, self.t("Lus dans", "Read from"));
+                w::hint(ui, self.t(Key::ReadFrom));
                 ui.label(
                     RichText::new(plugins.display().to_string())
                         .monospace()
                         .small()
                         .color(th::RUNE),
                 );
-                if ui.small_button(self.t("Ouvrir", "Open")).clicked() {
+                if ui.small_button(self.t(Key::Open)).clicked() {
                     open_path(&plugins);
                 }
             });
         }
-        w::hint(
-                ui,
-                self.t(
-                    "Décochez « envoyé aux joueurs » pour un mod qui ne doit tourner que sur le serveur (DiscordConnector, outils d'admin).",
-                    "Untick \"sent to players\" for a mod that must run on the server only (DiscordConnector, admin tools).",
-                ),
-            );
+        w::hint(ui, self.t(Key::ServerOnlyHint));
         ui.add_space(8.0);
 
         let server_only = self.mods.iter().filter(|m| m.server_only).count();
@@ -1937,18 +1827,15 @@ impl App {
             ui.label(
                 RichText::new(format!(
                     "{sent} {}  ·  {server_only} {}",
-                    self.t("envoyés", "sent"),
-                    self.t("serveur seul", "server only")
+                    self.t(Key::SentCount),
+                    self.t(Key::ServerOnlyCount)
                 ))
                 .text_style(th::label_style())
                 .color(th::BONE_DIM),
             );
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                 if ui
-                    .add_enabled(
-                        server_only > 0,
-                        egui::Button::new(self.t("Tout envoyer", "Send all")),
-                    )
+                    .add_enabled(server_only > 0, egui::Button::new(self.t(Key::SendAll)))
                     .clicked()
                 {
                     for m in self.mods.iter().filter(|m| m.server_only) {
@@ -1956,7 +1843,7 @@ impl App {
                     }
                 }
                 if ui
-                    .add_enabled(sent > 0, egui::Button::new(self.t("Aucun", "None")))
+                    .add_enabled(sent > 0, egui::Button::new(self.t(Key::NoneOfThem)))
                     .clicked()
                 {
                     for m in self.mods.iter().filter(|m| !m.server_only) {
@@ -1983,24 +1870,21 @@ impl App {
                 }));
                 if m.client_only {
                     ui.label(
-                        RichText::new(self.t("client seul", "client only"))
+                        RichText::new(self.t(Key::ClientOnly))
                             .small()
                             .color(th::RUNE),
                     );
                 }
                 ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                     if ui
-                        .selectable_label(m.server_only, self.t("Serveur seul", "Server only"))
+                        .selectable_label(m.server_only, self.t(Key::ServerOnly))
                         .clicked()
                         && !m.server_only
                     {
                         changed.push((m.folder.clone(), m.loose, true));
                     }
                     if ui
-                        .selectable_label(
-                            !m.server_only,
-                            self.t("Envoyé aux joueurs", "Sent to players"),
-                        )
+                        .selectable_label(!m.server_only, self.t(Key::SentToPlayers))
                         .clicked()
                         && m.server_only
                     {
@@ -2018,20 +1902,11 @@ impl App {
             th::hairline(ui);
             ui.add_space(8.0);
             ui.label(
-                RichText::new(self.t(
-                    "Optionnel · mods qui ne tournent QUE chez les joueurs",
-                    "Optional · mods that run ONLY on players",
-                ))
-                .font(th::display_font(13.0))
-                .color(th::GOLD_LIT),
+                RichText::new(self.t(Key::ClientExtrasTitle))
+                    .font(th::display_font(13.0))
+                    .color(th::GOLD_LIT),
             );
-            w::hint(
-                    ui,
-                    self.t(
-                        "Unshamed, ConfigurationManager, EquipmentAndQuickSlots… Ils ne sont pas installés sur le serveur, donc ValhSync ne peut pas les y trouver : déposez-les ici, à la même arborescence que le jeu (BepInEx/plugins/...). Si vous n'en avez aucun, ignorez ce dossier.",
-                        "Unshamed, ConfigurationManager, EquipmentAndQuickSlots… They are not installed on the server, so ValhSync cannot find them there: drop them here, laid out like the game (BepInEx/plugins/...). If you have none, ignore this folder.",
-                    ),
-                );
+            w::hint(ui, self.t(Key::ClientExtrasHint));
             ui.horizontal(|ui| {
                 ui.label(
                     RichText::new(extras.display().to_string())
@@ -2039,7 +1914,7 @@ impl App {
                         .small()
                         .color(th::RUNE),
                 );
-                if ui.small_button(self.t("Ouvrir", "Open")).clicked() {
+                if ui.small_button(self.t(Key::Open)).clicked() {
                     let _ = std::fs::create_dir_all(&extras);
                     open_path(&extras);
                 }
@@ -2055,19 +1930,13 @@ impl App {
     /// moved but not what that will do to a save.
     fn pack_notes(&mut self, ui: &mut egui::Ui) {
         ui.label(
-            RichText::new(self.t(
-                "Optionnel · mot aux joueurs",
-                "Optional · a word to players",
-            ))
-            .font(th::display_font(13.0))
-            .color(th::GOLD_LIT),
+            RichText::new(self.t(Key::NotesTitle))
+                .font(th::display_font(13.0))
+                .color(th::GOLD_LIT),
         );
-        let hint = self.t(
-            "Affiché dans le launcher avant que le joueur accepte la synchronisation. La liste des mods qui changent est calculée toute seule : écrivez ici ce qu'elle ne peut pas dire (« ce mod remet sa config à zéro », « videz vos coffres avant »). Rien à dire ? Laissez vide.",
-            "Shown in the launcher before a player accepts the sync. The list of mods that change is worked out on its own: write here what it cannot say (\"this mod resets its own config\", \"empty your chests first\"). Nothing to say? Leave it empty.",
-        );
+        let hint = self.t(Key::NotesHint);
         w::hint(ui, hint);
-        let placeholder = self.t("Rien de particulier.", "Nothing in particular.");
+        let placeholder = self.t(Key::NotesPlaceholder);
         ui.add(
             egui::TextEdit::multiline(&mut self.notes)
                 .desired_width(ui.available_width())
@@ -2080,12 +1949,12 @@ impl App {
         let used = self.notes.trim().len();
         let (text, color) = if used > MAX_NOTES {
             (
-                format!("{} {}", used - MAX_NOTES, self.t("de trop", "too many")),
+                format!("{} {}", used - MAX_NOTES, self.t(Key::TooMany)),
                 th::BLOOD_LIT,
             )
         } else {
             (
-                format!("{} {}", MAX_NOTES - used, self.t("restants", "left")),
+                format!("{} {}", MAX_NOTES - used, self.t(Key::Left)),
                 th::BONE_DIM,
             )
         };
@@ -2098,11 +1967,8 @@ impl App {
     fn card_publish(&mut self, ui: &mut egui::Ui) {
         th::card(ui, |ui| {
             ui.set_width(ui.available_width());
-            w::section(ui, self.t("III · Publication", "III · Publishing"));
-            let (label_export, label_live) = (
-                self.t("Fichiers statiques", "Static files"),
-                self.t("Serveur local", "Live server"),
-            );
+            w::section(ui, self.t(Key::SectionPublishing));
+            let (label_export, label_live) = (self.t(Key::StaticFiles), self.t(Key::LiveServer));
             ui.horizontal(|ui| {
                 ui.selectable_value(&mut self.mode, PublishMode::Export, label_export);
                 ui.selectable_value(&mut self.mode, PublishMode::Live, label_live);
@@ -2111,13 +1977,7 @@ impl App {
 
             match self.mode {
                 PublishMode::Export => {
-                    w::hint(
-                        ui,
-                        self.t(
-                            "Recommandé : aucun port à ouvrir. ValhSync écrit un dossier à déposer sur n'importe quel espace web (GitHub Pages, S3, votre hébergeur).",
-                            "Recommended: no port to open. ValhSync writes a folder you upload to any web space (GitHub Pages, S3, your host).",
-                        ),
-                    );
+                    w::hint(ui, self.t(Key::ExportHint));
                     ui.horizontal(|ui| {
                         ui.add(
                             egui::TextEdit::singleline(&mut self.export_dir)
@@ -2125,10 +1985,7 @@ impl App {
                                 .font(egui::TextStyle::Monospace),
                         );
                         if ui
-                            .add_enabled(
-                                !self.busy,
-                                egui::Button::new(self.t("Exporter", "Export")),
-                            )
+                            .add_enabled(!self.busy, egui::Button::new(self.t(Key::Export)))
                             .clicked()
                         {
                             self.pull_fields();
@@ -2139,19 +1996,13 @@ impl App {
                                 rep.run(|| worker::export(&cfg, &data, dir));
                             });
                         }
-                        if ui.button(self.t("Ouvrir", "Open")).clicked() {
+                        if ui.button(self.t(Key::Open)).clicked() {
                             let dir = PathBuf::from(self.export_dir.trim());
                             let _ = std::fs::create_dir_all(&dir);
                             open_path(&dir);
                         }
                     });
-                    w::hint(
-                        ui,
-                        self.t(
-                            "Ensuite, mettez l'URL de ce dossier dans « URL publique » ci-dessous.",
-                            "Then put that folder's URL in \"Public URL\" below.",
-                        ),
-                    );
+                    w::hint(ui, self.t(Key::ExportThenUrl));
                 }
                 PublishMode::Live => {
                     let serving = self.serving_at.is_some();
@@ -2164,9 +2015,9 @@ impl App {
                                 th::GOLD.gamma_multiply(0.25)
                             },
                             if serving {
-                                self.t("En ligne", "Online")
+                                self.t(Key::Online)
                             } else {
-                                self.t("Hors ligne", "Offline")
+                                self.t(Key::Offline)
                             },
                         );
                         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
@@ -2181,17 +2032,12 @@ impl App {
                         None => {
                             ui.horizontal(|ui| {
                                 ui.label(
-                                    RichText::new(self.t("Port", "Port"))
-                                        .small()
-                                        .color(th::BONE_DIM),
+                                    RichText::new(self.t(Key::Port)).small().color(th::BONE_DIM),
                                 );
                                 let mut port = self.bind_port();
                                 if ui
                                     .add(egui::DragValue::new(&mut port).range(1024..=65_533))
-                                    .on_hover_text(self.t(
-                                        "Celui du jeu par défaut. Le changer voudrait dire ouvrir un port de plus.",
-                                        "The game's, by default. Changing it would mean opening one more port.",
-                                    ))
+                                    .on_hover_text(self.t(Key::PortHint))
                                     .changed()
                                 {
                                     self.bind = format!("0.0.0.0:{port}");
@@ -2204,40 +2050,19 @@ impl App {
                         w::notice(
                             ui,
                             th::BLOOD_LIT,
-                            &format!(
-                                "{} {why}",
-                                self.t(
-                                    "La publication ne peut pas démarrer :",
-                                    "Publishing cannot start:"
-                                )
-                            ),
+                            &format!("{} {why}", self.t(Key::PublishCannotStart)),
                         );
                         ui.add_space(6.0);
                     }
-                    w::hint(
-                        ui,
-                        self.t(
-                            "La publication suit le serveur de jeu : elle se met en ligne toute seule dès qu'il tourne, et le bouton Démarrer du panneau I la monte avec lui. L'arrêter ici la laisse arrêtée jusqu'au prochain démarrage du serveur.",
-                            "Publishing follows the game server: it goes online by itself as soon as the game is up, and Start on panel I brings both. Stopping it here keeps it stopped until the game server is next started.",
-                        ),
-                    );
-                    w::hint(
-                        ui,
-                        self.t(
-                            "ValhSync sert le pack depuis cette machine, sur le port du jeu mais en TCP : Valheim ne l'utilise qu'en UDP, donc aucun nouveau port à ouvrir. Vérifiez seulement que votre règle de routeur couvre TCP et UDP.",
-                            "ValhSync serves the pack from this machine, on the game's port but in TCP: Valheim only uses it in UDP, so there is no new port to open. Just check that your router rule covers TCP as well as UDP.",
-                        ),
-                    );
+                    w::hint(ui, self.t(Key::PublishFollowsHint));
+                    w::hint(ui, self.t(Key::PublishTcpHint));
                 }
             }
 
             ui.add_space(8.0);
             w::field(
                 ui,
-                self.t(
-                    "URL publique (celle que les joueurs contacteront)",
-                    "Public URL (what players will contact)",
-                ),
+                self.t(Key::PublicUrlLabel),
                 &mut self.public_url,
                 (ui.available_width() - 24.0).max(200.0),
             );
@@ -2245,10 +2070,7 @@ impl App {
             ui.add_space(8.0);
             ui.horizontal(|ui| {
                 if ui
-                    .add_enabled(
-                        !self.busy,
-                        egui::Button::new(self.t("Analyser le pack", "Scan the pack")),
-                    )
+                    .add_enabled(!self.busy, egui::Button::new(self.t(Key::ScanThePack)))
                     .clicked()
                 {
                     self.pull_fields();
@@ -2261,7 +2083,7 @@ impl App {
                         RichText::new(format!(
                             "{} {} · {}",
                             s.files,
-                            self.t("fichiers", "files"),
+                            self.t(Key::Files),
                             human_bytes(s.bytes)
                         ))
                         .text_style(th::label_style())
@@ -2273,13 +2095,9 @@ impl App {
                 && !s.skipped.is_empty()
             {
                 ui.label(
-                    RichText::new(format!(
-                        "{} {}",
-                        s.skipped.len(),
-                        self.t("fichier(s) ignoré(s)", "file(s) skipped")
-                    ))
-                    .small()
-                    .color(th::GOLD),
+                    RichText::new(format!("{} {}", s.skipped.len(), self.t(Key::FilesSkipped)))
+                        .small()
+                        .color(th::GOLD),
                 );
             }
         });
@@ -2289,35 +2107,16 @@ impl App {
     fn card_invite(&mut self, ui: &mut egui::Ui) {
         th::card(ui, |ui| {
             ui.set_width(ui.available_width());
-            w::section(ui, self.t("IV · Code d'invitation", "IV · Invite code"));
-            w::hint(
-                ui,
-                self.t(
-                    "Envoyez-le à vos joueurs. Ils peuvent aussi ajouter le serveur par son adresse seule : dans ce cas, donnez-leur l'empreinte de clé ci-dessous pour qu'ils la vérifient.",
-                    "Send it to your players. They can also add the server by its address alone: give them the key fingerprint below so they can check it.",
-                ),
-            );
+            w::section(ui, self.t(Key::SectionInvite));
+            w::hint(ui, self.t(Key::InviteHint));
             ui.add_space(4.0);
             if self.invite.is_empty() {
                 // A code is missing for exactly one of two reasons, and the
                 // admin can act on either -- as long as the window says which.
                 if self.edited().public_url().is_none() {
-                    w::notice(
-                        ui,
-                        th::GOLD,
-                        self.t(
-                            "Pas encore d'adresse à mettre dans le code. Renseignez ci-dessus l'adresse de votre serveur de jeu — celle que vos joueurs utilisent déjà dans Valheim — ou, si vous hébergez l'export, son URL publique.",
-                            "No address to put in the code yet. Fill in your game server's address above — the one your players already use in Valheim — or, if you host the export, its public URL.",
-                        ),
-                    );
+                    w::notice(ui, th::GOLD, self.t(Key::InviteNoAddress));
                 } else {
-                    w::hint(
-                        ui,
-                        self.t(
-                            "Le code apparaîtra après le premier Enregistrer : c'est à ce moment que votre clé de signature est créée.",
-                            "The code appears after the first Save: that is when your signing key is created.",
-                        ),
-                    );
+                    w::hint(ui, self.t(Key::InviteAfterSave));
                 }
                 return;
             }
@@ -2329,7 +2128,7 @@ impl App {
                     ui.label(
                         RichText::new(format!(
                             "{} {}",
-                            self.t("Empreinte de la clé :", "Key fingerprint:"),
+                            self.t(Key::KeyFingerprint),
                             key.public().fingerprint()
                         ))
                         .text_style(th::label_style())
@@ -2344,29 +2143,24 @@ impl App {
                 if ui
                     .add_enabled(
                         !code.is_empty(),
-                        egui::Button::new(
-                            RichText::new(self.t("Copier le code", "Copy the code"))
-                                .strong()
-                                .color(if code.is_empty() {
-                                    th::BONE_DIM
-                                } else {
-                                    th::NIGHT
-                                }),
-                        )
+                        egui::Button::new(RichText::new(self.t(Key::CopyTheCode)).strong().color(
+                            if code.is_empty() {
+                                th::BONE_DIM
+                            } else {
+                                th::NIGHT
+                            },
+                        ))
                         .fill(if code.is_empty() {
                             th::LEATHER
                         } else {
                             th::GOLD
                         }),
                     )
-                    .on_hover_text(self.t(
-                        "À envoyer à vos joueurs. Le launcher l'importe et épingle votre clé.",
-                        "Send this to your players. The launcher imports it and pins your key.",
-                    ))
+                    .on_hover_text(self.t(Key::CopyTheCodeHint))
                     .clicked()
                 {
                     ui.ctx().copy_text(code);
-                    let msg = self.t("Code copié.", "Code copied.").to_string();
+                    let msg = self.t(Key::CodeCopied).to_string();
                     self.notify(msg, th::MOSS);
                 }
             });
@@ -2375,14 +2169,8 @@ impl App {
             ui.add_space(8.0);
             ui.horizontal(|ui| {
                 if ui
-                    .add_enabled(
-                        !self.busy,
-                        egui::Button::new(self.t("Tester le lien", "Test the link")),
-                    )
-                    .on_hover_text(self.t(
-                        "Récupère le pack comme le ferait un joueur, et vérifie la signature.",
-                        "Fetches the pack the way a player would, and checks the signature.",
-                    ))
+                    .add_enabled(!self.busy, egui::Button::new(self.t(Key::TestTheLink)))
+                    .on_hover_text(self.t(Key::TestTheLinkHint))
                     .clicked()
                 {
                     self.pull_fields();
@@ -2395,23 +2183,14 @@ impl App {
                     });
                 }
                 if ui
-                    .button(self.t(
-                        "Préparer le dossier à envoyer aux joueurs",
-                        "Prepare the folder to send to players",
-                    ))
-                    .on_hover_text(self.t(
-                        "Crée un dossier avec valhsync.exe et le code : les joueurs n'ont rien à coller.",
-                        "Creates a folder holding valhsync.exe and the code: players paste nothing.",
-                    ))
+                    .button(self.t(Key::PreparePlayerFolder))
+                    .on_hover_text(self.t(Key::PreparePlayerFolderHint))
                     .clicked()
                 {
                     match self.prepare_player_folder() {
                         Ok(dir) => {
-                            let msg = format!(
-                                "{} {}",
-                                self.t("Dossier joueur prêt :", "Player folder ready:"),
-                                dir.display()
-                            );
+                            let msg =
+                                format!("{} {}", self.t(Key::PlayerFolderReady), dir.display());
                             self.notify(msg, th::MOSS);
                             open_path(&dir);
                         }
@@ -2434,12 +2213,9 @@ impl App {
     /// perfectly good one sitting in a folder. Without this the only way back
     /// was to make every player import a fresh code.
     fn key_takeover(&mut self, ui: &mut egui::Ui) {
-        let label = self.t(
-            "Reprendre la clé d'une autre installation",
-            "Take over another install's key",
-        );
-        let hint = self.t("Chemin d'un server.key", "Path to a server.key");
-        let button = self.t("Reprendre", "Take over");
+        let label = self.t(Key::KeyTakeover);
+        let hint = self.t(Key::KeyPathHint);
+        let button = self.t(Key::TakeOver);
         w::hint(ui, label);
         ui.horizontal(|ui| {
             let go = ui.button(button).clicked();
@@ -2458,7 +2234,7 @@ impl App {
                         self.refresh_invite();
                         let msg = format!(
                             "{} {}",
-                            self.t("Clé reprise, empreinte :", "Key taken over, fingerprint:"),
+                            self.t(Key::KeyTakenOver),
                             kp.public().fingerprint()
                         );
                         self.notify(msg, th::MOSS);
@@ -2473,16 +2249,10 @@ impl App {
     fn card_logs(&mut self, ui: &mut egui::Ui) {
         th::card(ui, |ui| {
             ui.set_width(ui.available_width());
-            w::section(ui, self.t("II · Console", "II · Console"));
+            w::section(ui, self.t(Key::SectionConsole));
 
             if self.log_sources.is_empty() {
-                w::hint(
-                    ui,
-                    self.t(
-                        "Aucun journal trouvé. BepInEx en écrit un ; sinon, l'assistant de script peut en ajouter un dans Paramètres.",
-                        "No log found. BepInEx writes one; failing that, the script wizard can add one from the Settings tab.",
-                    ),
-                );
+                w::hint(ui, self.t(Key::NoLogFound));
                 return;
             }
 
@@ -2519,9 +2289,7 @@ impl App {
                     .on_hover_text(path.display().to_string());
                 }
                 ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                    if ui
-                        .button(self.t("Ouvrir le fichier", "Open the file"))
-                        .clicked()
+                    if ui.button(self.t(Key::OpenTheFile)).clicked()
                         && let Some(path) = self.log_sources.get(self.log_index)
                     {
                         open_path(path);
@@ -2529,11 +2297,8 @@ impl App {
                     // The lines on screen, not the whole file: what an admin
                     // pastes into a forum is what they were just reading.
                     let copied = ui
-                        .button(self.t("Copier", "Copy"))
-                        .on_hover_text(self.t(
-                            "Copie les lignes affichées dans le presse-papiers.",
-                            "Copies the lines shown to the clipboard.",
-                        ))
+                        .button(self.t(Key::Copy))
+                        .on_hover_text(self.t(Key::CopyLinesHint))
                         .clicked();
                     if copied {
                         let text = self
@@ -2544,14 +2309,14 @@ impl App {
                         let empty = text.is_empty();
                         ui.ctx().copy_text(text);
                         let msg = if empty {
-                            self.t("Rien à copier.", "Nothing to copy.")
+                            self.t(Key::NothingToCopy)
                         } else {
-                            self.t("Console copiée.", "Console copied.")
+                            self.t(Key::ConsoleCopied)
                         }
                         .to_string();
                         self.notify(msg, if empty { th::GOLD } else { th::MOSS });
                     }
-                    let follow = self.t("Suivre", "Follow");
+                    let follow = self.t(Key::Follow);
                     ui.checkbox(&mut self.log_follow, follow);
                 });
             });
@@ -2574,7 +2339,7 @@ impl App {
                         .show(ui, |ui| {
                             let Some(tail) = &self.log else { return };
                             if tail.lines().len() == 0 {
-                                w::hint(ui, self.t("(vide)", "(empty)"));
+                                w::hint(ui, self.t(Key::EmptyLog));
                                 return;
                             }
                             for line in tail.lines() {
@@ -2596,14 +2361,8 @@ impl App {
     fn card_wizard(&mut self, ui: &mut egui::Ui) {
         th::card(ui, |ui| {
             ui.set_width(ui.available_width());
-            w::section(ui, self.t("V · Script de démarrage", "V · Start script"));
-            w::hint(
-                ui,
-                self.t(
-                    "Steam remplace start_headless_server.bat à chaque mise à jour. ValhSync écrit une copie à vous, qu'il ne touchera jamais.",
-                    "Steam replaces start_headless_server.bat on every update. ValhSync writes a copy of your own, which it will never touch.",
-                ),
-            );
+            w::section(ui, self.t(Key::SectionStartScript));
+            w::hint(ui, self.t(Key::WizardHint));
             ui.add_space(8.0);
 
             let full = ui.available_width();
@@ -2611,25 +2370,20 @@ impl App {
                 ui.vertical(|ui| {
                     w::field(
                         ui,
-                        self.t("Nom du serveur", "Server name"),
+                        self.t(Key::ServerName),
                         &mut self.recipe.name,
                         full * 0.45,
                     );
                 });
                 ui.vertical(|ui| {
-                    w::field(
-                        ui,
-                        self.t("Monde", "World"),
-                        &mut self.recipe.world,
-                        full * 0.45,
-                    );
+                    w::field(ui, self.t(Key::World), &mut self.recipe.world, full * 0.45);
                 });
             });
             ui.add_space(6.0);
             ui.horizontal(|ui| {
                 ui.vertical(|ui| {
                     ui.label(
-                        RichText::new(self.t("Mot de passe", "Password"))
+                        RichText::new(self.t(Key::Password))
                             .small()
                             .color(th::BONE_DIM),
                     );
@@ -2641,33 +2395,26 @@ impl App {
                     );
                 });
                 ui.vertical(|ui| {
-                    ui.label(
-                        RichText::new(self.t("Port", "Port"))
-                            .small()
-                            .color(th::BONE_DIM),
-                    );
+                    ui.label(RichText::new(self.t(Key::Port)).small().color(th::BONE_DIM));
                     ui.add(egui::DragValue::new(&mut self.recipe.port).range(1024..=65_533));
                 });
             });
             ui.add_space(8.0);
             let (crossplay, public, journal) = (
-                self.t("Crossplay", "Crossplay"),
-                self.t("Listé publiquement", "Listed publicly"),
-                self.t("Écrire un journal", "Write a log file"),
+                self.t(Key::Crossplay),
+                self.t(Key::ListedPublicly),
+                self.t(Key::WriteLogFile),
             );
             ui.horizontal_wrapped(|ui| {
                 ui.checkbox(&mut self.recipe.crossplay, crossplay);
                 ui.checkbox(&mut self.recipe.public, public);
                 ui.checkbox(&mut self.recipe.log_file, journal)
-                    .on_hover_text(self.t(
-                        "Pour un serveur sans BepInEx. La sortie part alors dans le fichier au lieu de la console.",
-                        "For a server with no BepInEx. Its output then goes to the file instead of the console.",
-                    ));
+                    .on_hover_text(self.t(Key::LogFileHint));
             });
             ui.add_space(8.0);
             ui.horizontal(|ui| {
                 ui.label(
-                    RichText::new(self.t("Sauvegarde auto toutes les", "Autosave every"))
+                    RichText::new(self.t(Key::AutosaveEvery))
                         .small()
                         .color(th::BONE_DIM),
                 );
@@ -2679,7 +2426,7 @@ impl App {
                 );
                 ui.add_space(12.0);
                 ui.label(
-                    RichText::new(self.t("Sauvegardes conservées", "Backups kept"))
+                    RichText::new(self.t(Key::BackupsKept))
                         .small()
                         .color(th::BONE_DIM),
                 );
@@ -2707,9 +2454,9 @@ impl App {
                 );
                 let exists = root.join(self.recipe_file.trim()).exists();
                 let label = if exists && !self.recipe_replace {
-                    self.t("Remplacer ?", "Replace?")
+                    self.t(Key::ReplaceQuestion)
                 } else {
-                    self.t("Écrire le script", "Write the script")
+                    self.t(Key::WriteTheScript)
                 };
                 if ui
                     .add_enabled(
@@ -2735,13 +2482,7 @@ impl App {
                 }
             });
             if self.recipe_replace {
-                w::hint(
-                    ui,
-                    self.t(
-                        "Ce fichier existe déjà. Cliquez une seconde fois pour l'écraser.",
-                        "That file already exists. Click once more to overwrite it.",
-                    ),
-                );
+                w::hint(ui, self.t(Key::FileExistsHint));
             }
         });
     }
@@ -2759,55 +2500,37 @@ impl App {
         let (colour, state, what_to_do) = if !published {
             (
                 th::GOLD,
-                self.t("Pack jamais construit", "Pack never built"),
-                self.t(
-                    "Enregistrez, puis publiez : sans manifeste, le code ne mène à rien.",
-                    "Save, then publish: with no manifest the code leads nowhere.",
-                ),
+                self.t(Key::PackNeverBuilt),
+                self.t(Key::PackNeverBuiltHint),
             )
         } else if self.mode == PublishMode::Live && self.serving_at.is_none() {
             (
                 th::GOLD,
-                self.t("Publication arrêtée", "Publishing stopped"),
-                self.t(
-                    "Démarrez le serveur local dans Publication ci-dessus, sinon personne ne peut télécharger le pack.",
-                    "Start the live server under Publishing above, or nobody can download the pack.",
-                ),
+                self.t(Key::PublishingStopped),
+                self.t(Key::PublishingStoppedHint),
             )
         } else if self.mode == PublishMode::Export && self.public_url.trim().is_empty() {
             (
                 th::GOLD,
-                self.t("URL publique manquante", "Public URL missing"),
-                self.t(
-                    "Le code pointe sur cette machine. Exportez le dossier, déposez-le sur votre espace web, puis mettez son URL dans « URL publique ».",
-                    "The code points at this machine. Export the folder, upload it to your web space, then put its URL in \"Public URL\".",
-                ),
+                self.t(Key::PublicUrlMissing),
+                self.t(Key::PublicUrlMissingHint),
             )
         } else {
             match self.link_ok {
                 Some(true) => (
                     th::MOSS,
-                    self.t("Lien vérifié", "Link verified"),
-                    self.t(
-                        "Un joueur a récupéré ce pack depuis cette adresse, signature comprise.",
-                        "The pack was fetched from this address, signature and all.",
-                    ),
+                    self.t(Key::LinkVerified),
+                    self.t(Key::LinkVerifiedHint),
                 ),
                 Some(false) => (
                     th::BLOOD_LIT,
-                    self.t("Lien injoignable", "Link unreachable"),
-                    self.t(
-                        "L'adresse publiée n'a pas répondu. Voyez le message ci-dessous.",
-                        "The published address did not answer. See the message below.",
-                    ),
+                    self.t(Key::LinkUnreachable),
+                    self.t(Key::LinkUnreachableHint),
                 ),
                 None => (
                     th::GOLD.gamma_multiply(0.55),
-                    self.t("Non testé", "Not tested"),
-                    self.t(
-                        "« Tester le lien » récupère le pack comme le ferait un joueur.",
-                        "\"Test the link\" fetches the pack the way a player would.",
-                    ),
+                    self.t(Key::NotTested),
+                    self.t(Key::NotTestedHint),
                 ),
             }
         };
@@ -2833,43 +2556,25 @@ impl App {
                     self.script_index = i;
                     self.script_chosen = true;
                 }
-                let msg = format!("{} {}", self.t("Script écrit :", "Script written:"), name);
+                let msg = format!("{} {}", self.t(Key::ScriptWritten), name);
                 self.notify(msg, th::MOSS);
             }
             Err(e) => self.notify(format!("{e:#}"), th::BLOOD_LIT),
         }
     }
 
-    /// What a wizard complaint means, in the window's two languages.
+    /// What a wizard complaint means, in the window's language.
     fn wizard_issue(&self, issue: wizard::Issue) -> &'static str {
         use wizard::{Field, Issue};
         match issue {
-            Issue::NameEmpty => self.t("Donnez un nom au serveur.", "Give the server a name."),
-            Issue::WorldEmpty => self.t("Donnez un nom au monde.", "Give the world a name."),
-            Issue::PasswordTooShort => self.t(
-                "Valheim exige un mot de passe d'au moins 5 caractères.",
-                "Valheim requires a password of at least 5 characters.",
-            ),
-            Issue::PasswordInName => self.t(
-                "Valheim refuse de démarrer si le nom du serveur contient le mot de passe.",
-                "Valheim refuses to start when the server name contains the password.",
-            ),
-            Issue::BadCharacters(Field::Name) => self.t(
-                "Le nom contient un guillemet ou une apostrophe : le script ne les supporte pas.",
-                "The name holds a quote, which the script cannot carry.",
-            ),
-            Issue::BadCharacters(Field::World) => self.t(
-                "Le nom du monde contient un guillemet ou une apostrophe.",
-                "The world name holds a quote.",
-            ),
-            Issue::BadCharacters(Field::Password) => self.t(
-                "Le mot de passe contient un guillemet ou une apostrophe.",
-                "The password holds a quote.",
-            ),
-            Issue::PortOutOfRange => self.t(
-                "Choisissez un port entre 1024 et 65533 : le serveur utilise aussi le suivant.",
-                "Pick a port between 1024 and 65533: the server also uses the next one.",
-            ),
+            Issue::NameEmpty => self.t(Key::IssueNameEmpty),
+            Issue::WorldEmpty => self.t(Key::IssueWorldEmpty),
+            Issue::PasswordTooShort => self.t(Key::IssuePasswordTooShort),
+            Issue::PasswordInName => self.t(Key::IssuePasswordInName),
+            Issue::BadCharacters(Field::Name) => self.t(Key::IssueQuoteInName),
+            Issue::BadCharacters(Field::World) => self.t(Key::IssueQuoteInWorld),
+            Issue::BadCharacters(Field::Password) => self.t(Key::IssueQuoteInPassword),
+            Issue::PortOutOfRange => self.t(Key::IssuePortOutOfRange),
         }
     }
 

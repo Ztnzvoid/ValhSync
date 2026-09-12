@@ -7,6 +7,7 @@
 //! server-only, and copying an invite code out of a terminal.
 
 mod app;
+pub mod i18n;
 mod worker;
 
 use std::path::PathBuf;

@@ -35,6 +35,7 @@ time.workspace = true
 sysinfo.workspace = true
 eframe.workspace = true
 reqwest.workspace = true
+zip.workspace = true
 
 [target.'cfg(windows)'.dependencies]
 windows-sys.workspace = true

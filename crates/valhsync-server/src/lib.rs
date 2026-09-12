@@ -5,6 +5,7 @@ pub mod config;
 pub mod detect;
 pub mod gameserver;
 pub mod gui;
+pub mod install;
 pub mod keys;
 pub mod logs;
 pub mod net;
