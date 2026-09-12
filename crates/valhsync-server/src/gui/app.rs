@@ -20,6 +20,12 @@ use crate::config::{self, Config};
 use crate::{detect, gameserver, logs, wizard};
 
 const POLL_GAME_SERVER: Duration = Duration::from_secs(2);
+/// How long the configuration has to stop changing before it is written.
+///
+/// Long enough that typing a note is one write rather than one per keystroke
+/// -- each write wakes the publisher's watcher and rebuilds the pack -- and
+/// short enough that nobody wonders whether it took.
+const AUTOSAVE_SETTLE: Duration = Duration::from_millis(1200);
 /// How long to wait before trying to publish again after a failed attempt.
 /// Long enough that a misconfiguration does not retry in a loop, short enough
 /// that fixing it takes effect without touching the button.
@@ -181,6 +187,12 @@ pub(super) struct App {
     server_outdated: bool,
     /// When the world file was last written, so the panel can say how long ago.
     world_saved: Option<SystemTime>,
+    /// When the configuration first differed from what is on disk, so it can
+    /// be written once the admin stops typing rather than on every keystroke.
+    dirty_since: Option<Instant>,
+    /// Why the configuration could not be written. Standing, not a notice:
+    /// nothing will be saved until it is fixed.
+    save_error: Option<String>,
     /// Set when a stop was asked for, cleared when the process is gone.
     stop_requested: Option<Instant>,
     /// The stop under way is half of a restart: start it again once the world
@@ -325,6 +337,8 @@ impl App {
             game_version: None,
             server_outdated: false,
             world_saved: None,
+            dirty_since: None,
+            save_error: None,
             stop_requested: None,
             restart_after_stop: false,
             world_file: None,
@@ -731,30 +745,50 @@ impl App {
         }
     }
 
+    /// Write the configuration once it has stopped changing.
+    ///
+    /// On a timer rather than on a button: what an admin edits here is what
+    /// the server publishes, and asking them to confirm it a second time only
+    /// produced servers running on a configuration that was on screen and
+    /// never on disk -- with the launcher's "cannot reach the server" as the
+    /// first anyone heard of it.
+    fn autosave(&mut self) {
+        if self.busy || !self.dirty() {
+            self.dirty_since = None;
+            self.save_error = None;
+            return;
+        }
+        let since = *self.dirty_since.get_or_insert_with(Instant::now);
+        if since.elapsed() < AUTOSAVE_SETTLE {
+            return;
+        }
+        // Re-armed either way: a configuration that does not validate is
+        // checked again after the next pause, so the reason on the bar
+        // follows what is being typed and clears itself when it is fixed.
+        self.dirty_since = Some(Instant::now());
+        self.save();
+    }
+
     fn save(&mut self) -> bool {
         self.pull_fields();
         if let Err(e) = self.cfg.validate() {
-            self.notify(format!("{e:#}"), th::BLOOD_LIT);
+            self.save_error = Some(format!("{e:#}"));
             return false;
         }
         match config::save(&self.cfg, &self.config_path) {
             Ok(()) => {
                 self.saved = self.cfg.clone();
                 self.never_saved = false;
+                self.save_error = None;
+                self.dirty_since = None;
                 self.refresh_detection();
                 if let Ok(kp) = worker::load_key(&self.data_dir) {
                     self.invite = worker::invite_code(&self.cfg, &kp).unwrap_or_default();
                 }
-                let msg = format!(
-                    "{} {}",
-                    self.t("Configuration enregistrée :", "Configuration saved:"),
-                    self.config_path.display()
-                );
-                self.notify(msg, th::MOSS);
                 true
             }
             Err(e) => {
-                self.notify(format!("{e:#}"), th::BLOOD_LIT);
+                self.save_error = Some(format!("{e:#}"));
                 false
             }
         }
@@ -925,6 +959,7 @@ impl eframe::App for App {
         {
             self.detect_public_ip();
         }
+        self.autosave();
         self.poll_game_server();
         self.follow_game_with_publishing();
         if self.tab == Tab::Status {
@@ -966,16 +1001,16 @@ impl eframe::App for App {
                 );
                 ui.add_space(12.0);
                 // Nothing is published from a configuration that was never
-                // written: the publisher reads it from disk. The bar at the
-                // bottom says "unsaved changes" in passing, which is not the
-                // same as saying the server is unreachable because of it.
-                if self.never_saved {
+                // written: the publisher reads it from disk. Saving is
+                // automatic, so reaching here means something is stopping it,
+                // and that is worth more than a line at the bottom.
+                if self.never_saved && self.save_error.is_some() {
                     w::notice(
                         ui,
                         th::GOLD,
                         self.t(
-                            "Configuration jamais enregistrée. Tant qu'elle ne l'est pas, rien n'est publié et vos joueurs ne trouveront pas le serveur : cliquez sur Enregistrer, en bas.",
-                            "This configuration has never been saved. Until it is, nothing is published and your players will not find the server: press Save, at the bottom.",
+                            "La configuration n'a jamais pu être écrite, donc rien n'est publié et vos joueurs ne trouveront pas le serveur. La raison est en bas de la fenêtre ; elle s'enregistrera seule une fois corrigée.",
+                            "This configuration has never been written, so nothing is published and your players will not find the server. The reason is at the bottom of the window; it saves itself once that is fixed.",
                         ),
                     );
                     ui.add_space(12.0);
@@ -1077,32 +1112,26 @@ impl App {
                 self.console_line(ui);
                 ui.add_space(8.0);
                 ui.horizontal(|ui| {
-                    let dirty = self.dirty();
-                    if ui
-                        .add_enabled(
-                            dirty,
-                            egui::Button::new(
-                                RichText::new(self.t("Enregistrer", "Save"))
-                                    .strong()
-                                    .color(if dirty { th::NIGHT } else { th::BONE_DIM }),
-                            )
-                            .fill(if dirty {
-                                th::GOLD
-                            } else {
-                                th::LEATHER
-                            }),
-                        )
-                        .clicked()
-                    {
-                        self.save();
-                    }
-                    if dirty {
+                    // No Save button. What an admin changes here is what the
+                    // server publishes, and asking them to confirm it twice
+                    // only produced servers running on a configuration that
+                    // was on screen but never on disk.
+                    if let Some(why) = self.save_error.clone() {
+                        w::dot(ui, th::BLOOD_LIT);
                         ui.label(
-                            RichText::new(
-                                self.t("Modifications non enregistrées", "Unsaved changes"),
-                            )
+                            RichText::new(format!(
+                                "{} {why}",
+                                self.t("Non enregistré :", "Not saved:")
+                            ))
                             .small()
-                            .color(th::GOLD_LIT),
+                            .color(th::BLOOD_LIT),
+                        );
+                    } else if self.dirty() {
+                        w::dot(ui, th::GOLD);
+                        ui.label(
+                            RichText::new(self.t("Enregistrement…", "Saving…"))
+                                .small()
+                                .color(th::BONE_DIM),
                         );
                     }
                     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
