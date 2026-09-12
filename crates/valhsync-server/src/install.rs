@@ -16,6 +16,17 @@ use std::path::{Component, Path};
 
 use anyhow::{Context, Result, bail};
 
+/// What we can actually decompress. Stored and deflate are all a mod archive
+/// has ever needed; deflate64 is what 7-Zip writes for a large one. Growing
+/// this list means growing the `zip` features in the workspace manifest, and
+/// only with decoders that both exist in pure Rust and actually work -- see
+/// the note there about LZMA.
+const READS: [zip::CompressionMethod; 3] = [
+    zip::CompressionMethod::Stored,
+    zip::CompressionMethod::Deflated,
+    zip::CompressionMethod::Deflate64,
+];
+
 /// No mod is anywhere near this large; the ceiling is what stops an archive
 /// that unpacks to a terabyte from filling the disk before anyone notices.
 const MAX_UNPACKED_BYTES: u64 = 512 * 1024 * 1024;
@@ -170,6 +181,21 @@ fn read_zip(source: &Path, fallback_name: &str) -> Result<(String, Files)> {
     let mut total = 0u64;
 
     for i in 0..zip.len() {
+        // What the archive is compressed with, read before asking for the
+        // decompressed bytes. The crate refuses a method it lacks with
+        // "unsupported compression method" and nothing more, which leaves an
+        // admin with nothing to act on.
+        {
+            let raw = zip.by_index_raw(i)?;
+            let method = raw.compression();
+            if !raw.is_dir() && !READS.contains(&method) {
+                bail!(
+                    "{} in that archive is compressed with {}, which ValhSync cannot read. Extract the archive yourself, then drop the folder instead",
+                    raw.name(),
+                    method_name(method)
+                );
+            }
+        }
         let mut entry = zip.by_index(i)?;
         if entry.is_dir() {
             continue;
@@ -185,7 +211,9 @@ fn read_zip(source: &Path, fallback_name: &str) -> Result<(String, Files)> {
             bail!("that archive unpacks to more than a mod ever should; refusing it");
         }
         let mut bytes = Vec::with_capacity(usize::try_from(entry.size()).unwrap_or(0));
-        entry.read_to_end(&mut bytes)?;
+        entry
+            .read_to_end(&mut bytes)
+            .with_context(|| format!("cannot read {rel} out of that archive"))?;
         if rel == "manifest.json" {
             manifest_name = thunderstore_name(&bytes);
         }
@@ -339,6 +367,30 @@ fn place(plugins: &Path, name: &str, files: &[(String, Vec<u8>)]) -> Result<Inst
     })
 }
 
+/// A name an admin can search for. The crate prints `Unsupported(12)` for a
+/// method it was not built with, which tells nobody anything.
+fn method_name(method: zip::CompressionMethod) -> String {
+    use zip::CompressionMethod as M;
+    let known = if method == M::BZIP2 {
+        "bzip2"
+    } else if method == M::LZMA {
+        "LZMA"
+    } else if method == M::XZ {
+        "xz"
+    } else if method == M::ZSTD || method == M::ZSTD_DEPRECATED {
+        "zstandard"
+    } else if method == M::PPMD {
+        "PPMd"
+    } else if method == M::AES {
+        "AES encryption"
+    } else if method == M::IMPLODE || method == M::PKWARE_IMPLODE {
+        "implode"
+    } else {
+        return format!("{method}");
+    };
+    known.to_string()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -360,6 +412,76 @@ mod tests {
             w.write_all(bytes).unwrap();
         }
         w.finish().unwrap();
+    }
+
+    /// Rewrite every "this entry is Stored" to some other method, without
+    /// touching the bytes. What comes back is an archive claiming a
+    /// compression we do not have -- which is exactly what 7-Zip hands an
+    /// admin who picked bzip2 from the dropdown, and all we need to prove is
+    /// that we say so instead of failing somewhere deep in a decoder.
+    fn relabel_method(path: &Path, method: u16) {
+        let mut bytes = fs::read(path).unwrap();
+        let tag = method.to_le_bytes();
+        let mut i = 0;
+        while i + 12 < bytes.len() {
+            // Local file header, then central directory entry: the method
+            // sits at a different offset in each.
+            let at = match &bytes[i..i + 4] {
+                b"PK" => Some(i + 8),
+                b"PK" => Some(i + 10),
+                _ => None,
+            };
+            if let Some(at) = at {
+                bytes[at..at + 2].copy_from_slice(&tag);
+            }
+            i += 1;
+        }
+        fs::write(path, bytes).unwrap();
+    }
+
+    #[test]
+    fn an_archive_we_cannot_decompress_says_which_compression() {
+        let dir = tempfile::tempdir().unwrap();
+        server(dir.path());
+        let zip_path = dir.path().join("Mod.zip");
+        zip_with(&zip_path, &[("Mod.dll", b"the mod")]);
+        relabel_method(&zip_path, 12);
+
+        let err = install(dir.path(), &zip_path).unwrap_err().to_string();
+        // Named, so it can be searched for, and answered so the admin has
+        // something to do next.
+        assert!(err.contains("bzip2"), "{err}");
+        assert!(err.contains("Extract the archive"), "{err}");
+    }
+
+    #[test]
+    fn an_unnamed_compression_is_still_refused() {
+        let dir = tempfile::tempdir().unwrap();
+        server(dir.path());
+        let zip_path = dir.path().join("Mod.zip");
+        zip_with(&zip_path, &[("Mod.dll", b"the mod")]);
+        relabel_method(&zip_path, 777);
+
+        let err = install(dir.path(), &zip_path).unwrap_err().to_string();
+        assert!(err.contains("Extract the archive"), "{err}");
+    }
+
+    #[test]
+    fn a_stored_archive_installs() {
+        let dir = tempfile::tempdir().unwrap();
+        let plugins = server(dir.path());
+        let zip_path = dir.path().join("Mod.zip");
+        let file = fs::File::create(&zip_path).unwrap();
+        let mut w = zip::ZipWriter::new(file);
+        let opts: zip::write::FileOptions<()> =
+            zip::write::FileOptions::default().compression_method(zip::CompressionMethod::Stored);
+        w.start_file("Mod.dll", opts).unwrap();
+        w.write_all(b"the mod").unwrap();
+        w.finish().unwrap();
+
+        let done = install(dir.path(), &zip_path).unwrap();
+        assert_eq!(done.files, 1);
+        assert_eq!(fs::read(plugins.join("Mod/Mod.dll")).unwrap(), b"the mod");
     }
 
     #[test]

@@ -588,6 +588,14 @@ journalctl -u valhsync-server -f</code></pre>
   player presses Play they are brought in line.</p>
   <p>From the window, on Windows:</p>
   <ul>
+    <li><strong>Drop a mod on the Mods tab.</strong> A <code>.zip</code> from Thunderstore,
+    Nexus, a GitHub release page or anywhere else; a mod folder; or a bare <code>.dll</code>.
+    ValhSync works out whether the files sit at the archive's root, under
+    <code>plugins/</code> or under a whole <code>BepInEx/</code> tree, names the folder from the
+    manifest when there is one, and clears the previous version out first so BepInEx is never
+    asked to load two. Nothing is written outside <code>BepInEx/plugins</code>, whatever paths
+    the archive claims. Archives compressed with bzip2, LZMA, zstandard or xz are refused by
+    name rather than half-read — extract those yourself and drop the folder.</li>
     <li><strong>Start, Restart, Stop and save.</strong> Stopping sends Ctrl+C to the server's
     console, so Valheim writes the world before it exits; the process is never killed. Restart
     waits for it to actually be gone before starting again.</li>

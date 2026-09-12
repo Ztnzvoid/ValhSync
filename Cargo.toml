@@ -32,7 +32,11 @@ rand_core = { version = "0.6", features = ["getrandom"] }
 base64 = "0.22"
 
 # filesystem
-zip = { version = "2", default-features = false, features = ["deflate"] }
+# Pure-Rust decoders only: `bzip2` would pull a C library in, and the crate's
+# `lzma` decoder mis-reads spec-conformant ZIP LZMA entries (it looks for an
+# unpacked-size header the ZIP variant does not carry). An archive using either
+# is refused by name in `install.rs` rather than half-read.
+zip = { version = "2", default-features = false, features = ["deflate", "deflate64"] }
 walkdir = "2"
 globset = "0.4"
 notify = "8"
