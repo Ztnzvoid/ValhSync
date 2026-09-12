@@ -78,9 +78,31 @@ pub struct Manifest {
     pub files: Vec<FileEntry>,
 }
 
-/// Long enough for a paragraph and a list, short enough that it cannot be used
-/// to pad a manifest or fill a window.
-pub const MAX_NOTES: usize = 2000;
+/// What a patch note may be, as an editorial limit: long enough for a real one
+/// and short enough to read in a window.
+///
+/// Two thousand was the first guess and it was too small. A note listing three
+/// new mods, an update, a dependency and the three things players actually
+/// need to know runs past 2.6 KB without padding -- which is a normal note,
+/// not a long one, and refusing it sent the admin back to cut their own words.
+pub const MAX_NOTES: usize = 8000;
+
+/// What a manifest may carry, as a safety limit.
+///
+/// The reason a cap exists at all is that `notes` is the one field an admin
+/// fills in freely, so it is the one that could be used to pad a manifest
+/// every player downloads. That reason is satisfied a long way above the
+/// editorial limit, and the two should not be the same number: a launcher
+/// that refuses a whole mod pack because somebody wrote a paragraph too much
+/// is refusing the wrong thing. The server keeps the note short; the launcher
+/// only refuses the absurd.
+pub const MAX_NOTES_WIRE: usize = 64 * 1024;
+
+// Checked at compile time, because the whole point of the two is that they
+// are different numbers: a real patch note has to fit the editorial one, and
+// the safety cap has to sit well clear of it.
+const _: () = assert!(MAX_NOTES > 2600);
+const _: () = assert!(MAX_NOTES_WIRE > MAX_NOTES * 4);
 
 /// Longest accepted `server_name`.
 pub const MAX_SERVER_NAME: usize = 100;
@@ -247,7 +269,7 @@ impl Manifest {
         if let Some(notes) = &self.notes {
             // Line breaks are the point of a note, so `is_clean_text` is too
             // strict here -- but everything else it refuses still applies.
-            if notes.len() > MAX_NOTES
+            if notes.len() > MAX_NOTES_WIRE
                 || notes
                     .chars()
                     .any(|c| c != '\n' && c != '\r' && is_deceptive(c))
@@ -339,6 +361,7 @@ impl Manifest {
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;
+
     use crate::sign::{Keypair, encode_signature};
 
     pub(crate) fn entry(path: &str, content: &[u8], policy: Policy) -> FileEntry {

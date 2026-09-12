@@ -1170,14 +1170,29 @@ impl App {
     }
 
     fn bottom_bar(&mut self, ctx: &egui::Context) {
+        // No box around it. A framed strip under a framed panel draws two
+        // lines a pixel apart and reads as a seam; one hairline is the whole
+        // separation this needs. And the padding is tight, because most of
+        // the time this bar has nothing to say and an empty band with a file
+        // name floating in it is not a design, it is a leftover.
         egui::TopBottomPanel::bottom("bottom")
             .frame(
                 egui::Frame::new()
                     .fill(th::PANEL)
-                    .inner_margin(egui::Margin::symmetric(18, 12))
-                    .stroke(egui::Stroke::new(1.0, th::EDGE_SOFT)),
+                    .inner_margin(egui::Margin {
+                        left: 18,
+                        right: 18,
+                        top: 7,
+                        bottom: 7,
+                    }),
             )
             .show(ctx, |ui| {
+                // Only when nothing sits above it: the console panel already
+                // ends in a line of its own.
+                if self.tab != Tab::Status {
+                    th::hairline(ui);
+                    ui.add_space(6.0);
+                }
                 if let Some((message, color, _)) = self.notice.clone() {
                     ui.horizontal_wrapped(|ui| {
                         w::dot(ui, color);
@@ -1185,10 +1200,6 @@ impl App {
                     });
                     ui.add_space(6.0);
                 }
-                // The console line lives down here, where a prompt belongs:
-                // always in reach whichever tab is open, and out of the card
-                // that describes the server rather than drives it.
-                ui.add_space(8.0);
                 ui.horizontal(|ui| {
                     // No Save button. What an admin changes here is what the
                     // server publishes, and asking them to confirm it twice
@@ -1375,10 +1386,16 @@ impl App {
             .frame(
                 egui::Frame::new()
                     .fill(th::PANEL)
-                    .inner_margin(egui::Margin::symmetric(18, 12))
-                    .stroke(egui::Stroke::new(1.0, th::EDGE_SOFT)),
+                    .inner_margin(egui::Margin {
+                        left: 18,
+                        right: 18,
+                        top: 8,
+                        bottom: 10,
+                    }),
             )
             .show(ctx, |ui| {
+                th::hairline(ui);
+                ui.add_space(8.0);
                 w::section(ui, self.t(Key::SectionServerConsole));
                 // The prompt first, then the transcript filling what is left,
                 // so dragging the panel taller gives the extra height to the
@@ -3019,7 +3036,11 @@ impl App {
                     // space under it. Floored so it stays usable on a short
                     // window, and capped so an enormous one does not put the
                     // last line a screen away from the first.
-                    let height = (ui.available_height() - 16.0).clamp(180.0, 1200.0);
+                    // Floor low enough that a window with the console open
+                    // still fits the card whole. It used to be tall enough to
+                    // overflow the viewport, so the card was cut across with
+                    // no bottom edge and read as broken rather than scrolled.
+                    let height = (ui.available_height() - 16.0).clamp(110.0, 1200.0);
                     egui::ScrollArea::vertical()
                         .max_height(height)
                         .auto_shrink([false, false])
