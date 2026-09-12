@@ -1287,12 +1287,18 @@ impl App {
             .as_deref()
             .is_some_and(|id| self.news.for_server(id).next().is_some());
         if changes.is_empty() && notes.is_none() {
-            if has_history {
-                if ui.small_button(self.t(Key::WhatsNew)).clicked() {
-                    self.news_open = true;
-                }
-                ui.add_space(10.0);
+            // Shown even with nothing behind it. A feature that only appears
+            // once something happens cannot be told apart from one that does
+            // not work, and "nothing new yet" is an answer -- silence is not.
+            let label = if has_history {
+                self.t(Key::WhatsNew).to_string()
+            } else {
+                format!("{} — {}", self.t(Key::WhatsNew), self.t(Key::NewsNone))
+            };
+            if ui.small_button(label).clicked() {
+                self.news_open = true;
             }
+            ui.add_space(10.0);
             return;
         }
 

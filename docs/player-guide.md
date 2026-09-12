@@ -68,6 +68,25 @@ Your own changes to config files (keybinds, UI positions) survive syncs: the
 server seeds configs but does not overwrite them, unless the admin enforces a
 specific file.
 
+## If your antivirus removes it
+
+ValhSync is not signed with a paid code-signing certificate, and every build
+is a file Windows Defender has never seen anywhere else. That combination,
+plus what the launcher legitimately does -- download files from a server,
+write them into the game folder, replace its own executable when a server
+offers a newer one -- occasionally trips the machine-learning classifier,
+which reports something like `Trojan:Win32/Bearfoos.A!ml`. The `!ml` suffix is
+the giveaway: a guess from a model, not a match against a known threat.
+
+It is a false positive, but do not take that on faith from a text file the
+same download gave you. Check the SHA256 against the one published with the
+release:
+
+    Get-FileHash valhsync.exe -Algorithm SHA256
+
+If it matches, restore it from Windows Security -> Protection history. If it
+does not, delete it and tell the admin.
+
 ## When the server offers you a new ValhSync
 
 A server can publish a ValhSync build of its own. If yours does, and it is

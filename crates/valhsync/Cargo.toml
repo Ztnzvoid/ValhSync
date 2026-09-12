@@ -36,6 +36,9 @@ eframe.workspace = true
 [target.'cfg(windows)'.dependencies]
 winreg.workspace = true
 
+[build-dependencies]
+winresource.workspace = true
+
 [dev-dependencies]
 tempfile.workspace = true
 tokio.workspace = true
