@@ -5,8 +5,351 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ValhSync — player guide</title>
 <meta name="description" content="Installing and using the ValhSync launcher: add your server, press Play, and your mods match the server's before Valheim starts.">
-<link rel="stylesheet" href="valhsync.css">
-<script src="valhsync.js" defer></script>
+<style>
+/* ValhSync documents: one charter, three pages.
+   Palette after Valheim's own interface -- night and burnt wood for the
+   ground, bone and parchment for text, worn brass for headings, northern
+   mist for numbering. Kept in one file so the pages cannot drift apart. */
+:root {
+    --night:      #0F0D0B;
+    --wood:       #17140F;
+    --panel:      #1E1912;
+    --leather:    #262017;
+    --edge:       #4A3C27;
+    --edge-soft:  #332A1D;
+    --bone:       #E0D5BC;
+    --bone-dim:   #ADA089;
+    --gold:       #C7A455;
+    --gold-lit:   #E8CD8B;
+    --rune:       #7E9AA7;
+    --blood:      #9A3421;
+    --moss:       #7E9155;
+
+    --serif:   "Iowan Old Style", "Charter", Constantia, "Palatino Linotype", Georgia, serif;
+    --display: Cinzel, "Trajan Pro", Constantia, "Palatino Linotype", "Book Antiqua", Georgia, serif;
+    --mono:    "Cascadia Code", "JetBrains Mono", Consolas, "DejaVu Sans Mono", monospace;
+  }
+  * { box-sizing: border-box; }
+  html {
+    background: var(--night);
+    color: var(--bone);
+    background-image:
+      radial-gradient(120% 80% at 50% 0%, #241D14 0%, rgba(36,29,20,0) 60%),
+      radial-gradient(90% 60% at 50% 100%, #1A1610 0%, rgba(26,22,16,0) 70%);
+    background-attachment: fixed;
+  }
+  body { margin: 0; font: 17px/1.65 var(--serif); }
+  ::selection { background: rgba(199,164,85,0.3); }
+
+  a { color: var(--gold); text-underline-offset: 2px; text-decoration-color: var(--edge); }
+  a:hover { color: var(--gold-lit); }
+  a:focus-visible { outline: 2px solid var(--gold-lit); outline-offset: 2px; }
+
+  .layout {
+    display: grid;
+    grid-template-columns: 15rem minmax(0, 46rem);
+    gap: 3rem;
+    max-width: 68rem;
+    margin: 0 auto;
+    padding: 0 1.5rem 6rem;
+  }
+
+  nav.toc {
+    position: sticky;
+    top: 1.5rem;
+    align-self: start;
+    margin-top: 3rem;
+    font: 0.86rem/1.6 var(--display);
+    letter-spacing: 0.01em;
+  }
+  nav.toc ol { list-style: none; margin: 0; padding: 0; border-left: 1px solid var(--edge-soft); }
+  nav.toc li { margin: 0; }
+  nav.toc a {
+    display: block;
+    text-decoration: none;
+    color: var(--bone-dim);
+    padding: 0.22rem 0 0.22rem 0.9rem;
+    margin-left: -1px;
+    border-left: 2px solid transparent;
+  }
+  nav.toc a:hover { color: var(--gold-lit); border-left-color: var(--gold); background: rgba(199,164,85,0.05); }
+  nav.toc .n { display: inline-block; width: 2.4rem; color: var(--rune); }
+  nav.toc .back { margin-top: 1rem; padding-left: 0.9rem; display: block; color: var(--rune); text-decoration: none; }
+  nav.toc .back:hover { color: var(--gold-lit); }
+
+  main { min-width: 0; }
+
+  header.hero { padding: 3.5rem 0 2.2rem; border-bottom: 1px solid var(--edge); }
+  header.hero h1 {
+    font: 600 2.6rem/1.05 var(--display);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--gold);
+    margin: 0 0 0.5rem;
+    text-shadow: 0 1px 0 #000, 0 0 28px rgba(199,164,85,0.16);
+  }
+  header.hero .sub { font: 1.05rem/1.5 var(--serif); color: var(--bone-dim); margin: 0; max-width: 40rem; }
+
+  section { padding-top: 2.6rem; }
+  h2 {
+    font: 600 1.5rem/1.25 var(--display);
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--gold);
+    margin: 0 0 1rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid var(--edge-soft);
+    display: flex;
+    gap: 0.7rem;
+    align-items: baseline;
+  }
+  h2 .n { color: var(--rune); font-weight: 400; letter-spacing: 0; text-transform: none; }
+  h3 {
+    font: 600 1.08rem/1.35 var(--display);
+    letter-spacing: 0.02em;
+    color: var(--gold-lit);
+    margin: 1.8rem 0 0.5rem;
+  }
+  p, li { max-width: 42rem; }
+  strong { color: var(--gold-lit); font-weight: 600; }
+  em { color: var(--bone); }
+  ul, ol { padding-left: 1.3rem; }
+  li { margin: 0.32rem 0; }
+  li::marker { color: var(--rune); }
+
+  code {
+    font: 0.86em var(--mono);
+    background: var(--wood);
+    border: 1px solid var(--edge-soft);
+    color: var(--gold-lit);
+    padding: 0.08em 0.34em;
+    border-radius: 2px;
+  }
+  pre {
+    font: 0.82rem/1.6 var(--mono);
+    background: var(--wood);
+    color: #C6BCA6;
+    border: 1px solid var(--edge-soft);
+    border-left: 3px solid var(--edge);
+    padding: 1rem 1.15rem;
+    overflow-x: auto;
+    border-radius: 2px;
+  }
+  pre code { background: none; border: 0; padding: 0; font-size: inherit; color: inherit; }
+
+  table { border-collapse: collapse; width: 100%; margin: 0.9rem 0 1.3rem; font-size: 0.93rem; }
+  th, td { text-align: left; vertical-align: top; padding: 0.6rem 0.75rem; border-bottom: 1px solid var(--edge-soft); }
+  th {
+    font: 600 0.82rem var(--display);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--gold);
+    border-bottom: 2px solid var(--edge);
+  }
+  tbody tr:hover { background: rgba(199,164,85,0.04); }
+
+  .rule {
+    border: 1px solid var(--edge-soft);
+    border-left: 4px solid var(--rune);
+    background: var(--leather);
+    padding: 0.85rem 1.05rem;
+    margin: 1.1rem 0;
+  }
+  .rule.decide { border-left-color: var(--gold); }
+  .rule.never  { border-left-color: var(--blood); }
+  .rule strong:first-child {
+    font-family: var(--display);
+    letter-spacing: 0.03em;
+    color: var(--gold-lit);
+  }
+  .rule.never strong:first-child { color: #D2724F; }
+
+  /* ── Windows and Linux, side by side ────────────────────────────── */
+  .os { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin: 1.2rem 0; }
+  .os > div { border: 1px solid var(--edge-soft); background: var(--panel); padding: 1rem 1.1rem; }
+  .os h3 { margin-top: 0; }
+  .os pre { margin-bottom: 0; }
+  .os ol, .os ul { padding-left: 1.1rem; margin-bottom: 0; }
+
+  footer {
+    margin-top: 4.5rem;
+    padding-top: 1.1rem;
+    border-top: 1px solid var(--edge-soft);
+    font: 0.86rem var(--display);
+    letter-spacing: 0.02em;
+    color: var(--bone-dim);
+  }
+
+  @media (max-width: 900px) {
+    .layout { grid-template-columns: 1fr; gap: 0; }
+    nav.toc { position: static; margin-top: 1.5rem; }
+    header.hero h1 { font-size: 2rem; }
+    .os { grid-template-columns: 1fr; }
+  }
+  @media print {
+    nav.toc { display: none; }
+    .layout { display: block; }
+    html { background: #fff; color: #000; background-image: none; }
+    a, h1, h2, h3, th, strong { color: #000; }
+  }
+
+/* ── Two panels side by side: the two halves, or the two platforms ── */
+.halves, .os { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin: 1.2rem 0; }
+.halves > .half, .os > div {
+  border: 1px solid var(--edge-soft);
+  background: var(--panel);
+  padding: 1rem 1.1rem;
+}
+.halves h3, .os h3 { margin-top: 0; }
+.halves ul, .os ol, .os ul { padding-left: 1.1rem; margin-bottom: 0; }
+.os pre { margin-bottom: 0; }
+
+td.num { text-align: right; color: var(--rune); font-family: var(--mono); font-size: 0.88em; white-space: nowrap; }
+
+/* ── Behaviour ───────────────────────────────────────────────────── */
+html { scroll-behaviour: smooth; scroll-behavior: smooth; }
+section { scroll-margin-top: 1.5rem; }
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+
+/* The section being read, marked in the margin. */
+nav.toc a.here {
+  color: var(--gold-lit);
+  border-left-color: var(--gold);
+  background: rgba(199,164,85,0.07);
+}
+nav.toc a.here .n { color: var(--gold); }
+
+/* Copy button on every code block, out of the way until wanted. */
+.snip { position: relative; }
+.snip > button {
+  position: absolute;
+  top: 0.45rem;
+  right: 0.45rem;
+  font: 0.72rem/1 var(--display);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--bone-dim);
+  background: var(--leather);
+  border: 1px solid var(--edge-soft);
+  border-radius: 2px;
+  padding: 0.32rem 0.5rem;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.12s ease-out;
+}
+.snip:hover > button, .snip > button:focus-visible { opacity: 1; }
+.snip > button:hover { color: var(--gold-lit); border-color: var(--gold); }
+.snip > button.done { color: var(--moss); border-color: var(--moss); opacity: 1; }
+@media (prefers-reduced-motion: reduce) { .snip > button { transition: none; } }
+@media print { .snip > button { display: none; } }
+</style>
+<script defer>
+// ValhSync documents: the small amount of behaviour a reference page earns.
+//
+// Two things, both of which a reader notices only by their absence: knowing
+// where they are in a long page, and getting a command out of it without
+// selecting it by hand. Everything here degrades to nothing without script --
+// the pages are readable, linkable and printable on their own.
+
+(() => {
+  "use strict";
+
+  /** Mark the section currently being read in the margin contents. */
+  function followAlong() {
+    const links = new Map();
+    for (const a of document.querySelectorAll("nav.toc a[href^='#']")) {
+      const target = document.getElementById(a.hash.slice(1));
+      if (target) links.set(target, a);
+    }
+    if (links.size === 0) return;
+
+    let current = null;
+    const mark = (section) => {
+      if (section === current) return;
+      current = section;
+      for (const [, a] of links) a.classList.remove("here");
+      const a = links.get(section);
+      if (a) a.classList.add("here");
+    };
+
+    // The topmost section whose start is above the reading line. Computed
+    // from the sections themselves rather than from scroll offsets, so it
+    // stays right when the window is resized or a table wraps.
+    const pick = () => {
+      const line = window.innerHeight * 0.3;
+      let best = null;
+      for (const [section] of links) {
+        if (section.getBoundingClientRect().top <= line) best = section;
+      }
+      mark(best ?? links.keys().next().value);
+    };
+
+    let queued = false;
+    const onScroll = () => {
+      if (queued) return;
+      queued = true;
+      requestAnimationFrame(() => {
+        queued = false;
+        pick();
+      });
+    };
+    addEventListener("scroll", onScroll, { passive: true });
+    addEventListener("resize", onScroll, { passive: true });
+    pick();
+  }
+
+  /** A copy button on every code block. */
+  function copyable() {
+    const label = document.documentElement.lang === "fr" ? "Copier" : "Copy";
+    const done = document.documentElement.lang === "fr" ? "Copié" : "Copied";
+
+    for (const pre of document.querySelectorAll("pre")) {
+      const wrap = document.createElement("div");
+      wrap.className = "snip";
+      pre.parentNode.insertBefore(wrap, pre);
+      wrap.appendChild(pre);
+
+      const button = document.createElement("button");
+      button.type = "button";
+      button.textContent = label;
+      // The block is already in the page; the button is an extra way to
+      // reach it, not a label for it.
+      button.setAttribute("aria-label", `${label}: ${pre.textContent.trim().split("\n")[0]}`);
+      wrap.appendChild(button);
+
+      button.addEventListener("click", async () => {
+        try {
+          await navigator.clipboard.writeText(pre.textContent.replace(/\s+$/, ""));
+          button.textContent = done;
+          button.classList.add("done");
+          setTimeout(() => {
+            button.textContent = label;
+            button.classList.remove("done");
+          }, 1400);
+        } catch {
+          // No clipboard permission, or an insecure origin. Select it
+          // instead, so the keyboard can finish the job.
+          const range = document.createRange();
+          range.selectNodeContents(pre);
+          const selection = getSelection();
+          selection.removeAllRanges();
+          selection.addRange(range);
+        }
+      });
+    }
+  }
+
+  if (document.readyState === "loading") {
+    addEventListener("DOMContentLoaded", () => {
+      followAlong();
+      copyable();
+    });
+  } else {
+    followAlong();
+    copyable();
+  }
+})();
+</script>
 </head>
 <body>
 <div class="layout">

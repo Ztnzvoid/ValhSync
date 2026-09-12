@@ -47,6 +47,13 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y libxkbcommon-dev libwayland-dev libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libgl1-mesa-dev
       - run: cargo test --workspace --all-features --locked
 
+  docs:
+    name: docs carry their charter
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: python scripts/docs-inline.py --check
+
   deny:
     name: cargo-deny
     runs-on: ubuntu-latest
