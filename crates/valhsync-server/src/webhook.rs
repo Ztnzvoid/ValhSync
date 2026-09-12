@@ -190,13 +190,15 @@ pub fn post(
     // admin's note mentioning a role -- from pinging the whole server. Markdown
     // is defused in `compose`; mentions cannot be, so they are refused by the
     // API instead.
-    let payload = serde_json::json!({
+    let payload = serde_json::to_vec(&serde_json::json!({
         "content": content,
         "allowed_mentions": { "parse": [] },
-    });
+    }))
+    .context("cannot build the webhook message")?;
     let response = client
-        .post(self_url(hook))
-        .json(&payload)
+        .post(hook.url.clone())
+        .header(reqwest::header::CONTENT_TYPE, "application/json")
+        .body(payload)
         .send()
         // `reqwest` puts the URL it was given into its own error text, which
         // here is the token. `without_url` is what takes it back out again.
@@ -209,29 +211,25 @@ pub fn post(
     bail!("{}", refusal(status.as_u16()));
 }
 
-/// Hands `post` the URL, kept to one place so that the only copy of the token
-/// outside the struct lives for the length of one request.
-fn self_url(hook: &Hook) -> reqwest::Url {
-    hook.url.clone()
-}
-
 /// What a non-2xx answer means, in words an admin can act on.
 ///
 /// Deliberately takes a bare number rather than the response, so it can be
 /// read and tested without a network, and so there is no way for the URL to
 /// reach the message.
 fn refusal(status: u16) -> String {
-    match status {
-        401 | 403 | 404 => "Discord does not know that webhook any more. It was probably \
-             deleted, or its token was reset -- make a new one and paste it in again"
-            .to_string(),
-        429 => "Discord is rate limiting this webhook; the pack went out, the announcement \
-             did not. Try again in a minute"
-            .to_string(),
-        400 => "Discord refused the message as malformed. The pack itself is published"
-            .to_string(),
-        other => format!("Discord answered {other}; the pack itself is published"),
-    }
+    let said = match status {
+        401 | 403 | 404 => {
+            "Discord does not know that webhook any more. It was probably deleted, or its \
+             token was reset -- make a new one in Discord and paste it in again"
+        }
+        429 => {
+            "Discord is rate limiting this webhook. The pack went out, the announcement did \
+             not -- try again in a minute"
+        }
+        400 => "Discord refused the message as malformed. The pack itself is published",
+        other => return format!("Discord answered {other}; the pack itself is published"),
+    };
+    said.to_string()
 }
 
 /// The message that goes in the channel.
