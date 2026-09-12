@@ -448,13 +448,14 @@
 <section id="s8">
   <h2><span class="n">§8</span>What has been tested</h2>
   <p>Worth stating plainly, because the answer is narrower than the code's reach. One platform
-  has been verified end to end, in one configuration, on one machine. Everything else either
-  compiles and passes its tests, or is untried.</p>
+  has been verified end to end, including across several players' own machines. Everything else
+  either compiles and passes its tests, or is untried.</p>
   <table>
     <thead><tr><th>Platform</th><th>Status</th></tr></thead>
     <tbody>
       <tr><td>Windows 11, x86_64</td><td><strong>Verified end to end</strong>, in one configuration: a PC running the Valheim <em>dedicated server</em> (Steam app 896660) with the publisher beside it, serving on the game's port. The launcher fetched the pack over that machine's public address, applied it, and Steam started Valheim into the server.</td></tr>
-      <tr><td>A second machine as the player</td><td>Not part of a verified run. The launcher and the publisher have only ever been exercised on the same PC, reaching each other over the public address rather than over loopback — a real network path, but not a second computer.</td></tr>
+      <tr><td>Other machines as players</td><td><strong>Verified with 0.1.0.</strong> Several players ran the launcher on their own PCs — their own Valheim installs, their own game folders, their own pre-existing mods — synced from the publisher and joined. That is the run that exercises quarantine, backups and the root allow-list against installations nobody arranged in advance.</td></tr>
+      <tr><td>0.2.0 across machines</td><td>Not yet. The multi-player run above was 0.1.0; the release notes, the news history and the update channel have only been exercised between a publisher and a launcher on one PC.</td></tr>
       <tr><td>Linux, x86_64</td><td>Builds, and the whole test suite passes in CI on every commit. <em>No window has ever been opened on it</em>, no sync has been run, no game started.</td></tr>
       <tr><td>Proton / Steam Deck</td><td>Untested. The launch-option lines the launcher shows come from the BepInEx documentation, not from a machine here.</td></tr>
       <tr><td>Dedicated server in Docker</td><td>Untested, and partly unsupported by design: the publisher finds the game server by looking at processes, so it cannot see one in another container. Publishing a pack from a mounted volume should work; starting, stopping and the console will not.</td></tr>
@@ -501,11 +502,10 @@ cargo run -p valhsync            # the player's launcher</code></pre>
   règle de routeur qui existe déjà couvre les deux. <strong>ValhSync ne demande jamais d'ouvrir
   un port que le jeu n'utilise pas déjà.</strong></p>
   <p><strong>Testé où ?</strong> Sur un PC Windows 11 faisant tourner le serveur dédié Valheim
-  avec le publisher à côté, le launcher joignant le pack par l'adresse publique de cette même
-  machine. Une seconde machine dans le rôle du joueur n'a jamais fait partie d'une vérification.
-  Linux compile et passe ses tests à chaque commit, mais aucune fenêtre n'y a jamais été
-  ouverte. Proton, Steam Deck, Docker, serveurs hébergés et macOS : jamais essayés. Le
-  <a href="#s8">§8</a> détaille.</p>
+  avec le publisher à côté, et sur les machines de plusieurs joueurs qui ont synchronisé depuis
+  lui et rejoint la partie — en 0.1.0. Linux compile et passe ses tests à chaque commit, mais
+  aucune fenêtre n'y a jamais été ouverte. Proton, Steam Deck, Docker, serveurs hébergés et
+  macOS : jamais essayés. Le <a href="#s8">§8</a> détaille.</p>
   <p>Guides détaillés :
   <a href="https://github.com/Ztnzvoid/ValhSync/blob/main/docs/admin-guide.md">administrateur</a>,
   <a href="https://github.com/Ztnzvoid/ValhSync/blob/main/docs/player-guide.md">joueur</a>.
