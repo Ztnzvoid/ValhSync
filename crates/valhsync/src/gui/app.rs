@@ -15,6 +15,7 @@ use crate::engine::{self, Applied, Context, Event, Prepared, Progress};
 use crate::paths::AppPaths;
 use crate::servers::{KnownServer, ServerBook};
 use crate::settings::Settings;
+use crate::vanilla::{self, ModsState};
 use crate::{game, invite_file};
 use valhsync_ui::frame as chrome;
 use valhsync_ui::theme as th;
@@ -259,6 +260,36 @@ fn mod_row(ui: &mut egui::Ui, row: &ModRow, lang: Lang) {
     });
 }
 
+/// How the dedicated server's state reads on the card.
+///
+/// The third case is the one that has to be got right. A publisher exporting
+/// its pack as static files has no way to look at the game server, so it says
+/// nothing -- and "nobody asked the question" must not be dressed up in the
+/// colour reserved for "the server is down", or every player on a static
+/// export would read a fault that is not there.
+fn game_server_line(up: Option<bool>) -> (Color32, Key) {
+    match up {
+        Some(true) => (th::MOSS, Key::GameUp),
+        Some(false) => (th::BLOOD_LIT, Key::GameDown),
+        None => (th::RUNE, Key::GameUnknown),
+    }
+}
+
+/// What the "play without mods" control should say, given what is on disk:
+/// the line describing the current state, and the label of the move away
+/// from it.
+///
+/// `None` when BepInEx was never installed. There is nothing to turn off in
+/// that game folder, and a switch that does nothing is worse than no switch:
+/// somebody would press it and conclude the launcher is broken.
+fn vanilla_control(state: ModsState) -> Option<(Key, Key)> {
+    match state {
+        ModsState::On => Some((Key::ModsOn, Key::ModsDisable)),
+        ModsState::Off => Some((Key::ModsOff, Key::ModsEnable)),
+        ModsState::NotInstalled => None,
+    }
+}
+
 /// Why a check failed, and whether the server answered at all.
 #[derive(Debug, Clone)]
 struct Failure {
@@ -314,6 +345,13 @@ pub(super) struct App {
     title: String,
     game_state: GameState,
     game_root_input: String,
+    /// Whether BepInEx is loading in the game folder, as last looked at.
+    ///
+    /// Kept rather than read while drawing: answering it means finding the
+    /// game folder, which on a machine with several Steam libraries is a
+    /// handful of file reads, and the settings dialog would otherwise pay
+    /// for them on every repaint.
+    mods_state: Option<ModsState>,
     last_check: Instant,
     was_focused: bool,
     fatal: Option<String>,
@@ -373,6 +411,7 @@ impl App {
             notice_height: 0.0,
             title: String::new(),
             game_state: GameState::Idle,
+            mods_state: None,
             last_check: Instant::now(),
             was_focused: true,
             fatal,
@@ -387,7 +426,16 @@ impl App {
                 Ok(None) => {}
                 Err(e) => app.notify(e.to_string(), th::BLOOD_LIT),
             }
-            app.selected = app.book.resolve(None).ok().map(|s| s.id.clone());
+            // The server the player last pressed PLAY on, and failing that the
+            // first one in the book -- a window that opens on nothing makes
+            // somebody with two servers choose one before it will tell them
+            // anything, every single time.
+            app.selected = app
+                .book
+                .resolve(None)
+                .ok()
+                .or_else(|| app.book.servers.first())
+                .map(|s| s.id.clone());
             app.check();
         }
         app
@@ -515,6 +563,12 @@ impl App {
             return;
         }
         self.confirm_open = false;
+        if launch {
+            // The sync that ends in the game starting counts as playing here:
+            // by the time it finishes the player is in Valheim and not looking
+            // at this window.
+            self.note_played();
+        }
         self.start_job(Job::Sync, move |mut rep| {
             let result = Context::discover()
                 .and_then(|ctx| engine::apply(&ctx, &prepared, &mut rep))
@@ -553,7 +607,10 @@ impl App {
             return;
         };
         match game::launch(&p.install, &p.manifest.game_address) {
-            Ok(_) => self.game_state = GameState::Launching(Instant::now()),
+            Ok(_) => {
+                self.game_state = GameState::Launching(Instant::now());
+                self.note_played();
+            }
             Err(e) => self.notify(e.to_string(), th::BLOOD_LIT),
         }
     }
@@ -616,6 +673,10 @@ impl App {
                     self.mods = mod_rows(&prepared);
                     self.prepared = Some(*prepared);
                     self.status = Status::Ready;
+                    // A sync restores `winhttp.dll`, so the switch has to be
+                    // read again after one rather than left showing what the
+                    // player chose before it.
+                    self.refresh_mods_state();
                 }
                 Msg::Discovered(Ok(found)) => {
                     if let Some(dialog) = &mut self.add_dialog {
@@ -790,6 +851,83 @@ impl App {
             self.notify(e.to_string(), th::BLOOD_LIT);
         }
     }
+
+    /// Write down the server the player is actually going to play on, so the
+    /// next launch opens on it.
+    ///
+    /// This is the book's `default`, which is also what the command line falls
+    /// back to when no server is named -- one notion of "your server", kept in
+    /// `servers.json` beside the servers themselves, rather than a second
+    /// answer in a second file that could disagree with the first.
+    ///
+    /// Recorded here and not when the drop-down changes: looking at what
+    /// another server would install is not the same as playing on it, and
+    /// somebody who browsed the list once should not find the window opening
+    /// on a server they never joined.
+    fn note_played(&mut self) {
+        let Some(id) = self.selected.clone() else {
+            return;
+        };
+        if self.book.default.as_deref() == Some(id.as_str()) {
+            return;
+        }
+        self.book.set_default(&id);
+        if let Err(e) = self.book.save(&self.paths) {
+            self.notify(e.to_string(), th::BLOOD_LIT);
+        }
+    }
+
+    /// Look at the game folder and remember whether BepInEx is loading.
+    ///
+    /// The folder is taken from the plan when there is one, so the answer
+    /// matches the installation the rest of the window is talking about, and
+    /// located from scratch when there is not: a player whose server is down
+    /// is exactly the player who wants to start the game without its mods.
+    fn refresh_mods_state(&mut self) {
+        let root = self.prepared.as_ref().map(|p| p.install.root.clone());
+        let root = root.or_else(|| game::locate(&self.settings).ok().map(|i| i.root));
+        self.mods_state = root.as_deref().map(vanilla::state);
+    }
+
+    /// Rename `winhttp.dll` one way or the other, and say what the folder
+    /// looks like afterwards.
+    ///
+    /// Refused while Valheim is open, exactly as the command line refuses it:
+    /// the file is loaded into the running process, the rename fails on
+    /// Windows, and a player left with a half-applied switch would have no
+    /// idea which half.
+    fn set_mods(&mut self, mods_on: bool) {
+        if game::is_running() {
+            self.notify(crate::SyncError::GameRunning.to_string(), th::BLOOD_LIT);
+            return;
+        }
+        let Some(root) = self
+            .prepared
+            .as_ref()
+            .map(|p| p.install.root.clone())
+            .or_else(|| game::locate(&self.settings).ok().map(|i| i.root))
+        else {
+            self.notify(crate::SyncError::GameNotFound.to_string(), th::BLOOD_LIT);
+            return;
+        };
+        match vanilla::set(&root, mods_on) {
+            Ok(state) => {
+                self.mods_state = Some(state);
+                // `NotInstalled` here means BepInEx left the folder between
+                // the last look and this click. Nothing was changed and the
+                // control is about to vanish; there is nothing to announce.
+                let said = match state {
+                    ModsState::On => Some(self.t(Key::ModsOn)),
+                    ModsState::Off => Some(self.t(Key::ModsOff)),
+                    ModsState::NotInstalled => None,
+                };
+                if let Some(said) = said {
+                    self.notify(said.to_string(), th::GOLD_LIT);
+                }
+            }
+            Err(e) => self.notify(e.to_string(), th::BLOOD_LIT),
+        }
+    }
 }
 
 impl eframe::App for App {
@@ -906,6 +1044,9 @@ impl App {
                         ui.add_space(8.0);
                         if ui.button(self.t(Key::Settings)).clicked() {
                             self.settings_open = !self.settings_open;
+                            if self.settings_open {
+                                self.refresh_mods_state();
+                            }
                         }
                         // Each language named in itself: "Deutsch", not
                         // "German". Somebody who has landed in a window they
@@ -1011,10 +1152,8 @@ impl App {
             self.forget_selected();
         }
         if before != self.selected {
-            if let Some(id) = &self.selected {
-                self.book.set_default(id);
-                let _ = self.book.save(&self.paths);
-            }
+            // Not written down: the book's default is the server last played
+            // on, and glancing at another one is not playing on it.
             self.prepared = None;
             self.mods.clear();
             self.check();
@@ -1178,6 +1317,7 @@ impl App {
                 }
             });
             ui.label(RichText::new(&server.url).small().color(th::BONE_DIM));
+            self.game_server_row(ui);
             ui.add_space(10.0);
             self.whats_new_block(ui);
             if let Some((mine, theirs)) = self.prepared.as_ref().and_then(|p| p.version_gap) {
@@ -1222,6 +1362,40 @@ impl App {
                 th::callout(ui, th::GOLD, |ui| {
                     ui.label(RichText::new(hint).small().color(th::GOLD_LIT));
                 });
+            }
+        });
+    }
+
+    /// Whether the Valheim server itself is up, under the name of the server
+    /// the pack came from.
+    ///
+    /// Syncing and playing are two different things, and until this line
+    /// existed the window only knew about the first: a player would press
+    /// PLAY, watch a flawless sync, wait for Valheim to load and only then
+    /// discover that the machine they were trying to join was switched off.
+    /// The publisher already answers the question on `/health`; nothing read
+    /// the answer.
+    ///
+    /// Drawn only once the publisher has answered, because the state arrives
+    /// with the plan. While the check is running or after it failed, the lamp
+    /// and the status block below are already saying so, and a second line
+    /// repeating it would only be in the way.
+    fn game_server_row(&self, ui: &mut egui::Ui) {
+        let Some(prepared) = &self.prepared else {
+            return;
+        };
+        let up = prepared.game_server_up;
+        let (colour, key) = game_server_line(up);
+        ui.add_space(4.0);
+        ui.horizontal(|ui| {
+            valhsync_ui::widgets::dot(ui, colour);
+            let label = ui.label(
+                RichText::new(self.t(key))
+                    .text_style(th::label_style())
+                    .color(if up.is_none() { th::BONE_DIM } else { th::BONE }),
+            );
+            if up.is_none() {
+                label.on_hover_text(self.t(Key::GameUnknownHint));
             }
         });
     }
@@ -1822,6 +1996,7 @@ impl App {
         let mut apply_root = false;
         let mut forget = false;
         let mut reset = false;
+        let mut toggle_mods: Option<bool> = None;
         let server = self.selected_server();
         let install = self.prepared.as_ref().map(|p| p.install.clone());
 
@@ -1878,6 +2053,30 @@ impl App {
                             apply_root = true;
                         }
                     });
+
+                    // --- mods on or off ---------------------------------------
+                    // Beside the game folder, because that is what it changes:
+                    // one rename in the folder named just above.
+                    if let Some((state_key, action_key)) = self.mods_state.and_then(vanilla_control)
+                    {
+                        ui.add_space(14.0);
+                        valhsync_ui::widgets::section(ui, self.t(Key::PlayWithoutMods));
+                        let on = state_key == Key::ModsOn;
+                        ui.horizontal(|ui| {
+                            valhsync_ui::widgets::status_dot(
+                                ui,
+                                if on { th::MOSS } else { th::RUNE },
+                                self.t(state_key),
+                            );
+                            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                                if ui.button(self.t(action_key)).clicked() {
+                                    toggle_mods = Some(!on);
+                                }
+                            });
+                        });
+                        ui.add_space(4.0);
+                        valhsync_ui::widgets::hint(ui, self.t(Key::ModsOffHint));
+                    }
 
                     // --- the selected server ----------------------------------
                     if let Some(s) = &server {
@@ -1951,6 +2150,10 @@ impl App {
             self.settings_open = false;
         }
 
+        if let Some(mods_on) = toggle_mods {
+            self.set_mods(mods_on);
+        }
+
         if apply_root {
             let input = self.game_root_input.trim().to_string();
             if input.is_empty() {
@@ -2000,4 +2203,100 @@ fn open_folder(path: &Path) {
         "xdg-open"
     };
     let _ = std::process::Command::new(cmd).arg(path).spawn();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use valhsync_core::Keypair;
+
+    /// A publisher that exports its pack as static files cannot look at the
+    /// game server, and answers neither yes nor no. That silence is not a
+    /// fault, and it must not borrow the colour of one.
+    #[test]
+    fn a_server_that_cannot_say_reads_as_neutral_rather_than_as_a_fault() {
+        let (up, _) = game_server_line(Some(true));
+        let (down, _) = game_server_line(Some(false));
+        let (quiet, key) = game_server_line(None);
+        assert_eq!(key, Key::GameUnknown);
+        assert_ne!(
+            quiet, down,
+            "silence is wearing the colour of a dead server"
+        );
+        assert_ne!(quiet, up, "silence is claiming the server is up");
+        assert_eq!(down, th::BLOOD_LIT);
+        assert_eq!(up, th::MOSS);
+    }
+
+    /// Nothing to turn off, so nothing to offer: a switch with no effect
+    /// would be pressed once and remembered as a broken launcher.
+    #[test]
+    fn the_mods_switch_stays_hidden_when_bepinex_is_not_installed() {
+        assert_eq!(vanilla_control(ModsState::NotInstalled), None);
+    }
+
+    /// The button always names the other side, never the side the folder is
+    /// already on.
+    #[test]
+    fn the_mods_switch_offers_the_move_away_from_where_the_folder_is() {
+        assert_eq!(
+            vanilla_control(ModsState::On),
+            Some((Key::ModsOn, Key::ModsDisable))
+        );
+        assert_eq!(
+            vanilla_control(ModsState::Off),
+            Some((Key::ModsOff, Key::ModsEnable))
+        );
+    }
+
+    fn book_of_two(paths: &AppPaths) -> (ServerBook, String, String) {
+        let alpha = Keypair::generate();
+        let beta = Keypair::generate();
+        let mut book = ServerBook::default();
+        for (kp, url, name) in [
+            (&alpha, "http://a:2470", "Alpha"),
+            (&beta, "http://b:2470", "Beta"),
+        ] {
+            let invite = Invite::new(url, &kp.public(), name);
+            book.join(&invite, false).expect("a fresh invite joins");
+        }
+        book.save(paths).expect("the book is written");
+        (book, alpha.public().to_b64(), beta.public().to_b64())
+    }
+
+    /// The whole point of remembering: close the window on one server, open
+    /// it again and be on that server, without touching the drop-down.
+    #[test]
+    fn the_server_last_played_on_is_the_one_that_comes_back() {
+        let tmp = tempfile::tempdir().expect("a temp folder");
+        let paths = AppPaths::at(tmp.path()).expect("a home of its own");
+        let (mut book, _alpha, beta) = book_of_two(&paths);
+
+        // Joining Alpha first made it the default; playing on Beta moves it.
+        assert_eq!(book.resolve(None).expect("a default").name, "Alpha");
+        book.set_default(&beta);
+        book.save(&paths).expect("the book is written");
+
+        let reopened = ServerBook::load(&paths).expect("the book is read back");
+        assert_eq!(reopened.resolve(None).expect("a default").name, "Beta");
+    }
+
+    /// A book written before this launcher knew about last-played, or one
+    /// whose default was forgotten, still has to open on something: two
+    /// servers and no default used to leave the window showing nothing at all.
+    #[test]
+    fn a_book_with_no_default_still_opens_on_a_server() {
+        let tmp = tempfile::tempdir().expect("a temp folder");
+        let paths = AppPaths::at(tmp.path()).expect("a home of its own");
+        let (mut book, _alpha, _beta) = book_of_two(&paths);
+        book.default = None;
+
+        // The same fallback the window uses at startup.
+        let picked = book
+            .resolve(None)
+            .ok()
+            .or_else(|| book.servers.first())
+            .map(|s| s.name.clone());
+        assert_eq!(picked.as_deref(), Some("Alpha"));
+    }
 }
