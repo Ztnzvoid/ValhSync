@@ -322,6 +322,9 @@ pub(super) struct App {
     selected: Option<String>,
     status: Status,
     prepared: Option<Prepared>,
+    /// PLAY or UPDATE was pressed while a check was running. Carried out when
+    /// the check finishes, so one press is one action rather than none.
+    queued_action: bool,
     mods: Vec<ModRow>,
     job: Option<(Job, Receiver<Msg>)>,
     progress: Option<ProgressView>,
@@ -395,6 +398,7 @@ impl App {
             selected: None,
             status: Status::NoServer,
             prepared: None,
+            queued_action: false,
             mods: Vec::new(),
             job: None,
             progress: None,
@@ -775,6 +779,24 @@ impl App {
             if job != Job::Check {
                 self.check();
             }
+            self.take_queued_action();
+        }
+    }
+
+    /// Do what was pressed while the window was busy.
+    ///
+    /// Only from a state where it still makes sense: a check that came back
+    /// with an error, or a game that started in the meantime, means the press
+    /// no longer applies and is dropped rather than acted on late.
+    fn take_queued_action(&mut self) {
+        if !std::mem::take(&mut self.queued_action) {
+            return;
+        }
+        if self.busy() || self.game_state != GameState::Idle {
+            return;
+        }
+        if matches!(self.status, Status::Ready) {
+            self.on_action();
         }
     }
 
@@ -794,13 +816,22 @@ impl App {
     /// focus: a player who alt-tabs back should see the truth, not a stale
     /// screen, and should never have to press a button for it.
     fn auto_refresh(&mut self, ctx: &egui::Context) {
+        /// A floor under the focus check, so coming back to the window does
+        /// not start one every time.
+        const SETTLED: Duration = Duration::from_secs(5);
+
         let focused = ctx.input(|i| i.viewport().focused.unwrap_or(true));
         let regained = focused && !self.was_focused;
         self.was_focused = focused;
         if self.busy() || self.selected.is_none() || self.add_dialog.is_some() {
             return;
         }
-        if regained || self.last_check.elapsed() >= AUTO_REFRESH {
+        // A floor under the focus check. Alt-tabbing in and out re-checked
+        // every single time, and each check left the main button inert for a
+        // second or two -- which is precisely the second somebody who has
+        // just come back to the window reaches for it.
+        let worth_it = self.last_check.elapsed() >= if regained { SETTLED } else { AUTO_REFRESH };
+        if worth_it {
             self.check();
         }
     }
@@ -1184,13 +1215,20 @@ impl App {
             GameState::Idle => self.t(Key::Play).to_string(),
         };
         let enabled = ready && self.game_state == GameState::Idle;
+        // Clickable while a check is in flight, even though it cannot act
+        // yet. The window checks on its own every twenty-five seconds and
+        // again the moment it regains focus -- which is exactly when somebody
+        // alt-tabs back to it and reaches for this button. Disabling it there
+        // swallowed the press, and the only way to tell a button that is busy
+        // from one that is broken was to keep clicking.
+        let waiting = self.game_state == GameState::Idle && self.busy();
         let (ink, plate) = if enabled {
             (th::NIGHT, th::GOLD)
         } else {
             (th::BONE_DIM, th::LEATHER)
         };
         let button = ui.add_enabled(
-            enabled,
+            enabled || waiting,
             egui::Button::new(
                 RichText::new(label)
                     .font(th::display_font(18.0))
@@ -1207,7 +1245,14 @@ impl App {
             th::brackets(ui.painter(), button.rect.expand(4.0), th::EDGE);
         }
         if button.clicked() {
-            self.on_action();
+            if enabled {
+                self.on_action();
+            } else {
+                // Held until the check that is running finishes. One press is
+                // one action: pressing again while it waits cancels it, so a
+                // second impatient click cannot queue a second sync.
+                self.queued_action = !self.queued_action;
+            }
         }
     }
 
