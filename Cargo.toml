@@ -52,7 +52,12 @@ winreg = "0.55"
 
 # gui
 eframe = { version = "0.32", default-features = false, features = ["default_fonts", "glow", "wayland", "x11"] }
-windows-sys = { version = "0.59", features = ["Win32_System_Console", "Win32_Foundation"] }
+windows-sys = { version = "0.59", features = [
+    "Win32_System_Console",
+    "Win32_Foundation",
+    "Win32_Storage_FileSystem",
+    "Win32_Security",
+] }
 
 # misc
 clap = { version = "4", features = ["derive"] }

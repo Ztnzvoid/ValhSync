@@ -214,6 +214,10 @@ pub(super) struct App {
     /// it used to be a line in a log nobody reads, and an admin whose players
     /// were suddenly all refused had nothing to go on.
     new_key_at: Option<String>,
+    /// What to type into the dedicated server's console.
+    command: String,
+    /// Path of a signing key to take over from another install.
+    key_import: String,
     notice: Option<(String, Color32, Instant)>,
     egui_ctx: egui::Context,
 }
@@ -271,6 +275,8 @@ impl App {
             publish_paused: false,
             publish_tried: None,
             new_key_at,
+            command: String::new(),
+            key_import: String::new(),
             game_running: false,
             game_pid: None,
             game_shell: None,
@@ -1134,6 +1140,11 @@ impl App {
                     ),
                 );
             }
+            if self.game_running {
+                ui.add_space(8.0);
+                self.console_line(ui);
+            }
+            ui.add_space(8.0);
             w::hint(
                 ui,
                 self.t(
@@ -1149,6 +1160,51 @@ impl App {
                 ),
             );
         });
+    }
+
+    /// Type a command into the dedicated server's console from here.
+    ///
+    /// One way only: Valheim answers in its own window and in the log, which
+    /// is on the next card down. The field says so rather than leaving an
+    /// admin waiting for a reply that is never coming back here.
+    fn console_line(&mut self, ui: &mut egui::Ui) {
+        let hint = self.t(
+            "Commande serveur, par ex. « help »",
+            "Server command, e.g. \"help\"",
+        );
+        let send_label = self.t("Envoyer", "Send");
+        ui.horizontal(|ui| {
+            let send = ui.button(send_label).clicked();
+            let typed = ui
+                .add(
+                    egui::TextEdit::singleline(&mut self.command)
+                        .desired_width(ui.available_width())
+                        .font(egui::TextStyle::Monospace)
+                        .hint_text(hint),
+                )
+                .lost_focus()
+                && ui.input(|i| i.key_pressed(egui::Key::Enter));
+            if send || typed {
+                let line = std::mem::take(&mut self.command);
+                match gameserver::send_command(&line) {
+                    Ok(()) => {
+                        let msg = format!("{} {line}", self.t("Envoyé :", "Sent:"));
+                        self.notify(msg, th::MOSS);
+                    }
+                    Err(e) => {
+                        self.command = line;
+                        self.notify(format!("{e:#}"), th::BLOOD_LIT);
+                    }
+                }
+            }
+        });
+        w::hint(
+            ui,
+            self.t(
+                "La commande est tapée dans la console du serveur. La réponse arrive dans le journal ci-dessous, pas ici.",
+                "The command is typed into the server's console. Its answer lands in the log below, not here.",
+            ),
+        );
     }
 
     /// What the log says about the session: players, join code, which
@@ -1674,40 +1730,87 @@ impl App {
                     "Untick \"sent to players\" for a mod that must run on the server only (DiscordConnector, admin tools).",
                 ),
             );
-            ui.add_space(6.0);
+            ui.add_space(8.0);
+
+            let server_only = self.mods.iter().filter(|m| m.server_only).count();
+            let sent = self.mods.len() - server_only;
             let mut changed: Vec<(String, bool, bool)> = Vec::new();
-            egui::ScrollArea::vertical()
-                .max_height(190.0)
-                .id_salt("mods")
-                .show(ui, |ui| {
-                    for m in &self.mods {
-                        ui.horizontal(|ui| {
-                            let mut sent = !m.server_only;
-                            if ui.checkbox(&mut sent, "").changed() {
-                                changed.push((m.folder.clone(), m.loose, !sent));
-                            }
-                            ui.label(RichText::new(&m.folder).color(if m.server_only {
-                                th::BONE_DIM
-                            } else {
-                                th::BONE
-                            }));
-                            if m.client_only {
-                                ui.label(
-                                    RichText::new(self.t("client seul", "client only"))
-                                        .small()
-                                        .color(th::RUNE),
-                                );
-                            }
-                            if m.server_only {
-                                ui.label(
-                                    RichText::new(self.t("serveur seul", "server only"))
-                                        .small()
-                                        .color(th::GOLD),
-                                );
-                            }
-                        });
+            ui.horizontal(|ui| {
+                ui.label(
+                    RichText::new(format!(
+                        "{sent} {}  ·  {server_only} {}",
+                        self.t("envoyés", "sent"),
+                        self.t("serveur seul", "server only")
+                    ))
+                    .text_style(th::label_style())
+                    .color(th::BONE_DIM),
+                );
+                ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                    if ui
+                        .add_enabled(
+                            server_only > 0,
+                            egui::Button::new(self.t("Tout envoyer", "Send all")),
+                        )
+                        .clicked()
+                    {
+                        for m in self.mods.iter().filter(|m| m.server_only) {
+                            changed.push((m.folder.clone(), m.loose, false));
+                        }
+                    }
+                    if ui
+                        .add_enabled(sent > 0, egui::Button::new(self.t("Aucun", "None")))
+                        .clicked()
+                    {
+                        for m in self.mods.iter().filter(|m| !m.server_only) {
+                            changed.push((m.folder.clone(), m.loose, true));
+                        }
                     }
                 });
+            });
+            ui.add_space(6.0);
+            th::hairline(ui);
+            ui.add_space(6.0);
+
+            // One row per mod, full width, with the choice spelled out on the
+            // right rather than left to a bare tick: "sent" and "server only"
+            // are the two things an admin is deciding between, and a checkbox
+            // says neither of them.
+            for m in &self.mods {
+                ui.horizontal(|ui| {
+                    w::dot(ui, if m.server_only { th::GOLD } else { th::MOSS });
+                    ui.label(RichText::new(&m.folder).color(if m.server_only {
+                        th::BONE_DIM
+                    } else {
+                        th::BONE
+                    }));
+                    if m.client_only {
+                        ui.label(
+                            RichText::new(self.t("client seul", "client only"))
+                                .small()
+                                .color(th::RUNE),
+                        );
+                    }
+                    ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                        if ui
+                            .selectable_label(m.server_only, self.t("Serveur seul", "Server only"))
+                            .clicked()
+                            && !m.server_only
+                        {
+                            changed.push((m.folder.clone(), m.loose, true));
+                        }
+                        if ui
+                            .selectable_label(
+                                !m.server_only,
+                                self.t("Envoyé aux joueurs", "Sent to players"),
+                            )
+                            .clicked()
+                            && m.server_only
+                        {
+                            changed.push((m.folder.clone(), m.loose, false));
+                        }
+                    });
+                });
+            }
             for (folder, loose, server_only) in changed {
                 self.set_server_only(&folder, loose, server_only);
                 self.mods = self.collect_mods();
@@ -1924,6 +2027,7 @@ impl App {
         });
     }
 
+    #[allow(clippy::too_many_lines)] // one card, read top to bottom
     fn card_invite(&mut self, ui: &mut egui::Ui) {
         th::card(ui, |ui| {
             ui.set_width(ui.available_width());
@@ -1975,6 +2079,9 @@ impl App {
                     );
                 }
             });
+            ui.add_space(8.0);
+            self.key_takeover(ui);
+            ui.add_space(8.0);
             ui.horizontal(|ui| {
                 if ui.button(self.t("Copier", "Copy")).clicked() {
                     ui.ctx().copy_text(self.invite.clone());
@@ -2034,6 +2141,48 @@ impl App {
     /// Build the folder an admin zips and sends: the launcher plus the invite
     /// code, so the player only has to double-click.
     /// The server's own log, followed as it is written.
+    /// Take over the signing key of another install.
+    ///
+    /// The key is the server's identity, and an admin who moved machines, or
+    /// unpacked a build somewhere new before this was sorted out, has a
+    /// perfectly good one sitting in a folder. Without this the only way back
+    /// was to make every player import a fresh code.
+    fn key_takeover(&mut self, ui: &mut egui::Ui) {
+        let label = self.t(
+            "Reprendre la clé d'une autre installation",
+            "Take over another install's key",
+        );
+        let hint = self.t("Chemin d'un server.key", "Path to a server.key");
+        let button = self.t("Reprendre", "Take over");
+        w::hint(ui, label);
+        ui.horizontal(|ui| {
+            let go = ui.button(button).clicked();
+            ui.add(
+                egui::TextEdit::singleline(&mut self.key_import)
+                    .desired_width(ui.available_width())
+                    .font(egui::TextStyle::Monospace)
+                    .hint_text(hint),
+            );
+            if go {
+                let from = PathBuf::from(self.key_import.trim());
+                match crate::keys::import(&self.data_dir, &from) {
+                    Ok(kp) => {
+                        self.key_import.clear();
+                        self.new_key_at = None;
+                        self.refresh_invite();
+                        let msg = format!(
+                            "{} {}",
+                            self.t("Clé reprise, empreinte :", "Key taken over, fingerprint:"),
+                            kp.public().fingerprint()
+                        );
+                        self.notify(msg, th::MOSS);
+                    }
+                    Err(e) => self.notify(format!("{e:#}"), th::BLOOD_LIT),
+                }
+            }
+        });
+    }
+
     #[allow(clippy::too_many_lines)] // one card, read top to bottom
     fn card_logs(&mut self, ui: &mut egui::Ui) {
         th::card(ui, |ui| {

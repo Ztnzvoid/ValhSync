@@ -78,6 +78,26 @@ fn key_beside_executable(data_dir: &Path) -> Option<PathBuf> {
     (candidate != key_path(data_dir) && candidate.is_file()).then_some(candidate)
 }
 
+/// Take over a key from elsewhere: another install, or a backup.
+///
+/// The old one is kept beside it, renamed, because this is the one action in
+/// the whole program that can make every player refuse the server, and an
+/// admin who picked the wrong file needs the way back.
+pub fn import(data_dir: &Path, from: &Path) -> Result<Keypair> {
+    let text =
+        std::fs::read_to_string(from).with_context(|| format!("cannot read {}", from.display()))?;
+    let kp = Keypair::from_secret_b64(text.trim())
+        .with_context(|| format!("{} is not a ValhSync signing key", from.display()))?;
+    let path = key_path(data_dir);
+    if path.is_file() {
+        let backup = path.with_extension(format!("key.old-{}", valhsync_core::clock::dir_stamp()));
+        std::fs::rename(&path, &backup)
+            .with_context(|| format!("cannot move the old key to {}", backup.display()))?;
+    }
+    write(data_dir, &kp)?;
+    Ok(kp)
+}
+
 /// Replace the key. The old one is kept next to it, renamed, in case the
 /// rotation was a mistake.
 pub fn rotate(data_dir: &Path) -> Result<Keypair> {
