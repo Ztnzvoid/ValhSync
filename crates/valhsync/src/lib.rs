@@ -12,6 +12,7 @@ pub mod game;
 pub mod gui;
 pub mod http;
 pub mod invite_file;
+pub mod news;
 pub mod paths;
 pub mod selfupdate;
 pub mod servers;

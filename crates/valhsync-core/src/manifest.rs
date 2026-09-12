@@ -66,8 +66,21 @@ pub struct Manifest {
     /// this field, and on servers whose log has not said yet.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub network_version: Option<u32>,
+    /// What the admin wants to say about this pack, shown to players before
+    /// they agree to install it.
+    ///
+    /// The list of mods that changed is computed from the plan and needs
+    /// nobody to write it. This is for the part no diff can produce: that a
+    /// mod resets its own config, that a chest mod wants an empty base first,
+    /// that the update is only for people who crashed on the boat.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub notes: Option<String>,
     pub files: Vec<FileEntry>,
 }
+
+/// Long enough for a paragraph and a list, short enough that it cannot be used
+/// to pad a manifest or fill a window.
+pub const MAX_NOTES: usize = 2000;
 
 /// Longest accepted `server_name`.
 pub const MAX_SERVER_NAME: usize = 100;
@@ -165,6 +178,8 @@ impl Manifest {
             managed_roots,
             // Filled in by the publisher, which is the side that can read it.
             network_version: None,
+            // Likewise: it comes from the admin's configuration.
+            notes: None,
             files,
         }
     }
@@ -228,6 +243,17 @@ impl Manifest {
                 "format {} is not supported by this launcher (expected {MANIFEST_FORMAT}); update ValhSync",
                 self.format
             ));
+        }
+        if let Some(notes) = &self.notes {
+            // Line breaks are the point of a note, so `is_clean_text` is too
+            // strict here -- but everything else it refuses still applies.
+            if notes.len() > MAX_NOTES
+                || notes
+                    .chars()
+                    .any(|c| c != '\n' && c != '\r' && is_deceptive(c))
+            {
+                return bad("notes are too long or hold control characters".into());
+            }
         }
         if !is_clean_text(&self.server_name, MAX_SERVER_NAME) {
             return bad("server_name is empty, too long or contains control characters".into());

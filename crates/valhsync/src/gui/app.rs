@@ -303,6 +303,9 @@ pub(super) struct App {
     confirm_open: bool,
     settings_open: bool,
     mods_open: bool,
+    /// What each sync changed, kept so a player can read it afterwards.
+    news: crate::news::News,
+    news_open: bool,
     /// Height the window should have for what it currently shows.
     wanted_height: f32,
     /// Height the notice bar took last frame, zero when it is hidden.
@@ -340,6 +343,7 @@ impl App {
             ),
         };
         let lang = Lang::detect(settings.language.as_deref());
+        let news = crate::news::News::load(&paths).unwrap_or_default();
         let mut app = Self {
             lang,
             game_root_input: settings
@@ -363,6 +367,8 @@ impl App {
             confirm_open: false,
             settings_open: false,
             mods_open: false,
+            news,
+            news_open: false,
             wanted_height: 0.0,
             notice_height: 0.0,
             title: String::new(),
@@ -630,6 +636,7 @@ impl App {
                     self.status = Status::Error(failure);
                 }
                 Msg::Applied(Ok((applied, launch_error))) => {
+                    self.record_news();
                     let c = applied.counts;
                     let summary = format!(
                         "{}: {} {}, {} {}, {} {}",
@@ -845,7 +852,12 @@ impl eframe::App for App {
         // and one margin. A dialog floats above all that and needs its own
         // room, or its buttons end up past the bottom edge.
         self.wanted_height = panel + 20.0 + self.notice_height;
-        if self.add_dialog.is_some() || self.confirm_open || self.settings_open || self.mods_open {
+        if self.add_dialog.is_some()
+            || self.confirm_open
+            || self.settings_open
+            || self.mods_open
+            || self.news_open
+        {
             self.wanted_height = self.wanted_height.max(600.0);
         }
 
@@ -858,6 +870,7 @@ impl eframe::App for App {
         );
         chrome::draw_border(ctx);
         self.mods_dialog(ctx);
+        self.news_dialog(ctx);
         self.add_dialog(ctx);
         self.confirm_dialog(ctx);
         self.settings_dialog(ctx);
@@ -1155,6 +1168,7 @@ impl App {
             });
             ui.label(RichText::new(&server.url).small().color(th::BONE_DIM));
             ui.add_space(10.0);
+            self.whats_new_block(ui);
             if let Some((mine, theirs)) = self.prepared.as_ref().and_then(|p| p.version_gap) {
                 valhsync_ui::widgets::notice(
                     ui,
@@ -1223,6 +1237,162 @@ impl App {
                 }
             }
         });
+    }
+
+    /// Write down what the sync that just succeeded changed.
+    ///
+    /// Taken from the plan that was applied rather than from a fresh one: by
+    /// the next check the same comparison yields nothing, because everything
+    /// in it is now on disk.
+    fn record_news(&mut self) {
+        let Some(p) = &self.prepared else {
+            return;
+        };
+        let entry = crate::news::Entry {
+            server_id: p.server.id.clone(),
+            server_name: p.server.name.clone(),
+            pack_id: p.manifest.pack_id.clone(),
+            at: valhsync_core::clock::now_rfc3339(),
+            notes: p.manifest.notes.clone(),
+            changes: valhsync_core::changes::mods_touched(&p.plan),
+        };
+        if self.news.record(entry)
+            && let Err(e) = self.news.save(&self.paths)
+        {
+            // Losing the history is not worth interrupting anyone over, but
+            // it should not be lost in silence either.
+            self.notify(e.to_string(), th::GOLD);
+        }
+    }
+
+    /// What the next press will change, in mods rather than in files, with
+    /// whatever the admin wanted to say about it.
+    ///
+    /// Before the sync, not after: this is the moment somebody decides. The
+    /// confirmation dialog only appears on a first sync with a server, and a
+    /// note saying "empty your chests before this one" is worth exactly
+    /// nothing once the files are on disk.
+    fn whats_new_block(&mut self, ui: &mut egui::Ui) {
+        let (changes, notes) = self.prepared.as_ref().map_or_else(
+            || (Vec::new(), None),
+            |p| {
+                (
+                    valhsync_core::changes::mods_touched(&p.plan),
+                    p.manifest.notes.clone(),
+                )
+            },
+        );
+        let has_history = self
+            .selected
+            .as_deref()
+            .is_some_and(|id| self.news.for_server(id).next().is_some());
+        if changes.is_empty() && notes.is_none() {
+            if has_history {
+                if ui.small_button(self.t(Key::WhatsNew)).clicked() {
+                    self.news_open = true;
+                }
+                ui.add_space(10.0);
+            }
+            return;
+        }
+
+        let title = self.t(Key::WhatsNew);
+        let history = self.t(Key::NewsHistory);
+        th::callout(ui, th::GOLD, |ui| {
+            ui.horizontal(|ui| {
+                ui.label(RichText::new(title).strong().color(th::GOLD_LIT));
+                ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                    if has_history && ui.small_button(history).clicked() {
+                        self.news_open = true;
+                    }
+                });
+            });
+            if let Some(notes) = &notes {
+                ui.add_space(4.0);
+                ui.label(RichText::new(notes).color(th::BONE));
+            }
+            if !changes.is_empty() {
+                ui.add_space(4.0);
+                self.change_lines(ui, &changes);
+            }
+        });
+        ui.add_space(10.0);
+    }
+
+    /// One line per kind: added, updated, removed. Named mods, not counts --
+    /// "3 mods updated" tells nobody whether the one they care about moved.
+    fn change_lines(&self, ui: &mut egui::Ui, changes: &[valhsync_core::ModChange]) {
+        use valhsync_core::ChangeKind;
+        for (kind, key, colour) in [
+            (ChangeKind::Added, Key::NewsAdded, th::MOSS),
+            (ChangeKind::Updated, Key::NewsUpdated, th::GOLD),
+            (ChangeKind::Removed, Key::NewsRemoved, th::RUNE),
+        ] {
+            let names: Vec<&str> = changes
+                .iter()
+                .filter(|c| c.kind == kind)
+                .map(|c| c.name.as_str())
+                .collect();
+            if names.is_empty() {
+                continue;
+            }
+            ui.horizontal_wrapped(|ui| {
+                valhsync_ui::widgets::dot(ui, colour);
+                ui.label(
+                    RichText::new(format!("{} · {}", self.t(key), names.join(", ")))
+                        .text_style(th::label_style())
+                        .color(th::BONE),
+                );
+            });
+        }
+    }
+
+    /// Everything this server has changed on this machine, newest first.
+    fn news_dialog(&mut self, ctx: &egui::Context) {
+        if !self.news_open {
+            return;
+        }
+        let mut open = true;
+        let entries: Vec<crate::news::Entry> = self
+            .selected
+            .as_deref()
+            .map(|id| self.news.for_server(id).cloned().collect())
+            .unwrap_or_default();
+        egui::Window::new(self.t(Key::WhatsNew))
+            .collapsible(false)
+            .resizable(false)
+            .open(&mut open)
+            .anchor(egui::Align2::CENTER_CENTER, egui::vec2(0.0, 0.0))
+            .default_width(520.0)
+            .show(ctx, |ui| {
+                if entries.is_empty() {
+                    ui.label(RichText::new(self.t(Key::NewsNone)).color(th::BONE_DIM));
+                    return;
+                }
+                egui::ScrollArea::vertical()
+                    .max_height(valhsync_ui::widgets::dialog_room(ui, 230.0))
+                    .show(ui, |ui| {
+                        for (i, entry) in entries.iter().enumerate() {
+                            if i > 0 {
+                                ui.add_space(10.0);
+                                th::hairline(ui);
+                                ui.add_space(10.0);
+                            }
+                            ui.label(
+                                RichText::new(entry.at.get(..10).unwrap_or(&entry.at))
+                                    .small()
+                                    .color(th::BONE_DIM),
+                            );
+                            if let Some(notes) = &entry.notes {
+                                ui.add_space(2.0);
+                                ui.label(RichText::new(notes).color(th::BONE));
+                            }
+                            ui.add_space(2.0);
+                            self.change_lines(ui, &entry.changes);
+                        }
+                    });
+            });
+        self.news_open = open;
     }
 
     /// The whole pack, when the player asks for it.
@@ -1543,6 +1713,20 @@ impl App {
                     .small()
                     .color(th::RUNE),
                 );
+                // The admin's own words, above the file list rather than
+                // under it: a warning about chests or config files is read
+                // before the plan, or it is not read.
+                if let Some(notes) = p.manifest.notes.clone() {
+                    ui.add_space(8.0);
+                    th::callout(ui, th::GOLD, |ui| {
+                        ui.label(
+                            RichText::new(self.t(Key::NewsFromAdmin))
+                                .small()
+                                .color(th::GOLD_LIT),
+                        );
+                        ui.label(RichText::new(notes).color(th::BONE));
+                    });
+                }
                 ui.add_space(8.0);
                 egui::ScrollArea::vertical()
                     .max_height(valhsync_ui::widgets::dialog_room(ui, 300.0))

@@ -4,9 +4,10 @@ use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, bail};
 use bytes::Bytes;
 use valhsync_core::limits::human_bytes;
+use valhsync_core::manifest::MAX_NOTES;
 use valhsync_core::scan::{self, ScanResult};
 use valhsync_core::sign::encode_signature;
 use valhsync_core::{AllowedRoots, Keypair, Manifest};
@@ -76,17 +77,46 @@ fn server_network_version(cfg: &Config) -> Option<u32> {
     valhsync_core::gamelog::network_version(&valhsync_core::gamelog::read_version(tail.lines())?)
 }
 
+/// The admin's word about this pack, ready for the manifest.
+///
+/// Whitespace alone is nothing to say: published as an empty string it would
+/// still be a note, and the launcher would clear room on the plan screen for a
+/// message that reads as blank.
+fn pack_notes(cfg: &Config) -> Result<Option<String>> {
+    let Some(notes) = cfg
+        .pack
+        .notes
+        .as_deref()
+        .map(str::trim)
+        .filter(|n| !n.is_empty())
+    else {
+        return Ok(None);
+    };
+    // Caught here rather than left to `validate`, which knows the rule but not
+    // where the value came from: the admin needs to be sent back to the box
+    // they typed it in, not told that the pack failed validation.
+    if notes.len() > MAX_NOTES {
+        bail!(
+            "[pack] notes is {} bytes, more than the {MAX_NOTES} a manifest may carry; \
+             shorten it in the window or in the configuration",
+            notes.len()
+        );
+    }
+    Ok(Some(notes.to_string()))
+}
+
 /// published files are only rewritten when something changed.
 pub fn build(cfg: &Config, keypair: &Keypair, data_dir: &Path) -> Result<BuildOutcome> {
     let scan_cfg = cfg.scan_config()?;
     let scan = scan::scan(&scan_cfg).context("scanning the pack failed")?;
-    let manifest = Manifest::new(
+    let mut manifest = Manifest::new(
         cfg.server.name.trim(),
         cfg.server.game_address.trim(),
         cfg.pack.managed_roots.clone(),
         scan.entries(),
     )
     .with_network_version(server_network_version(cfg));
+    manifest.notes = pack_notes(cfg)?;
     manifest
         .validate(&AllowedRoots::bepinex(), &cfg.limits())
         .context("the pack does not pass manifest validation")?;
@@ -98,6 +128,10 @@ pub fn build(cfg: &Config, keypair: &Keypair, data_dir: &Path) -> Result<BuildOu
             && p.game_address == manifest.game_address
             && p.managed_roots == manifest.managed_roots
             && p.network_version == manifest.network_version
+            // Rewriting the note is the whole point of editing it: without
+            // this the old bytes would be reused and players would keep
+            // reading the previous message.
+            && p.notes == manifest.notes
     });
 
     // Reuse the previous bytes when nothing changed, so `generated_at` and the
@@ -353,5 +387,54 @@ mod tests {
         assert_eq!(third.store_removed, 0);
         let fourth = build(&cfg, &kp, data.path()).unwrap();
         assert_eq!(fourth.store_removed, 1);
+    }
+
+    #[test]
+    fn the_admin_note_travels_with_the_pack() {
+        let server = tempfile::tempdir().unwrap();
+        let data = tempfile::tempdir().unwrap();
+        write(server.path(), "winhttp.dll", b"doorstop");
+        let mut cfg = Config::default();
+        cfg.pack.server_root = Some(server.path().to_path_buf());
+        let kp = Keypair::generate();
+
+        assert_eq!(
+            build(&cfg, &kp, data.path())
+                .unwrap()
+                .published
+                .manifest
+                .notes,
+            None
+        );
+
+        cfg.pack.notes = Some("  Videz vos coffres.\nLe mod remet sa config à zéro.  ".into());
+        let out = build(&cfg, &kp, data.path()).unwrap();
+        assert_eq!(
+            out.published.manifest.notes.as_deref(),
+            Some("Videz vos coffres.\nLe mod remet sa config à zéro."),
+            "trimmed at the edges, untouched in the middle"
+        );
+        // Only the note changed, and it still has to reach the signed bytes.
+        assert!(!out.unchanged);
+        assert!(
+            String::from_utf8_lossy(&out.published.manifest_bytes).contains("Videz vos coffres."),
+        );
+
+        // An empty box is no note at all, not an empty one.
+        cfg.pack.notes = Some("   \n  ".into());
+        assert_eq!(
+            build(&cfg, &kp, data.path())
+                .unwrap()
+                .published
+                .manifest
+                .notes,
+            None
+        );
+
+        // Too long is refused before anything is published, and says so.
+        cfg.pack.notes = Some("a".repeat(MAX_NOTES + 1));
+        let err = build(&cfg, &kp, data.path()).unwrap_err().to_string();
+        assert!(err.contains("notes"), "{err}");
+        assert!(err.contains(&MAX_NOTES.to_string()), "{err}");
     }
 }

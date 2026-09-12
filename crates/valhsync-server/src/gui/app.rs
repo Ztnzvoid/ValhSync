@@ -10,6 +10,7 @@ use std::time::{Duration, Instant, SystemTime};
 
 use eframe::egui::{self, Align, Color32, Layout, RichText};
 use valhsync_core::limits::human_bytes;
+use valhsync_core::manifest::MAX_NOTES;
 use valhsync_ui::frame as chrome;
 use valhsync_ui::theme as th;
 use valhsync_ui::widgets as w;
@@ -138,6 +139,8 @@ pub(super) struct App {
     export_dir: String,
     bind: String,
     public_url: String,
+    /// The admin's word to players, as typed. Empty means there is none.
+    notes: String,
 
     mods: Vec<ModEntry>,
     scripts: Vec<detect::StartScript>,
@@ -272,6 +275,7 @@ impl App {
             bind: cfg.server.bind.clone(),
             public_url: cfg.server.public_url.clone().unwrap_or_default(),
             export_dir: export_dir.display().to_string(),
+            notes: cfg.pack.notes.clone().unwrap_or_default(),
             saved: cfg.clone(),
             never_saved: !loaded,
             cfg,
@@ -417,6 +421,8 @@ impl App {
         cfg.language = Some(self.lang.code().to_string());
         let dir = self.export_dir.trim();
         cfg.pack.export_dir = (!dir.is_empty()).then(|| PathBuf::from(dir));
+        let notes = self.notes.trim();
+        cfg.pack.notes = (!notes.is_empty()).then(|| notes.to_string());
         cfg
     }
 
@@ -1793,167 +1799,223 @@ impl App {
         });
     }
 
-    #[allow(clippy::too_many_lines)] // one card, read top to bottom
     fn card_mods(&mut self, ui: &mut egui::Ui) {
         th::card(ui, |ui| {
             ui.set_width(ui.available_width());
-            w::section(ui, self.t("Mods du pack", "Pack mods"));
-            if self.mods.is_empty() {
-                w::hint(
-                    ui,
-                    self.t(
-                        "Aucun mod trouvé dans BepInEx/plugins.",
-                        "No mod found in BepInEx/plugins.",
-                    ),
-                );
-                return;
-            }
-            // Say where the list comes from: it is read from the server's own
-            // BepInEx folder, which is not obvious from a list of names.
-            if let Some(plugins) = self
-                .cfg
-                .pack
-                .server_root
-                .as_ref()
-                .map(|r| r.join("BepInEx").join("plugins"))
-            {
-                ui.horizontal(|ui| {
-                    w::hint(ui, self.t("Lus dans", "Read from"));
-                    ui.label(
-                        RichText::new(plugins.display().to_string())
-                            .monospace()
-                            .small()
-                            .color(th::RUNE),
-                    );
-                    if ui.small_button(self.t("Ouvrir", "Open")).clicked() {
-                        open_path(&plugins);
-                    }
-                });
-            }
+            self.mod_list(ui);
+            ui.add_space(10.0);
+            th::hairline(ui);
+            ui.add_space(8.0);
+            self.pack_notes(ui);
+        });
+    }
+
+    /// The mods found on the server, and which side each one runs on.
+    #[allow(clippy::too_many_lines)] // one list, read top to bottom
+    fn mod_list(&mut self, ui: &mut egui::Ui) {
+        w::section(ui, self.t("Mods du pack", "Pack mods"));
+        if self.mods.is_empty() {
             w::hint(
+                ui,
+                self.t(
+                    "Aucun mod trouvé dans BepInEx/plugins.",
+                    "No mod found in BepInEx/plugins.",
+                ),
+            );
+            return;
+        }
+        // Say where the list comes from: it is read from the server's own
+        // BepInEx folder, which is not obvious from a list of names.
+        if let Some(plugins) = self
+            .cfg
+            .pack
+            .server_root
+            .as_ref()
+            .map(|r| r.join("BepInEx").join("plugins"))
+        {
+            ui.horizontal(|ui| {
+                w::hint(ui, self.t("Lus dans", "Read from"));
+                ui.label(
+                    RichText::new(plugins.display().to_string())
+                        .monospace()
+                        .small()
+                        .color(th::RUNE),
+                );
+                if ui.small_button(self.t("Ouvrir", "Open")).clicked() {
+                    open_path(&plugins);
+                }
+            });
+        }
+        w::hint(
                 ui,
                 self.t(
                     "Décochez « envoyé aux joueurs » pour un mod qui ne doit tourner que sur le serveur (DiscordConnector, outils d'admin).",
                     "Untick \"sent to players\" for a mod that must run on the server only (DiscordConnector, admin tools).",
                 ),
             );
-            ui.add_space(8.0);
+        ui.add_space(8.0);
 
-            let server_only = self.mods.iter().filter(|m| m.server_only).count();
-            let sent = self.mods.len() - server_only;
-            let mut changed: Vec<(String, bool, bool)> = Vec::new();
+        let server_only = self.mods.iter().filter(|m| m.server_only).count();
+        let sent = self.mods.len() - server_only;
+        let mut changed: Vec<(String, bool, bool)> = Vec::new();
+        ui.horizontal(|ui| {
+            ui.label(
+                RichText::new(format!(
+                    "{sent} {}  ·  {server_only} {}",
+                    self.t("envoyés", "sent"),
+                    self.t("serveur seul", "server only")
+                ))
+                .text_style(th::label_style())
+                .color(th::BONE_DIM),
+            );
+            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                if ui
+                    .add_enabled(
+                        server_only > 0,
+                        egui::Button::new(self.t("Tout envoyer", "Send all")),
+                    )
+                    .clicked()
+                {
+                    for m in self.mods.iter().filter(|m| m.server_only) {
+                        changed.push((m.folder.clone(), m.loose, false));
+                    }
+                }
+                if ui
+                    .add_enabled(sent > 0, egui::Button::new(self.t("Aucun", "None")))
+                    .clicked()
+                {
+                    for m in self.mods.iter().filter(|m| !m.server_only) {
+                        changed.push((m.folder.clone(), m.loose, true));
+                    }
+                }
+            });
+        });
+        ui.add_space(6.0);
+        th::hairline(ui);
+        ui.add_space(6.0);
+
+        // One row per mod, full width, with the choice spelled out on the
+        // right rather than left to a bare tick: "sent" and "server only"
+        // are the two things an admin is deciding between, and a checkbox
+        // says neither of them.
+        for m in &self.mods {
             ui.horizontal(|ui| {
-                ui.label(
-                    RichText::new(format!(
-                        "{sent} {}  ·  {server_only} {}",
-                        self.t("envoyés", "sent"),
-                        self.t("serveur seul", "server only")
-                    ))
-                    .text_style(th::label_style())
-                    .color(th::BONE_DIM),
-                );
+                w::dot(ui, if m.server_only { th::GOLD } else { th::MOSS });
+                ui.label(RichText::new(&m.folder).color(if m.server_only {
+                    th::BONE_DIM
+                } else {
+                    th::BONE
+                }));
+                if m.client_only {
+                    ui.label(
+                        RichText::new(self.t("client seul", "client only"))
+                            .small()
+                            .color(th::RUNE),
+                    );
+                }
                 ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                     if ui
-                        .add_enabled(
-                            server_only > 0,
-                            egui::Button::new(self.t("Tout envoyer", "Send all")),
-                        )
+                        .selectable_label(m.server_only, self.t("Serveur seul", "Server only"))
                         .clicked()
+                        && !m.server_only
                     {
-                        for m in self.mods.iter().filter(|m| m.server_only) {
-                            changed.push((m.folder.clone(), m.loose, false));
-                        }
+                        changed.push((m.folder.clone(), m.loose, true));
                     }
                     if ui
-                        .add_enabled(sent > 0, egui::Button::new(self.t("Aucun", "None")))
+                        .selectable_label(
+                            !m.server_only,
+                            self.t("Envoyé aux joueurs", "Sent to players"),
+                        )
                         .clicked()
+                        && m.server_only
                     {
-                        for m in self.mods.iter().filter(|m| !m.server_only) {
-                            changed.push((m.folder.clone(), m.loose, true));
-                        }
+                        changed.push((m.folder.clone(), m.loose, false));
                     }
                 });
             });
-            ui.add_space(6.0);
+        }
+        for (folder, loose, server_only) in changed {
+            self.set_server_only(&folder, loose, server_only);
+            self.mods = self.collect_mods();
+        }
+        if let Some(extras) = self.cfg.pack.client_extras.clone() {
+            ui.add_space(10.0);
             th::hairline(ui);
-            ui.add_space(6.0);
-
-            // One row per mod, full width, with the choice spelled out on the
-            // right rather than left to a bare tick: "sent" and "server only"
-            // are the two things an admin is deciding between, and a checkbox
-            // says neither of them.
-            for m in &self.mods {
-                ui.horizontal(|ui| {
-                    w::dot(ui, if m.server_only { th::GOLD } else { th::MOSS });
-                    ui.label(RichText::new(&m.folder).color(if m.server_only {
-                        th::BONE_DIM
-                    } else {
-                        th::BONE
-                    }));
-                    if m.client_only {
-                        ui.label(
-                            RichText::new(self.t("client seul", "client only"))
-                                .small()
-                                .color(th::RUNE),
-                        );
-                    }
-                    ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                        if ui
-                            .selectable_label(m.server_only, self.t("Serveur seul", "Server only"))
-                            .clicked()
-                            && !m.server_only
-                        {
-                            changed.push((m.folder.clone(), m.loose, true));
-                        }
-                        if ui
-                            .selectable_label(
-                                !m.server_only,
-                                self.t("Envoyé aux joueurs", "Sent to players"),
-                            )
-                            .clicked()
-                            && m.server_only
-                        {
-                            changed.push((m.folder.clone(), m.loose, false));
-                        }
-                    });
-                });
-            }
-            for (folder, loose, server_only) in changed {
-                self.set_server_only(&folder, loose, server_only);
-                self.mods = self.collect_mods();
-            }
-            if let Some(extras) = self.cfg.pack.client_extras.clone() {
-                ui.add_space(10.0);
-                th::hairline(ui);
-                ui.add_space(8.0);
-                ui.label(
-                    RichText::new(self.t(
-                        "Optionnel · mods qui ne tournent QUE chez les joueurs",
-                        "Optional · mods that run ONLY on players",
-                    ))
-                    .font(th::display_font(13.0))
-                    .color(th::GOLD_LIT),
-                );
-                w::hint(
+            ui.add_space(8.0);
+            ui.label(
+                RichText::new(self.t(
+                    "Optionnel · mods qui ne tournent QUE chez les joueurs",
+                    "Optional · mods that run ONLY on players",
+                ))
+                .font(th::display_font(13.0))
+                .color(th::GOLD_LIT),
+            );
+            w::hint(
                     ui,
                     self.t(
                         "Unshamed, ConfigurationManager, EquipmentAndQuickSlots… Ils ne sont pas installés sur le serveur, donc ValhSync ne peut pas les y trouver : déposez-les ici, à la même arborescence que le jeu (BepInEx/plugins/...). Si vous n'en avez aucun, ignorez ce dossier.",
                         "Unshamed, ConfigurationManager, EquipmentAndQuickSlots… They are not installed on the server, so ValhSync cannot find them there: drop them here, laid out like the game (BepInEx/plugins/...). If you have none, ignore this folder.",
                     ),
                 );
-                ui.horizontal(|ui| {
-                    ui.label(
-                        RichText::new(extras.display().to_string())
-                            .monospace()
-                            .small()
-                            .color(th::RUNE),
-                    );
-                    if ui.small_button(self.t("Ouvrir", "Open")).clicked() {
-                        let _ = std::fs::create_dir_all(&extras);
-                        open_path(&extras);
-                    }
-                });
-            }
+            ui.horizontal(|ui| {
+                ui.label(
+                    RichText::new(extras.display().to_string())
+                        .monospace()
+                        .small()
+                        .color(th::RUNE),
+                );
+                if ui.small_button(self.t("Ouvrir", "Open")).clicked() {
+                    let _ = std::fs::create_dir_all(&extras);
+                    open_path(&extras);
+                }
+            });
+        }
+    }
+
+    /// The admin's word to players, published inside the signed manifest.
+    ///
+    /// It sits under the mod list because this is the tab where the pack is
+    /// decided: whatever players need to hear is almost always about what was
+    /// just changed here, and the launcher's own diff can name the mods that
+    /// moved but not what that will do to a save.
+    fn pack_notes(&mut self, ui: &mut egui::Ui) {
+        ui.label(
+            RichText::new(self.t(
+                "Optionnel · mot aux joueurs",
+                "Optional · a word to players",
+            ))
+            .font(th::display_font(13.0))
+            .color(th::GOLD_LIT),
+        );
+        let hint = self.t(
+            "Affiché dans le launcher avant que le joueur accepte la synchronisation. La liste des mods qui changent est calculée toute seule : écrivez ici ce qu'elle ne peut pas dire (« ce mod remet sa config à zéro », « videz vos coffres avant »). Rien à dire ? Laissez vide.",
+            "Shown in the launcher before a player accepts the sync. The list of mods that change is worked out on its own: write here what it cannot say (\"this mod resets its own config\", \"empty your chests first\"). Nothing to say? Leave it empty.",
+        );
+        w::hint(ui, hint);
+        let placeholder = self.t("Rien de particulier.", "Nothing in particular.");
+        ui.add(
+            egui::TextEdit::multiline(&mut self.notes)
+                .desired_width(ui.available_width())
+                .desired_rows(4)
+                .hint_text(placeholder),
+        );
+        // Counted in bytes, as the manifest counts them: a box saying 300 left
+        // while saving was refused would be worse than one whose count falls
+        // two at a time on an accent.
+        let used = self.notes.trim().len();
+        let (text, color) = if used > MAX_NOTES {
+            (
+                format!("{} {}", used - MAX_NOTES, self.t("de trop", "too many")),
+                th::BLOOD_LIT,
+            )
+        } else {
+            (
+                format!("{} {}", MAX_NOTES - used, self.t("restants", "left")),
+                th::BONE_DIM,
+            )
+        };
+        ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+            ui.label(RichText::new(text).small().color(color));
         });
     }
 

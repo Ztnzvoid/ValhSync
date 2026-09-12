@@ -14,6 +14,7 @@
     deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::todo)
 )]
 
+pub mod changes;
 pub mod clock;
 pub mod crash;
 pub mod error;
@@ -30,6 +31,7 @@ pub mod state;
 pub mod steam;
 pub mod update;
 
+pub use changes::{ChangeKind, ModChange};
 pub use error::{CoreError, Result};
 pub use invite::Invite;
 pub use limits::Limits;

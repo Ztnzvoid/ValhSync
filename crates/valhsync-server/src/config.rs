@@ -90,6 +90,12 @@ pub struct PackSection {
     /// publish mode: a path the admin typed once should still be there on the
     /// next launch.
     pub export_dir: Option<PathBuf>,
+    /// What the admin wants to say about this pack. Published inside the
+    /// signed manifest, so players read it before they agree to a sync.
+    ///
+    /// It describes the pack rather than the server, which is why it lives
+    /// here: renaming the server or moving the port leaves it alone.
+    pub notes: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -173,6 +179,7 @@ impl Default for PackSection {
             client_extras: None,
             managed_roots: default_managed_roots(),
             export_dir: None,
+            notes: None,
         }
     }
 }
@@ -455,6 +462,38 @@ fn toml_str(s: &str) -> String {
     }
 }
 
+/// A free-text value that may run over several lines.
+///
+/// A literal multi-line string (`'''`) is the form that keeps backslashes and
+/// double quotes exactly as typed, which a note naming a Windows folder or
+/// quoting a mod would otherwise fill with escapes. The two things it cannot
+/// hold -- `'''` itself, and an apostrophe right before the closing delimiter
+/// -- fall back to a basic string.
+fn toml_text(s: &str) -> String {
+    // Line endings are settled here rather than left to the parser: TOML
+    // leaves it free to rewrite the ones inside a multi-line string, and a
+    // note that came back with different bytes would make the window think
+    // someone else had edited the file. The other control characters go for
+    // the reason the manifest refuses them: escape sequences in a message
+    // players are shown before they agree to anything.
+    let s: String = s
+        .replace("\r\n", "\n")
+        .chars()
+        .filter(|&c| c == '\n' || c == '\t' || !c.is_control())
+        .collect();
+    if s.contains("'''") || s.ends_with('\'') {
+        let escaped = s
+            .replace('\\', "\\\\")
+            .replace('"', "\\\"")
+            .replace('\t', "\\t")
+            .replace('\n', "\\n");
+        return format!("\"{escaped}\"");
+    }
+    // The newline right after the opening delimiter is not part of the value,
+    // so the note can start on its own line and the file stays readable.
+    format!("'''\n{s}'''")
+}
+
 fn toml_list(items: &[String], indent: &str) -> String {
     items
         .iter()
@@ -529,6 +568,12 @@ managed_roots = [
 # Where `export` writes the folder to upload. Left out: `pack-site`, beside
 # this file.
 {export_dir}
+# Optional: a word to the players, published inside the signed manifest and
+# shown in the launcher before they accept the sync. The list of mods that
+# changed is worked out on its own, so write here what it cannot say: a mod
+# that resets its own config, a base to empty first, an update that only
+# matters to someone who crashed. Several lines are fine.
+{notes}
 
 [policy]
 # "enforce": always replaced when different. "seed": installed only if absent,
@@ -592,6 +637,11 @@ stop_with_game = {stop_with_game}
             cfg.pack.export_dir.as_ref(),
             r"'C:\valhsync\pack-site'"
         ),
+        notes = match cfg.pack.notes.as_deref().map(str::trim).filter(|n| !n.is_empty()) {
+            Some(n) => format!("notes = {}", toml_text(n)),
+            None => "# notes = '''\n# The chest mod resets its own config: empty your chests before syncing.\n# '''"
+                .to_string(),
+        },
         policy_default = toml_str(&cfg.policy.default),
         seed = toml_list(&cfg.policy.seed, "  "),
         enforce = toml_list(&cfg.policy.enforce, "  "),
@@ -658,6 +708,49 @@ mod publish_mode_tests {
         assert_eq!(back.server.publish_live, Some(true));
         assert_eq!(back.language.as_deref(), Some("fr"));
         assert_eq!(back.pack.export_dir, cfg.pack.export_dir);
+    }
+
+    /// A note is the one free-text field in the file: it holds line breaks and
+    /// whatever punctuation the admin typed, and the apostrophe is the one
+    /// that would end a TOML literal string early.
+    #[test]
+    fn a_note_survives_line_breaks_and_an_apostrophe() {
+        let note = "L'update remet la config du mod de coffres à zéro.\n\n\
+                    Videz vos coffres avant de synchroniser -- sinon c'est perdu.";
+        let mut cfg = Config::default();
+        cfg.pack.notes = Some(note.to_string());
+
+        let text = to_commented_toml(&cfg);
+        let back: Config = toml::from_str(&text).unwrap();
+        assert_eq!(back.pack.notes.as_deref(), Some(note));
+
+        // Writing what was read back must not drift, or saving twice in the
+        // window would keep rewriting the same note into a different shape.
+        assert_eq!(to_commented_toml(&back), text);
+
+        // Nothing to say is nothing in the file: no empty key for the admin
+        // to wonder about.
+        cfg.pack.notes = Some("   \n ".into());
+        let blank = to_commented_toml(&cfg);
+        assert!(blank.contains("# notes = "), "only the example remains");
+        assert_eq!(toml::from_str::<Config>(&blank).unwrap().pack.notes, None);
+    }
+
+    /// `'''` cannot appear inside a TOML literal string, and neither can an
+    /// apostrophe touching the closing delimiter.
+    #[test]
+    fn a_note_that_fights_the_literal_string_still_round_trips() {
+        for note in [
+            "Trois apostrophes: ''' -- et voilà.",
+            "Ça finit sur une apostrophe'",
+            "Chemin C:\\jeux\\BepInEx et guillemets \"ainsi\"",
+        ] {
+            let mut cfg = Config::default();
+            cfg.pack.notes = Some(note.to_string());
+            let text = to_commented_toml(&cfg);
+            let back: Config = toml::from_str(&text).unwrap_or_else(|e| panic!("{note:?}: {e}"));
+            assert_eq!(back.pack.notes.as_deref(), Some(note), "{note:?}");
+        }
     }
 }
 
