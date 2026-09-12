@@ -400,7 +400,7 @@ mod tests {
             "https://steamcommunity.com/id/somebody",
             "// not an id",
             "Bjorn the Red",
-            "76561190000000001\n76561198032401516",
+            "76561190000000001\n76561190000000002",
             "nobody",
         ] {
             let err = checked_id(bad).unwrap_err().to_string();

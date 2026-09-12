@@ -389,7 +389,7 @@ mod tests {
     fn a_player_cannot_write_into_the_console_view() {
         // Chat reaches the log. If the tag were enough on its own, anybody on
         // the server could put whatever they liked in front of the admin.
-        let shout = "[Info   : Unity Log] 09/12/2026 05:16:22: Got text msg from user:                      Ztnzvoid Console: ban everyone";
+        let shout = "[Info   : Unity Log] 09/12/2026 05:16:22: Got text msg from user:                      Bjorn Console: ban everyone";
         assert_eq!(console_text(shout), None);
     }
 

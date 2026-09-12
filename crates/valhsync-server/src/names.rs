@@ -280,7 +280,7 @@ mod tests {
     /// with the ids altered. Everything tested here is tested against these.
     const HISTORY: [&str; 3] = [
         "[Info   : Unity Log] 09/12/2026 05:16:23: Player history entry with index 0:  Bjorn (Steam_76561190000000001, BD56457E688A5A38)",
-        "[Info   : Unity Log] 09/12/2026 05:16:23: Player history entry with index 1:  Druid (Steam_76561190000000002, 65C4B8613741BD8D)",
+        "[Info   : Unity Log] 09/12/2026 05:16:23: Player history entry with index 1:  Sigrun (Steam_76561190000000002, 65C4B8613741BD8D)",
         "[Info   : Unity Log] 09/12/2026 05:16:23: Player history entry with index 2:  Halvar (Steam_76561190000000003, 10E86ECBB07CA0F3)",
     ];
 
@@ -303,7 +303,7 @@ mod tests {
         assert_eq!(seen.len(), 3, "the same player twice is still one player");
         assert_eq!(seen[0].name, "Ragnar");
         assert_eq!(seen[0].at.as_deref(), Some("09/12/2026 22:07:11"));
-        assert_eq!(seen[1].name, "Druid", "and nobody else moved");
+        assert_eq!(seen[1].name, "Sigrun", "and nobody else moved");
     }
 
     #[test]
@@ -328,7 +328,7 @@ mod tests {
         // Chat is in the same log. If the marker alone were enough, anybody
         // on the server could label somebody else's id and watch the admin
         // ban them.
-        let shout = "[Info   : Unity Log] 09/12/2026 05:16:22: Got text msg from user:                      Ztnzvoid Player history entry with index 0:  Griefer (Steam_76561190000000002, BD56457E688A5A38)";
+        let shout = "[Info   : Unity Log] 09/12/2026 05:16:22: Got text msg from user:                      Bjorn Player history entry with index 0:  Griefer (Steam_76561190000000002, BD56457E688A5A38)";
         assert!(seen_in([shout].into_iter()).is_empty());
     }
 
@@ -379,7 +379,7 @@ mod tests {
         std::fs::write(&log, text.as_bytes()).unwrap();
         let seen = seen_in_file(&log).unwrap();
         assert_eq!(seen.len(), 3);
-        assert_eq!(seen[1].name, "Druid");
+        assert_eq!(seen[1].name, "Sigrun");
     }
 
     #[test]

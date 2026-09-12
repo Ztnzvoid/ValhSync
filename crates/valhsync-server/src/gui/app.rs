@@ -18,7 +18,7 @@ use valhsync_ui::widgets as w;
 use super::i18n::{Key, Lang, text};
 use super::worker::{self, Msg, Reporter};
 use crate::config::{self, Config};
-use crate::{detect, gameserver, install, logs, players, wizard};
+use crate::{detect, gameserver, install, logs, names, players, wizard};
 
 const POLL_GAME_SERVER: Duration = Duration::from_secs(2);
 /// How long the configuration has to stop changing before it is written.
@@ -175,6 +175,9 @@ pub(super) struct App {
     lists_error: Option<String>,
     player_id: String,
     lists_checked: Instant,
+    /// Every player this server has ever logged, id to name. Read from the
+    /// log beside the lists, so a row can say who an id belongs to.
+    known_names: std::collections::HashMap<String, String>,
     /// The mod whose Remove has been clicked once. A second click on the same
     /// row carries it out; a click anywhere else forgets it.
     remove_armed: Option<String>,
@@ -338,6 +341,7 @@ impl App {
             lists_error: None,
             player_id: String::new(),
             remove_armed: None,
+            known_names: std::collections::HashMap::new(),
             lists_checked: Instant::now()
                 .checked_sub(Duration::from_secs(60))
                 .unwrap_or_else(Instant::now),
@@ -1463,10 +1467,48 @@ impl App {
             self.card_one_list(ui, slot, roll);
             ui.add_space(12.0);
         }
+        self.card_seen(ui);
+        ui.add_space(12.0);
         th::card(ui, |ui| {
             ui.set_width(ui.available_width());
             w::hint(ui, self.t(Key::PlayersIntro));
         });
+    }
+
+    /// Everyone the server has ever logged, so an id can be picked instead of
+    /// typed.
+    ///
+    /// Typing seventeen digits by hand is how the wrong person gets banned.
+    fn card_seen(&mut self, ui: &mut egui::Ui) {
+        if self.known_names.is_empty() {
+            return;
+        }
+        let mut pick = None;
+        th::card(ui, |ui| {
+            ui.set_width(ui.available_width());
+            w::section(ui, self.t(Key::SeenPlayers));
+            w::hint(ui, self.t(Key::NameFromLog));
+            ui.add_space(6.0);
+            let mut rows: Vec<(&String, &String)> = self.known_names.iter().collect();
+            rows.sort_by_key(|(_, name)| name.to_lowercase());
+            for (id, name) in rows {
+                ui.horizontal(|ui| {
+                    w::dot(ui, th::RUNE);
+                    ui.label(RichText::new(name).color(th::BONE));
+                    ui.label(RichText::new(id).monospace().small().color(th::BONE_DIM));
+                    ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                        if ui.small_button(self.t(Key::Copy)).clicked() {
+                            pick = Some(id.clone());
+                        }
+                    });
+                });
+            }
+        });
+        if let Some(id) = pick {
+            // Into the field the buttons above read from, rather than to the
+            // clipboard: the next thing the admin does is press Add.
+            self.player_id = id;
+        }
     }
 
     fn card_one_list(&mut self, ui: &mut egui::Ui, slot: usize, roll: players::Roll) {
@@ -1493,7 +1535,14 @@ impl App {
             } else {
                 for id in &self.lists[slot] {
                     ui.horizontal(|ui| {
-                        ui.label(RichText::new(id).monospace().color(th::BONE));
+                        // The name first when there is one: an admin decides
+                        // about a person, and seventeen digits are not one.
+                        if let Some(name) = self.known_names.get(id) {
+                            ui.label(RichText::new(name).color(th::BONE));
+                            ui.label(RichText::new(id).monospace().small().color(th::BONE_DIM));
+                        } else {
+                            ui.label(RichText::new(id).monospace().color(th::BONE));
+                        }
                         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                             if ui.small_button(self.t(Key::RemoveFromList)).clicked() {
                                 drop = Some(id.clone());
@@ -1560,6 +1609,16 @@ impl App {
             return;
         };
         self.lists_error = None;
+        // The same log the console follows. Cheap enough to re-read on the
+        // lists' own two-second tick, and it means a player who joined a
+        // minute ago has a name here.
+        if let Some(path) = self.log_sources.get(self.log_index) {
+            self.known_names = names::seen_in_file(path)
+                .unwrap_or_default()
+                .into_iter()
+                .map(|seen| (seen.id, seen.name))
+                .collect();
+        }
         for (slot, roll) in players::Roll::ALL.iter().enumerate() {
             match players::read(&dir, *roll) {
                 Ok(ids) => self.lists[slot] = ids,
