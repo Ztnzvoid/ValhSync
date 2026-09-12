@@ -29,14 +29,53 @@ pub fn load(data_dir: &Path) -> Result<Keypair> {
     Keypair::from_secret_b64(&text).with_context(|| format!("{} is corrupted", path.display()))
 }
 
+/// Where a key came from. Minting one is not a detail: every player has
+/// pinned the old one, and they are all refused until they import again.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Origin {
+    /// Already in the data directory.
+    Loaded,
+    /// Taken over from an older install that kept it beside the executable.
+    Adopted(PathBuf),
+    /// Nothing to take over: this server has a new identity.
+    Created,
+}
+
 /// Returns the keypair and whether it was just created.
 pub fn load_or_create(data_dir: &Path) -> Result<(Keypair, bool)> {
+    let (kp, origin) = load_or_adopt(data_dir)?;
+    Ok((kp, origin == Origin::Created))
+}
+
+/// The key for this data directory, taking over an older install's rather
+/// than minting a new one.
+///
+/// Early builds kept the key beside the executable, so an admin who unpacks a
+/// new archive over an old one still has a perfectly good identity sitting
+/// there. Generating a fresh one instead would refuse every player they have,
+/// which is precisely what moving the key to a stable place was meant to stop.
+pub fn load_or_adopt(data_dir: &Path) -> Result<(Keypair, Origin)> {
     if key_path(data_dir).is_file() {
-        return Ok((load(data_dir)?, false));
+        return Ok((load(data_dir)?, Origin::Loaded));
+    }
+    if let Some(old) = key_beside_executable(data_dir)
+        && let Ok(text) = std::fs::read_to_string(&old)
+        && let Ok(kp) = Keypair::from_secret_b64(&text)
+    {
+        write(data_dir, &kp)?;
+        return Ok((kp, Origin::Adopted(old)));
     }
     let kp = Keypair::generate();
     write(data_dir, &kp)?;
-    Ok((kp, true))
+    Ok((kp, Origin::Created))
+}
+
+/// The key an older, beside-the-executable install would have written, when
+/// that is somewhere other than where we are looking now.
+fn key_beside_executable(data_dir: &Path) -> Option<PathBuf> {
+    let dir = std::env::current_exe().ok()?.parent()?.to_path_buf();
+    let candidate = key_path(&dir.join("valhsync-server-data"));
+    (candidate != key_path(data_dir) && candidate.is_file()).then_some(candidate)
 }
 
 /// Replace the key. The old one is kept next to it, renamed, in case the

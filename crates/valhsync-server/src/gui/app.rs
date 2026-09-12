@@ -45,6 +45,7 @@ enum Chan {
 /// up. Everything that changes minute to minute is on the first.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Tab {
+    Mods,
     Status,
     Settings,
 }
@@ -216,8 +217,10 @@ pub(super) struct App {
 
 impl App {
     pub(super) fn new(ctx: &egui::Context, config_path: PathBuf, data_dir: PathBuf) -> Self {
-        let new_key_at = match crate::keys::load_or_create(&data_dir) {
-            Ok((_, true)) => Some(crate::keys::key_path(&data_dir).display().to_string()),
+        let new_key_at = match crate::keys::load_or_adopt(&data_dir) {
+            Ok((_, crate::keys::Origin::Created)) => {
+                Some(crate::keys::key_path(&data_dir).display().to_string())
+            }
             _ => None,
         };
         let (cfg, loaded) = match Config::load(&config_path) {
@@ -913,14 +916,19 @@ impl eframe::App for App {
             .frame(egui::Frame::new().inner_margin(egui::Margin::same(18)))
             .show(ctx, |ui| {
                 th::backdrop(ui.ctx(), ui.painter(), ui.max_rect().expand(18.0));
-                let (status, settings) = (
+                let (status, mods, settings) = (
                     self.t("État du serveur", "Server"),
+                    self.t("Mods", "Mods"),
                     self.t("Paramètres", "Settings"),
                 );
                 w::tabs(
                     ui,
                     &mut self.tab,
-                    &[(Tab::Status, status), (Tab::Settings, settings)],
+                    &[
+                        (Tab::Status, status),
+                        (Tab::Mods, mods),
+                        (Tab::Settings, settings),
+                    ],
                 );
                 ui.add_space(12.0);
                 if let Some(path) = self.new_key_at.clone() {
@@ -943,12 +951,11 @@ impl eframe::App for App {
                             ui.add_space(12.0);
                             self.card_logs(ui);
                         }
+                        Tab::Mods => self.card_mods(ui),
                         Tab::Settings => {
                             self.card_server_folder(ui);
                             ui.add_space(12.0);
                             self.card_identity(ui);
-                            ui.add_space(12.0);
-                            self.card_mods(ui);
                             ui.add_space(12.0);
                             self.card_publish(ui);
                             ui.add_space(12.0);
@@ -1603,7 +1610,7 @@ impl App {
     fn card_mods(&mut self, ui: &mut egui::Ui) {
         th::card(ui, |ui| {
             ui.set_width(ui.available_width());
-            w::section(ui, self.t("III · Mods", "III · Mods"));
+            w::section(ui, self.t("Mods du pack", "Pack mods"));
             if self.mods.is_empty() {
                 w::hint(
                     ui,
@@ -1720,7 +1727,7 @@ impl App {
     fn card_publish(&mut self, ui: &mut egui::Ui) {
         th::card(ui, |ui| {
             ui.set_width(ui.available_width());
-            w::section(ui, self.t("IV · Publication", "IV · Publishing"));
+            w::section(ui, self.t("III · Publication", "III · Publishing"));
             let (label_export, label_live) = (
                 self.t("Fichiers statiques", "Static files"),
                 self.t("Serveur local", "Live server"),
@@ -1896,7 +1903,7 @@ impl App {
     fn card_invite(&mut self, ui: &mut egui::Ui) {
         th::card(ui, |ui| {
             ui.set_width(ui.available_width());
-            w::section(ui, self.t("V · Code d'invitation", "V · Invite code"));
+            w::section(ui, self.t("IV · Code d'invitation", "IV · Invite code"));
             w::hint(
                 ui,
                 self.t(
@@ -2003,6 +2010,7 @@ impl App {
     /// Build the folder an admin zips and sends: the launcher plus the invite
     /// code, so the player only has to double-click.
     /// The server's own log, followed as it is written.
+    #[allow(clippy::too_many_lines)] // one card, read top to bottom
     fn card_logs(&mut self, ui: &mut egui::Ui) {
         th::card(ui, |ui| {
             ui.set_width(ui.available_width());
@@ -2054,6 +2062,31 @@ impl App {
                     {
                         open_path(path);
                     }
+                    // The lines on screen, not the whole file: what an admin
+                    // pastes into a forum is what they were just reading.
+                    let copied = ui
+                        .button(self.t("Copier", "Copy"))
+                        .on_hover_text(self.t(
+                            "Copie les lignes affichées dans le presse-papiers.",
+                            "Copies the lines shown to the clipboard.",
+                        ))
+                        .clicked();
+                    if copied {
+                        let text = self
+                            .log
+                            .as_ref()
+                            .map(|t| t.lines().collect::<Vec<_>>().join("\n"))
+                            .unwrap_or_default();
+                        let empty = text.is_empty();
+                        ui.ctx().copy_text(text);
+                        let msg = if empty {
+                            self.t("Rien à copier.", "Nothing to copy.")
+                        } else {
+                            self.t("Journal copié.", "Log copied.")
+                        }
+                        .to_string();
+                        self.notify(msg, if empty { th::GOLD } else { th::MOSS });
+                    }
                     let follow = self.t("Suivre", "Follow");
                     ui.checkbox(&mut self.log_follow, follow);
                 });
@@ -2099,7 +2132,7 @@ impl App {
     fn card_wizard(&mut self, ui: &mut egui::Ui) {
         th::card(ui, |ui| {
             ui.set_width(ui.available_width());
-            w::section(ui, self.t("VI · Script de démarrage", "VI · Start script"));
+            w::section(ui, self.t("V · Script de démarrage", "V · Start script"));
             w::hint(
                 ui,
                 self.t(
