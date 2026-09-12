@@ -62,6 +62,16 @@ impl Lang {
         Self::En
     }
 
+    /// What the configuration says, or the system's answer when it says
+    /// nothing.
+    fn from_code(code: Option<&str>) -> Self {
+        match code {
+            Some(c) if c.eq_ignore_ascii_case("fr") => Self::Fr,
+            Some(c) if c.eq_ignore_ascii_case("en") => Self::En,
+            _ => Self::detect(),
+        }
+    }
+
     fn other(self) -> Self {
         match self {
             Self::Fr => Self::En,
@@ -228,6 +238,7 @@ pub(super) struct App {
 }
 
 impl App {
+    #[allow(clippy::too_many_lines)] // one field per line of state, read top to bottom
     pub(super) fn new(ctx: &egui::Context, config_path: PathBuf, data_dir: PathBuf) -> Self {
         let new_key_at = match crate::keys::load_or_adopt(&data_dir) {
             Ok((_, crate::keys::Origin::Created)) => {
@@ -239,14 +250,17 @@ impl App {
             Ok(cfg) => (cfg, true),
             Err(_) => (Self::fresh_config(&config_path), false),
         };
-        let export_dir = config_path
-            .parent()
-            .filter(|p| !p.as_os_str().is_empty())
-            .map_or_else(|| PathBuf::from("."), Path::to_path_buf)
-            .join("pack-site");
+        let cfg_publishes_live = cfg.publishes_live();
+        let export_dir = cfg.pack.export_dir.clone().unwrap_or_else(|| {
+            config_path
+                .parent()
+                .filter(|p| !p.as_os_str().is_empty())
+                .map_or_else(|| PathBuf::from("."), Path::to_path_buf)
+                .join("pack-site")
+        });
 
         let mut app = Self {
-            lang: Lang::detect(),
+            lang: Lang::from_code(cfg.language.as_deref()),
             name: cfg.server.name.clone(),
             game_address: cfg.server.game_address.clone(),
             server_root: cfg
@@ -267,7 +281,11 @@ impl App {
             scripts: Vec::new(),
             script_index: 0,
             script_chosen: false,
-            mode: PublishMode::Export,
+            mode: if cfg_publishes_live {
+                PublishMode::Live
+            } else {
+                PublishMode::Export
+            },
             summary: None,
             invite: String::new(),
             serving_at: None,
@@ -395,6 +413,10 @@ impl App {
             cfg.game_server.start_script =
                 self.scripts.get(self.script_index).map(|s| s.path.clone());
         }
+        cfg.server.publish_live = Some(self.mode == PublishMode::Live);
+        cfg.language = Some(self.lang.code().to_string());
+        let dir = self.export_dir.trim();
+        cfg.pack.export_dir = (!dir.is_empty()).then(|| PathBuf::from(dir));
         cfg
     }
 
@@ -1139,6 +1161,8 @@ impl App {
             });
 
             ui.add_space(6.0);
+            self.publishing_line(ui);
+            ui.add_space(6.0);
             if self.game_running {
                 self.session_facts(ui);
             } else if let Some(ip) = self.public_ip.clone() {
@@ -1184,6 +1208,55 @@ impl App {
                 ),
             );
         });
+    }
+
+    /// Whether players can actually fetch the pack, on the tab that opens.
+    ///
+    /// It used to be visible only on the publishing card, two tabs away: an
+    /// admin watching a healthy green "Online" had no way to see that nothing
+    /// was being served, and the launcher's "cannot reach the server" was the
+    /// first they heard of it.
+    fn publishing_line(&mut self, ui: &mut egui::Ui) {
+        if self.mode != PublishMode::Live {
+            return;
+        }
+        let label = self.t("Publication", "Publishing");
+        if let Some(url) = self.serving_at.clone() {
+            ui.horizontal(|ui| {
+                w::dot(ui, th::MOSS);
+                ui.label(
+                    RichText::new(format!("{label} · {url}"))
+                        .text_style(th::label_style())
+                        .color(th::RUNE),
+                );
+            });
+        } else {
+            {
+                let why = self.publish_error.clone().unwrap_or_else(|| {
+                    if self.game_running {
+                        self.t("démarrage…", "starting…").to_string()
+                    } else {
+                        self.t("suit le serveur de jeu", "follows the game server")
+                            .to_string()
+                    }
+                });
+                ui.horizontal_wrapped(|ui| {
+                    w::dot(ui, th::GOLD);
+                    ui.label(
+                        RichText::new(format!(
+                            "{label} · {} — {why}",
+                            self.t("hors ligne", "offline")
+                        ))
+                        .text_style(th::label_style())
+                        .color(if self.publish_error.is_some() {
+                            th::BLOOD_LIT
+                        } else {
+                            th::BONE_DIM
+                        }),
+                    );
+                });
+            }
+        }
     }
 
     /// Type a command into the dedicated server's console from here.

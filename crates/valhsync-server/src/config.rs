@@ -15,6 +15,13 @@ pub const DEFAULT_PORT: u16 = valhsync_core::invite::DEFAULT_PORT;
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Config {
+    /// Window language, `fr` or `en`. Unset means follow the system.
+    ///
+    /// A preference rather than server configuration, but this file is the
+    /// only thing the publisher keeps, and a choice that lived only in the
+    /// window was back to English on the next launch.
+    #[serde(default)]
+    pub language: Option<String>,
     pub server: ServerSection,
     pub pack: PackSection,
     pub policy: PolicySection,
@@ -54,6 +61,15 @@ pub struct ServerSection {
     pub public_url: Option<String>,
     /// `host:port` the launcher hands to Valheim.
     pub game_address: String,
+    /// Publish by serving from this machine, rather than by exporting a folder
+    /// to upload. `None` means the admin has not chosen, and
+    /// [`Config::publishes_live`] decides.
+    ///
+    /// It belongs here rather than in the window: whether publishing follows
+    /// the game server hangs off it, and a choice that lived only in the tab
+    /// strip was back to its default on the next launch, with the admin left
+    /// wondering why nothing came online.
+    pub publish_live: Option<bool>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -69,6 +85,11 @@ pub struct PackSection {
     pub client_extras: Option<PathBuf>,
     /// Folders where unknown files get quarantined on the player's side.
     pub managed_roots: Vec<String>,
+    /// Where `export` writes the folder to upload. Unset means beside the
+    /// configuration, in `pack-site`. Kept here for the same reason as the
+    /// publish mode: a path the admin typed once should still be there on the
+    /// next launch.
+    pub export_dir: Option<PathBuf>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -138,6 +159,7 @@ impl Default for ServerSection {
             bind: format!("0.0.0.0:{DEFAULT_PORT}"),
             public_url: None,
             game_address: "valheim.example.org:2456".into(),
+            publish_live: None,
         }
     }
 }
@@ -150,6 +172,7 @@ impl Default for PackSection {
             exclude: default_exclude(),
             client_extras: None,
             managed_roots: default_managed_roots(),
+            export_dir: None,
         }
     }
 }
@@ -250,6 +273,19 @@ impl Config {
     /// Does this publisher run beside the dedicated server, and so know
     /// whether the game is up? A publisher holding only a copy of the pack
     /// must not guess.
+    /// Does this publisher serve the pack itself?
+    ///
+    /// Unset means unchosen: a publisher sitting beside the dedicated server
+    /// serves it, because the port is already open and that is the whole point
+    /// of using the game's own. One publishing from elsewhere has nothing to
+    /// be reached at and exports a folder instead.
+    #[must_use]
+    pub fn publishes_live(&self) -> bool {
+        self.server
+            .publish_live
+            .unwrap_or_else(|| self.is_colocated())
+    }
+
     pub fn is_colocated(&self) -> bool {
         self.pack.server_root.is_some() || self.game_server.start_script.is_some()
     }
@@ -439,12 +475,16 @@ fn toml_opt_path(key: &str, value: Option<&PathBuf>, example: &str) -> String {
 /// The window and `init` both write configurations through this, so a file
 /// edited in the GUI keeps its explanations instead of decaying into bare
 /// key/value pairs.
+#[allow(clippy::too_many_lines)] // the file it writes, read top to bottom
 pub fn to_commented_toml(cfg: &Config) -> String {
     format!(
         r#"# ValhSync server configuration.
 # Edit here or in the ValhSync window, then `valhsync-server scan` to check the
 # result. Publish with `export` (static files, nothing to open on the router)
 # or `serve` (live server on the port below).
+
+# Window language: "fr", "en", or left out to follow the system.
+{language}
 
 [server]
 # Name shown to players in the launcher.
@@ -459,6 +499,11 @@ bind = {bind}
 # started with -crossplay relays through PlayFab and refuses local addresses
 # even for players on the same network.
 game_address = {game_address}
+# Serve the pack from this machine (true) or write a folder to upload (false).
+# Left out: serve it when this publisher sits beside the dedicated server,
+# since the game's port is already open. The window follows this setting --
+# with `true`, publishing comes online by itself whenever the game server is up.
+{publish_live}
 
 [pack]
 # Game root of the dedicated server. Everything matching `include` (minus
@@ -481,6 +526,9 @@ exclude = [
 managed_roots = [
 {managed_roots}
 ]
+# Where `export` writes the folder to upload. Left out: `pack-site`, beside
+# this file.
+{export_dir}
 
 [policy]
 # "enforce": always replaced when different. "seed": installed only if absent,
@@ -531,6 +579,19 @@ stop_with_game = {stop_with_game}
             "'C:\\valhsync\\client-extras'"
         ),
         managed_roots = toml_list(&cfg.pack.managed_roots, "  "),
+        language = match &cfg.language {
+            Some(c) => format!("language = {}", toml_str(c)),
+            None => "# language = \"fr\"".to_string(),
+        },
+        publish_live = match cfg.server.publish_live {
+            Some(v) => format!("publish_live = {v}"),
+            None => "# publish_live = true".to_string(),
+        },
+        export_dir = toml_opt_path(
+            "export_dir",
+            cfg.pack.export_dir.as_ref(),
+            r"'C:\valhsync\pack-site'"
+        ),
         policy_default = toml_str(&cfg.policy.default),
         seed = toml_list(&cfg.policy.seed, "  "),
         enforce = toml_list(&cfg.policy.enforce, "  "),
@@ -561,6 +622,43 @@ pub fn save(cfg: &Config, path: &Path) -> Result<()> {
 /// A fresh, commented configuration for `init`.
 pub fn template(opts: &TemplateOptions) -> String {
     to_commented_toml(&Config::from(opts))
+}
+
+#[cfg(test)]
+mod publish_mode_tests {
+    use super::*;
+
+    /// This was UI state, reset to "export" on every launch, so publishing
+    /// never followed the game server until the admin clicked the tab by hand.
+    #[test]
+    fn a_publisher_beside_the_game_serves_unless_told_otherwise() {
+        let mut cfg = Config::default();
+        assert!(!cfg.publishes_live(), "nothing local to serve from");
+
+        cfg.pack.server_root = Some(PathBuf::from("/srv/valheim"));
+        assert!(cfg.publishes_live(), "beside the game, the port is open");
+
+        cfg.server.publish_live = Some(false);
+        assert!(!cfg.publishes_live(), "an explicit choice wins");
+        cfg.server.publish_live = Some(true);
+        assert!(cfg.publishes_live());
+    }
+
+    #[test]
+    fn the_choice_survives_a_round_trip() {
+        let mut cfg = Config::default();
+        cfg.server.publish_live = Some(true);
+        cfg.language = Some("fr".into());
+        cfg.pack.export_dir = Some(PathBuf::from("/tmp/pack-site"));
+        // Through `to_commented_toml`, which is what `save` writes -- a
+        // round trip via `toml::to_string` would have passed while the real
+        // file silently dropped all three.
+        let text = to_commented_toml(&cfg);
+        let back: Config = toml::from_str(&text).unwrap();
+        assert_eq!(back.server.publish_live, Some(true));
+        assert_eq!(back.language.as_deref(), Some("fr"));
+        assert_eq!(back.pack.export_dir, cfg.pack.export_dir);
+    }
 }
 
 #[cfg(test)]
