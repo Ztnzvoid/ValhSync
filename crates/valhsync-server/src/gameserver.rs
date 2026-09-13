@@ -285,14 +285,20 @@ pub fn start(launch: &Launch) -> Result<Shell> {
     }
     // The script is passed as a single argument: nothing ValhSync composed is
     // ever parsed by a shell.
-    let mut cmd = if cfg!(windows) {
+    // `#[cfg]`, not `cfg!`. The macro is a runtime condition and both of its
+    // arms have to compile, so the Windows arm asked Linux for a function
+    // Linux does not have -- which is what took the first CI run down.
+    #[cfg(windows)]
+    let mut cmd = {
         // By absolute path, never by name. The child's PATH below starts with
         // the server's own folder, and a `cmd.exe` dropped in there would
         // otherwise be a candidate for what actually runs.
         let mut c = Command::new(system_shell());
         c.arg("/C").arg(path);
         c
-    } else {
+    };
+    #[cfg(not(windows))]
+    let mut cmd = {
         let mut c = Command::new("/bin/sh");
         c.arg(path);
         c
