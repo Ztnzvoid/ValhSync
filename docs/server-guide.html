@@ -583,23 +583,24 @@ sudo chown -R valhsync: /opt/valhsync</code></pre>
 
 <section id="s6">
   <h2><span class="n">§6</span>Hand out the launcher</h2>
-  <p>Two ways in, both fine. Give players whichever suits how you already talk to them.</p>
+  <p>Send them the launcher and your server's address. That is the whole handout, and what
+  nearly every server will do.</p>
   <div class="os">
     <div>
-      <h3>The invite code</h3>
-      <p><code>valhsync-server invite</code> prints it; the window has a copy button. It carries
-      your key inside it, so there is nothing for the player to check.</p>
-      <p>Best of all: send a zip holding <code>valhsync.exe</code> and a file named
-      <code>valhsync-invite.txt</code> with the code in it. The launcher imports it on first
-      start and they type nothing at all.</p>
+      <h3>The address — what most players use</h3>
+      <p>Just <code>203.0.113.10:2456</code>, the same thing they already paste into Valheim.
+      It goes into <em>Add a server</em> and the launcher fetches your key itself.</p>
+      <p>It then shows the <strong>fingerprint</strong> and waits. Put yours in the same message
+      as the address so they can compare before accepting —
+      <code>valhsync-server invite</code> prints it, and the window has it under Settings.</p>
     </div>
     <div>
-      <h3>The address</h3>
-      <p>Just <code>203.0.113.10:2456</code> — the same thing they already paste into Valheim.
-      Paste it into <em>Add a server</em> and the launcher fetches the key itself.</p>
-      <p>It then shows the <strong>fingerprint</strong> and waits. Send them yours alongside the
-      address, in the same message, so they can compare before accepting. That comparison is
-      what the invite code does for them automatically.</p>
+      <h3>The invite code — when you want it turnkey</h3>
+      <p><code>valhsync-server invite</code> prints it; the window has a copy button. It carries
+      your key inside it, so there is no fingerprint for the player to compare.</p>
+      <p>Its real use is a zip holding <code>valhsync.exe</code> and a file named
+      <code>valhsync-invite.txt</code> with the code in it: the launcher imports it on first
+      start and they type nothing at all.</p>
     </div>
   </div>
   <p>After that, you do not have to send anything again: if <code>valhsync.exe</code> sits beside
@@ -716,7 +717,8 @@ journalctl -u valhsync-server -f</code></pre>
 <footer>
   ValhSync — <a href="index.html">overview</a> ·
   <a href="player-guide.html">player guide</a> ·
-  <a href="https://github.com/Ztnzvoid/ValhSync">github.com/Ztnzvoid/ValhSync</a>
+  <a href="https://github.com/Ztnzvoid/ValhSync">github.com/Ztnzvoid/ValhSync</a><br>
+  Built with AI assistance (Claude), directed and reviewed by a human.
 </footer>
 
 </main>

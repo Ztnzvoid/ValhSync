@@ -1110,6 +1110,7 @@ impl eframe::App for App {
                             self.card_invite(ui);
                             ui.add_space(12.0);
                             self.card_wizard(ui);
+                            self.card_built_with(ui);
                         }
                     });
             });
@@ -1126,6 +1127,18 @@ impl eframe::App for App {
 // ---- cards ---------------------------------------------------------------
 
 impl App {
+    /// How ValhSync was made, said in the window rather than only in the
+    /// documentation: somebody running it deserves to know without having to
+    /// go and look it up.
+    fn card_built_with(&mut self, ui: &mut egui::Ui) {
+        ui.add_space(12.0);
+        ui.label(
+            egui::RichText::new(self.t(Key::BuiltWithAi))
+                .small()
+                .color(th::BONE_DIM),
+        );
+    }
+
     fn top_bar(&mut self, ctx: &egui::Context) {
         egui::TopBottomPanel::top("top")
             .frame(

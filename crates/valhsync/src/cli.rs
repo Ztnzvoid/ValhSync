@@ -28,8 +28,9 @@ pub struct Cli {
 
 #[derive(Subcommand, Debug)]
 enum Cmd {
-    /// Add a server from its invite code, a file containing one, or simply
-    /// its address (`valheim.example.org` or `1.2.3.4:2470`).
+    /// Add a server from its address -- `203.0.113.10:2456`, the same one
+    /// players paste into Valheim -- or from an invite code, or a file
+    /// holding one.
     Join {
         code: String,
         /// Accept the fingerprint the server presents without asking.

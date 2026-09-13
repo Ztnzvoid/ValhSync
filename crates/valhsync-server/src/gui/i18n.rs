@@ -311,6 +311,7 @@ pub enum Key {
     DropRestart,
     DropNeedsRoot,
     TabNotes,
+    BuiltWithAi,
 }
 
 #[must_use]
@@ -322,6 +323,16 @@ pub fn text(lang: Lang, key: Key) -> &'static str {
 #[allow(clippy::too_many_lines)] // one row per string, and there are many
 fn strings(key: Key) -> [&'static str; LANGS] {
     match key {
+        Key::BuiltWithAi => [
+            "ValhSync was built with the help of an AI assistant (Claude), directed and reviewed by a human.",
+            "ValhSync a été réalisé avec l'aide d'un assistant IA (Claude), dirigé et relu par un humain.",
+            "ValhSync wurde mit Hilfe eines KI-Assistenten (Claude) erstellt, von einem Menschen angeleitet und geprüft.",
+            "ValhSync se creó con la ayuda de un asistente de IA (Claude), dirigido y revisado por una persona.",
+            "ValhSync è stato realizzato con l'aiuto di un assistente IA (Claude), guidato e revisionato da una persona.",
+            "ValhSync powstał z pomocą asystenta AI (Claude), prowadzonego i sprawdzanego przez człowieka.",
+            "O ValhSync foi feito com a ajuda de um assistente de IA (Claude), orientado e revisado por uma pessoa.",
+            "ValhSync создан с помощью ИИ-ассистента (Claude) под руководством и с проверкой человеком.",
+        ],
         Key::NoConfigFound => [
             "No configuration found: ValhSync filled in what it could detect. Check it, then Save.",
             "Aucune configuration trouvée : ValhSync a rempli ce qu'il a pu détecter. Vérifiez, puis Enregistrer.",

@@ -4,7 +4,9 @@
 one server. It works there, and the launcher never deletes anything you put in
 your own BepInEx folder — what it does not recognise is moved aside, not thrown
 away. But you are among the first people to run it: expect rough edges, and
-tell your server admin when you hit one.
+tell your server admin when you hit one. ValhSync was built with the help of
+an AI assistant (Claude), directed and reviewed by a human — said plainly so
+you know what you are running.
 
 The guide now lives at **[player-guide.html](player-guide.html)** — same
 content, laid out to be read.

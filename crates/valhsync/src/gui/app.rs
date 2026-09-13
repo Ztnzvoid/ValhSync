@@ -2211,6 +2211,14 @@ impl App {
                             .small()
                             .color(th::BONE_DIM),
                     );
+                    // Said in the window and not only in the documentation:
+                    // somebody running this deserves to know how it was made
+                    // without having to go and look it up.
+                    ui.label(
+                        RichText::new(self.t(Key::BuiltWithAi))
+                            .small()
+                            .color(th::BONE_DIM),
+                    );
                     ui.horizontal(|ui| {
                         ui.label(
                             RichText::new(self.paths.config_dir.display().to_string())

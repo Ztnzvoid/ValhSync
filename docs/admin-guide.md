@@ -8,6 +8,10 @@
 > server beside it, a handful of players. Linux, hosted providers and anything
 > else here is tested but has not met a real server yet. Back up the server's
 > `BepInEx` folder before pointing ValhSync at one that matters.
+>
+> **Built with AI assistance.** All of ValhSync — the two programs, the tests,
+> this documentation — was written with an AI assistant (Claude), directed and
+> reviewed by a human.
 
 You run a modded Valheim server and want every player to have exactly the
 right mods, in the right versions, without sending zips around. This is the
@@ -227,9 +231,15 @@ ValhSync never reads it back out of the script, stores it, or publishes it.
 
 ## 6. Distribute the launcher
 
-Two options, the second is friendlier:
+**The usual way: send the address.** `203.0.113.10:2456` — the same `ip:port`
+players already paste into Valheim — goes into "Add a server". The launcher
+fetches the key and shows its fingerprint; send yours in the same message so
+they can compare before accepting.
 
-1. Send players the invite code; they paste it into "Add a server".
+Two other routes, when you want them to type nothing:
+
+1. Send the invite code; they paste it into "Add a server". It carries the key,
+   so there is no fingerprint to compare.
 2. Make a zip containing `valhsync.exe` and a text file named
    `valhsync-invite.txt` whose content is the invite code. On first start the
    launcher imports it: players see your server immediately.

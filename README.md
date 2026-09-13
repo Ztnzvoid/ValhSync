@@ -1,253 +1,89 @@
-# ValhSync
-
-**Run a modded Valheim server, and hand your players a launcher that keeps up
-with it.**
-
-`valhsync-server` is the admin's window. It starts and stops the dedicated
-server, installs a mod by having it dropped on it, turns one off or takes it
-out, keeps the admin and ban lists, writes the patch note, backs up the world,
-and publishes the whole pack signed.
-
-`valhsync` is what the players get. One button. Their BepInEx folder is brought
-in line with the server's and the game starts. No more "Incompatible version",
-no more zips of DLLs sent by hand after every change.
-
-**[Download the latest release](https://github.com/Ztnzvoid/ValhSync/releases/latest)** · **[Documentation](https://ztnzvoid.github.io/ValhSync/)**
-
-> **Early version.** 0.0.3 is the third release there has ever been. One
-> server has actually run it — Windows, a dedicated server beside it, a handful
-> of players — and the whole chain works there. Linux, hosted providers, Proton
-> and anything that is not that setup are tested but have not met a real server
-> yet. Back up the server's `BepInEx` folder before pointing ValhSync at one
-> that matters, and open an issue when something breaks: that is what this
-> stage is for.
+<h1 align="center">ValhSync</h1>
 
 <p align="center">
-  <img src="docs/launcher.png" width="720"
-       alt="The ValhSync launcher: one server, what it is about to install, the admin's note,
-            and the mods the server runs.">
-  <br><em>What a player sees. One window, one button, and whatever their admin wrote.</em>
+  <strong>Run a modded Valheim server, and hand your players a launcher that keeps up with it.</strong>
 </p>
 
 <p align="center">
-  <img src="docs/server-mods.png" width="720"
-       alt="The Mods tab of the server window: a drop zone, then one row per mod with
-            sent-to-players or server-only, and buttons to disable or remove it.">
-  <br><em>The admin's window. A mod is installed by dropping it here; each one travels to
-  players or stays on the server, and can be turned off or taken out from its own row.</em>
+  <a href="https://github.com/Ztnzvoid/ValhSync/releases/latest"><img alt="Download 0.0.3"
+     src="https://img.shields.io/badge/download-0.0.3-C7A455?style=for-the-badge&labelColor=0F0D0B"></a>
+  <a href="https://ztnzvoid.github.io/ValhSync/"><img alt="Documentation"
+     src="https://img.shields.io/badge/documentation-read-7E9AA7?style=for-the-badge&labelColor=0F0D0B"></a>
+  <img alt="Windows and Linux"
+     src="https://img.shields.io/badge/windows%20%C2%B7%20linux-262017?style=for-the-badge&labelColor=0F0D0B">
+  <img alt="MIT or Apache-2.0"
+     src="https://img.shields.io/badge/MIT%20or%20Apache--2.0-262017?style=for-the-badge&labelColor=0F0D0B">
 </p>
 
-```
-[Warning:AzuCraftyBoxes] Peer (Steam_7656119xxxxxxxxxx) never sent version
-                         or couldn't due to previous disconnect, disconnecting
-```
+---
 
-That log line is why this exists.
+### The admin's window
 
-## How it works
+Start and stop the dedicated server. Install a mod by dropping it on the
+window. Turn one off, or take it out. Keep the admin and ban lists. Write the
+patch note. Back up the world. The pack is published signed at the end of it.
 
-```
- Server machine                                     Player's PC
- ┌──────────────────────────────┐                  ┌────────────────────────────────┐
- │ Valheim Dedicated Server     │                  │ valhsync (launcher)             │
- │  └ BepInEx/ (server mods)    │                  │  1. GET /manifest.json + .sig  │
- │                              │   HTTP over TCP  │  2. verify Ed25519 signature   │
- │ valhsync-server               │ ◀──────────────▶ │  3. compare with local hashes  │
- │  ├ scans pack + client extras│                  │  4. download /files/<blake3>   │
- │  ├ signs the manifest        │                  │  5. apply atomically, journaled│
- │  └ content-addressed store   │                  │  6. start Valheim via Steam    │
- └──────────────────────────────┘                  └────────────────────────────────┘
-```
+<p align="center">
+  <img src="docs/server-window.png" width="760"
+       alt="The Server tab: the dedicated server's state, its address and password, the start
+            and stop buttons, and the console the server is writing to.">
+</p>
 
-- **Signed manifest.** The server publishes a JSON manifest and a detached
-  Ed25519 signature. The launcher pins the server's public key when the invite
-  code is imported and verifies the signature *before* parsing anything.
-- **Content-addressed files.** Every file is fetched by its BLAKE3 digest and
-  verified after download. A URL can only ever name a hash, never a path.
-- **Nothing is ever lost.** Files the launcher replaces or removes go to a
-  backup; unknown DLLs found in the mod folders go to a quarantine folder
-  inside the game directory. `valhsync rollback` undoes the last sync exactly.
-- **Download everything first, then apply.** A network failure mid-sync leaves
-  the installation untouched. A failure while applying replays the journal
-  backwards on the spot.
-- **Configs are seeded, not imposed.** `BepInEx/config/*` is installed when
-  absent and then left alone, so keybinds survive syncs (the admin can enforce
-  specific files).
+<p align="center">
+  <img src="docs/server-players.png" width="760"
+       alt="The Players tab: the admin and banned lists, each id beside the name the server's
+            log recorded for it.">
+</p>
 
-The launcher writes only inside the game folder (BepInEx paths, `winhttp.dll`,
-`doorstop_config.ini`), plus its own state under the user profile. It never
-executes a downloaded file; it asks Steam to start Valheim.
+### The player's launcher
 
-Full documentation, in one page:
-**[The documentation](https://ztnzvoid.github.io/ValhSync/)** — what it does, how it works, what is
-guaranteed, what every dependency is licensed under, and what has actually
-been run.
+One window, one button. Their BepInEx folder is brought in line with the
+server's and the game starts. Nothing they put there themselves is ever
+deleted, and what you wrote is a click away.
 
-## Status
+<p align="center">
+  <img src="docs/launcher.png" width="760"
+       alt="The launcher: one server, what it is about to install, the admin's note, and the
+            mods the server runs.">
+</p>
 
-| Milestone | State |
-|---|---|
-| M0 workspace, CI (fmt, clippy `-D warnings`, tests on Windows + Linux, cargo-deny) | done |
-| M1 `valhsync-core`: manifest, path validation, hashing, signatures, scan, plan | done, 37 unit tests incl. a malicious-path battery |
-| M2 `valhsync-server`: config, keys, store, HTTP API, folder watcher | done |
-| M3 launcher CLI: join, status, sync, play, rollback, vanilla, doctor | done, end-to-end test against a real server router |
-| M4 Steam/Valheim discovery, process detection, launch | done; `+connect` on Valheim 1.0 **to verify on a real server** |
-| M5 egui window, Valheim palette, FR/EN | done |
-| M6 release workflow, docs | done; first tagged release pending |
+---
 
-Remaining limitation: server-side TLS is not built in; put the server behind a
-reverse proxy if you want HTTPS. Integrity does not depend on it, the manifest
-is signed.
+> **Early version.** 0.0.3 is the third release and the first one published.
+> One server has actually run it — Windows, a dedicated server beside it, a
+> handful of players — and the whole chain works there. Linux builds and passes
+> its tests, but no window has been opened on it. Back up the server's
+> `BepInEx` folder before pointing ValhSync at one that matters, and open an
+> issue when something breaks: that is what this stage is for.
+>
+> **Built with AI assistance.** All of it — the two programs, the tests, the
+> documentation — was written with an AI assistant (Claude), directed and
+> reviewed by a human. That is said here plainly because you should know what
+> you are about to run.
 
-Verified end to end on a real dedicated server (Valheim 1.0.7,
-BepInExPack_Valheim 5.4.2350): the launcher synced a vanilla install, started
-the game through `steam -applaunch 892970 +connect <host>:2456`, and the player
-joined with the server's mods loaded (`Network version check, their:39,
-mine:39`).
+## Getting started
 
-**Crossplay servers take the public address, never a local one.** A server
-started with `-crossplay` relays everything through PlayFab: `+connect` with a
-`192.168.x` address fails with `Timed out attempting to connect` even on the
-same LAN, while the public address resolves the lobby and connects
-(`Connecting to server with PlayFab-backend`). Iron Gate's own manual says it:
-"it's not possible to connect using a local IP address or a loopback IP
-address". `valhsync-server` warns when `game_address` is a local address.
+**Admin.** Take `valhsync-<version>-<target>` from the [latest release](https://github.com/Ztnzvoid/ValhSync/releases/latest),
+unpack it beside the dedicated server, run `valhsync-server`, and follow the
+[server guide](https://ztnzvoid.github.io/ValhSync/server-guide.html). Keep the two executables in the same
+folder: that is what feeds the launcher's update channel.
 
-Also verified: the pack drops `.doorstop_version`, `doorstop_config.ini`,
-`winhttp.dll`, `doorstop_libs/`, `start_game_bepinex.sh`,
-`start_server_bepinex.sh`, `changelog.txt` and `BepInEx/` at the root, no
-`unstripped_corlib/`; the default include list covers what players need.
-Scanning works while `valheim_server.exe` is running. The game logs its
-version as `Valheim version: 1.0.7 (network version 39)` and the handshake as
-`Network version check, their:39, mine:39`, which a later version can use to
-warn about a game-version mismatch.
+**Player.** Take `valhsync-launcher-<version>-<target>`, run `valhsync`, and
+**paste the server's address — the same `ip:port` you type in Valheim**. That
+is the usual way in: nothing to ask the admin for beyond the address they
+already gave you. Press **PLAY**. The rest is the
+[player guide](https://ztnzvoid.github.io/ValhSync/player-guide.html).
 
-## Nothing to open, nothing to install
+> An invite code (`valhsync1:…`) does the same thing and carries the server's
+> key with it, so there is no fingerprint to compare. Either works; the
+> address is simpler.
 
-- **Players** run one executable, no installer, no administrator rights, and
-  make outbound HTTP requests only. Their router and firewall are never
-  touched; the game connects to the server exactly as it did before.
-- **Admins** do not need an open port either. The recommended way to publish
-  is `valhsync-server export`: it writes the pack as plain files that any web
-  space serves (GitHub Pages, S3/R2, Cloudflare Pages, your host's FTP). The
-  signature travels with the files, so the host is irrelevant to integrity.
-  Running `valhsync-server serve` on your own machine (the game's port, in TCP) is the LAN and
-  advanced option, not the default.
+Both programs are also a CLI, which is the path on a headless Linux box:
+`valhsync-server init | scan | serve | export | invite`, and
+`valhsync join <ip:port> | status | sync | play`.
 
-## Quick start: admin
-
-Run `valhsync-server` with no arguments and you get a window: four tabs, and
-everything below available from it.
-
-- **Server** — start, restart and stop the dedicated server (stopping sends
-  Ctrl+C to its console, so Valheim writes the world before it exits; the
-  process is never killed), follow its log, read players online, join code and
-  version. Starting also fills in your public address if what is in the field
-  cannot work, and brings publishing online behind it. Publishing follows the
-  game server from then on, however it was started.
-- **Mods** — one row per mod in the server's BepInEx folder, each either *sent
-  to players* or *server only*. Admin tools and DiscordConnector belong in the
-  second; there is no reason to push them down everyone's connection. Drop a
-  `.zip` from anywhere, a mod folder or a bare `.dll` on the window to install
-  one; an update replaces the version that was there. Turn one off from its own
-  row, or take it out — removing moves it to a folder ValhSync owns rather than
-  deleting it, and the window says which.
-- **World backups** — a copy of the world beside it, taken before a change.
-  ValhSync protected every file it put on a player's machine and nothing on
-  yours, which is the wrong way round: the world is the one thing that cannot
-  be downloaded again.
-- **Players** — admins, bans and the permitted list, with Iron Gate's own
-  warning about that last one on the card. The same from the console's prompt:
-  `ban <id>`, `unban`, `admin`, `permit`, `banned`. These write the three files
-  Iron Gate documents, which is the only channel a dedicated server has from
-  outside the game: it does not read its console, whatever its start-up banner
-  says, and Valheim has no RCON. Kicking somebody connected right now, and
-  saving on demand, are an admin pressing F5 in the game — typing those here
-  says so rather than failing quietly.
-- **Patch notes** — published signed with the pack. What was added, updated and
-  removed writes itself; you add why it matters. Players read it behind a
-  button and keep it afterwards. Optionally posted to a Discord
-  webhook as well, once per pack that is genuinely new.
-- **Settings** — where the dedicated server lives, the name and address players
-  see, publishing (a static folder you upload, or the live server), and the
-  invite code. Nothing to save: what is on screen is what the server publishes.
-
-The command line does the same things and is what a service unit runs:
-
-```bash
-valhsync-server init --name "My server" --game-address valheim.example.org:2456 --public-url https://you.github.io/valheim-pack
-```
-
-`init` finds the dedicated server (Steam app 896660), writes a commented
-`valhsync-server.toml`, generates the signing key and prints the **invite code**.
-Then:
-
-```bash
-valhsync-server scan                    # review what would be published
-valhsync-server export ./pack-site      # static files: manifest.json, manifest.sig, files/<hash>
-```
-
-Upload `pack-site/` to the web space `public_url` points at. `export --watch`
-keeps the folder current whenever a mod changes, so pair it with whatever
-already uploads for you (rclone, a git push, the Nextcloud client). Prefer a
-live server on your machine? `valhsync-server serve` does the same over TCP
-the game's own port in TCP, with automatic rebuilds. Valheim uses that port in
-UDP only, so a router rule covering TCP+UDP — which is the usual shape — carries
-both. ValhSync never asks for a port the game does not already use.
-
-Hand players the invite code, or better, a zip of `valhsync.exe` plus a
-`valhsync-invite.txt` containing the code: the launcher imports it on first
-start.
-
-Server-only mods (DiscordConnector...) go in `[pack] exclude`; client-only mods
-(Unshamed, ConfigManager...) go in the `client-extras/` folder laid out like the
-game root. **No local dedicated server** (G-Portal, Nitrado...)? Leave
-`server_root` out and keep a copy of the pack in `client_extras`: the
-publisher can run anywhere, only `game_address` has to point at the game host.
-
-Setting up a server on Windows or Linux, start to finish:
-**[the server guide](https://ztnzvoid.github.io/ValhSync/server-guide.html)**. Reference for every
-option: [docs/admin-guide.md](docs/admin-guide.md). Running it unattended:
-[docs/deploy](docs/deploy).
-
-### Updating the launcher your players run
-
-If `valhsync.exe` sits beside `valhsync-server.exe` — which it does when you
-unpack a release archive — the publisher offers that build to launchers as a
-signed document naming it by digest. A player on an older build sees it, with
-your server's name and key fingerprint beside it, and one click replaces their
-launcher and restarts it.
-
-Read that trade before relying on it: it means the bytes in that one file reach
-every player who accepts. The publisher signs them with the key they have
-pinned; it cannot check where the file came from. It is spelled out in
-[SECURITY.md](SECURITY.md). Players can always decline and fetch a release from
-this repository instead.
-
-## Quick start: player
-
-Double-click `valhsync.exe`, paste the invite code (or have
-`valhsync-invite.txt` next to the executable), press **PLAY**. That is the
-whole of it: no screen asks them to agree to anything, because adding the
-server is where they said who they trust. What the admin wrote sits behind a
-**What's new** button, readable before the sync and still readable after it.
-
-From a terminal the same executable is a CLI:
-
-```
-valhsync join <code>        valhsync status         valhsync sync [--yes]
-valhsync play               valhsync rollback       valhsync vanilla on|off
-valhsync game-root <dir>    valhsync servers        valhsync doctor
-```
-
-Linux and Steam Deck: the sync works the same; BepInEx itself only loads if
-Valheim's Steam launch options are set (`WINEDLLOVERRIDES="winhttp=n,b"
-%command%` under Proton, `./start_game_bepinex.sh %command%` for the native
-build). The launcher detects the case and tells you; it does not edit Steam's
-settings. Consoles cannot load mods at all: a modded server excludes PS5 and
-Switch 2 players.
-
-More: [the player guide](https://ztnzvoid.github.io/ValhSync/player-guide.html).
+**[The full documentation](https://ztnzvoid.github.io/ValhSync/)** covers how it works, what is exposed, and
+what has actually been tried.
 
 ## Security model, honestly
 

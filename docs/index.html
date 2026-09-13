@@ -426,12 +426,6 @@ nav.toc a.here .n { color: var(--gold); }
   with it. Two windows: yours starts and stops the dedicated server, installs and retires mods,
   keeps the admin and ban lists, writes the patch note and backs up the world. Theirs is one
   button.</p>
-<div class="log"><span class="w">[Warning:AzuCraftyBoxes] Peer (Steam_7656119xxxxxxxxxx) never sent version
-                        or couldn't due to previous disconnect, disconnecting</span></div>
-  <p class="verdict">That line is why this exists. The player did not have the right mods, was
-  thrown out, and saw only “Incompatible version” — and somebody had to work out which of
-  twenty mods it was.</p>
-
   <p class="grab">
     <a class="get" href="https://github.com/Ztnzvoid/ValhSync/releases/latest">Download ValhSync</a>
     <span class="get-note">Windows and Linux &middot; the admin's archive holds both programs
@@ -441,11 +435,6 @@ nav.toc a.here .n { color: var(--gold); }
   &middot; <a href="https://github.com/Ztnzvoid/ValhSync/releases">All releases</a>
   &middot; MIT or Apache-2.0</p>
 
-  <figure class="shot">
-    <img src="launcher.png" alt="The ValhSync launcher: one server, what it is about to install,
-      the admin's note, and the list of mods the server runs.">
-    <figcaption>What a player sees. One window, one button, and whatever their admin wrote.</figcaption>
-  </figure>
 </header>
 <div class="early">
   <p><strong>This is an early version.</strong> 0.0.3 is the third release there has ever
@@ -455,6 +444,9 @@ nav.toc a.here .n { color: var(--gold); }
   <p>So: back up the server's <code>BepInEx</code> folder before pointing ValhSync at one that
   matters, and expect to find things. Finding them is what this stage is for — say so on the
   repository when you do.</p>
+  <p><strong>Built with AI assistance.</strong> All of it — the two programs, the tests, this
+  documentation — was written with an AI assistant (Claude), directed and reviewed by a human.
+  That is said here plainly because you should know what you are about to run.</p>
 </div>
 
 
@@ -500,7 +492,7 @@ nav.toc a.here .n { color: var(--gold); }
  └────────────────────────────┘             └──────────────────────────────┘</code></pre>
   <h3>A signed manifest</h3>
   <p>The server publishes a JSON manifest and a detached Ed25519 signature over the exact bytes.
-  The launcher pins the server's public key when the invite code is imported, and verifies the
+  The launcher pins the server's public key when the server is added, and verifies the
   signature <em>before</em> parsing anything. A manifest that does not verify is never read.</p>
   <h3>Content-addressed files</h3>
   <p>Every file is fetched by its BLAKE3 digest and checked after download. A URL can only ever
@@ -580,7 +572,8 @@ nav.toc a.here .n { color: var(--gold); }
   it afterwards.</p>
   <h3>Settings</h3>
   <p>Where the dedicated server lives, the name and address players see, publishing — a static
-  folder to upload, or the live server — and the invite code to hand out. Everything writes
+  folder to upload, or the live server — and the address and key fingerprint to hand out, with
+  an invite code beside them for admins who prefer one. Everything writes
   itself: there is no Save button, because a setting that is on screen and not on disk is a
   server nobody can reach.</p>
   <p>Publishing follows the game server. Bring the game up, however you bring it up, and the pack
@@ -595,13 +588,27 @@ nav.toc a.here .n { color: var(--gold); }
 
 <section id="s4">
   <h2><span class="n">§4</span>The player's launcher</h2>
+
+  <figure class="shot">
+    <img src="launcher.png" alt="The launcher: one server, what it is about to install, the
+      admin's note, and the mods the server runs.">
+    <figcaption>One window, one button, and whatever the admin wrote.</figcaption>
+  </figure>
+
   <p>One window, one button. Press <strong>Play</strong>: if anything has changed it is installed
   first, then Valheim starts through Steam.</p>
+  <div class="rule">
+    <strong>A server is added by its address.</strong> The same <code>ip:port</code> that goes
+    into Valheim's own join box — <code>203.0.113.10:2456</code> — pasted into the launcher.
+    That is the ordinary way in, and the only thing a player needs from the admin. The launcher
+    fetches the server's key and shows its fingerprint, which is what the admin announces once
+    so it can be compared.
+  </div>
   <ul>
-    <li><strong>Servers are added from an invite code or from an address</strong> — whichever
-    the admin hands out. The code carries the key; an address makes the launcher fetch it and
-    show its fingerprint to be compared against what the admin announced. Several servers can
-    sit side by side.</li>
+    <li><strong>An invite code does the same thing</strong> — <code>valhsync1:…</code>, carrying
+    the key inside it, so there is no fingerprint to compare. Handy for a file shipped beside the
+    executable; the address is what most people will paste. Several servers can sit side by
+    side.</li>
     <li><strong>Patch notes before the install, not after.</strong> Mod by mod and by name —
     added, updated, removed, computed from the pack itself — above whatever the admin wrote
     about the release. Readable before the sync and still readable after it.</li>
@@ -745,7 +752,8 @@ cargo run -p valhsync            # the player's launcher</code></pre>
 </section>
 
 <footer>
-  ValhSync — MIT OR Apache-2.0 · <a href="https://github.com/Ztnzvoid/ValhSync">github.com/Ztnzvoid/ValhSync</a>
+  ValhSync — MIT OR Apache-2.0 · <a href="https://github.com/Ztnzvoid/ValhSync">github.com/Ztnzvoid/ValhSync</a><br>
+  Built with AI assistance (Claude), directed and reviewed by a human.
 </footer>
 
 </main>
