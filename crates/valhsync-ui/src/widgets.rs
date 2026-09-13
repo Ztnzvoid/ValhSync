@@ -159,6 +159,165 @@ pub fn lamp(ui: &mut egui::Ui, colour: Color32, height: f32) {
     th::lamp(ui.painter(), rect.center(), height * 0.20, colour);
 }
 
+/// A progress bar cut like the rest of the window: a carved track, a lit
+/// fill, and a sheen travelling along it while the work is live.
+///
+/// egui's own is a grey rounded rectangle and looks like it came from another
+/// program, which on the one screen somebody watches while they wait is the
+/// wrong impression to leave.
+///
+/// `fraction` outside 0..=1 is clamped rather than refused: a download that
+/// reports more bytes than it promised is a bug in the count, not a reason to
+/// stop drawing.
+pub fn progress(ui: &mut egui::Ui, fraction: f32, height: f32) {
+    let width = ui.available_width();
+    let (rect, _) = ui.allocate_exact_size(egui::vec2(width, height), egui::Sense::hover());
+    let round = egui::CornerRadius::same(2);
+
+    // The track: the same cut as a field, so a bar and an input read as parts
+    // of one object rather than two borrowed widgets.
+    ui.painter().rect_filled(rect, round, th::NIGHT);
+    ui.painter().rect_stroke(
+        rect,
+        round,
+        egui::Stroke::new(1.0, th::EDGE_SOFT),
+        egui::StrokeKind::Inside,
+    );
+
+    let done = fraction.clamp(0.0, 1.0);
+    if done <= f32::EPSILON {
+        return;
+    }
+    let mut lit = rect;
+    lit.set_width(rect.width() * done);
+    // Under the fill, so the glow reads as the metal being hot rather than as
+    // a shape drawn on top of it.
+    th::glow(ui.painter(), lit, th::GOLD.gamma_multiply(0.30));
+    ui.painter().rect_filled(lit, round, th::GOLD);
+
+    // The leading edge, brighter: a bar with a lit end reads as moving even
+    // in a still frame.
+    let edge = egui::Rect::from_min_max(
+        egui::pos2((lit.max.x - 18.0).max(lit.min.x), lit.min.y),
+        lit.max,
+    );
+    ui.painter().rect_filled(edge, round, th::GOLD_LIT);
+
+    // And a sheen travelling across the filled part while there is work left.
+    if done < 1.0 {
+        let t = ui.ctx().input(|i| i.time % 3600.0);
+        #[allow(clippy::cast_possible_truncation)]
+        let phase = ((t as f32) * 0.55).fract();
+        let x = lit.min.x + lit.width() * phase;
+        let sheen = egui::Rect::from_min_max(
+            egui::pos2((x - 26.0).max(lit.min.x), lit.min.y),
+            egui::pos2((x + 26.0).min(lit.max.x), lit.max.y),
+        );
+        if sheen.width() > 1.0 {
+            ui.painter()
+                .rect_filled(sheen, round, Color32::from_white_alpha(26));
+        }
+        ui.ctx()
+            .request_repaint_after(std::time::Duration::from_millis(40));
+    }
+}
+
+/// The widest a column of text is allowed to get, whatever the window does.
+///
+/// A window maximised on an ultrawide is four thousand pixels of line length,
+/// and a sentence that wide cannot be read: the eye loses the start of the
+/// next line. Everything in these windows is prose, lists and rows of two
+/// things far apart, all of which want a column rather than a canvas.
+pub const COLUMN: f32 = 860.0;
+
+/// Lay content out in a centred column no wider than [`COLUMN`].
+///
+/// Narrow windows are unaffected -- the column is simply the window. It is
+/// the wide ones this exists for, where the alternative is a name on the far
+/// left, a status on the far right, and a metre of nothing between them.
+pub fn column<R>(ui: &mut egui::Ui, add: impl FnOnce(&mut egui::Ui) -> R) -> R {
+    let available = ui.available_width();
+    let width = available.min(COLUMN);
+    let pad = ((available - width) * 0.5).max(0.0);
+    let mut out = None;
+    ui.horizontal_top(|ui| {
+        ui.add_space(pad);
+        ui.allocate_ui_with_layout(
+            egui::vec2(width, 0.0),
+            egui::Layout::top_down(egui::Align::Min),
+            |ui| {
+                ui.set_width(width);
+                out = Some(add(ui));
+            },
+        );
+    });
+    out.expect("the column body always runs")
+}
+
+/// A section that can be folded away, with its own memory.
+///
+/// One mechanism for "there is too much of this to show at once", used
+/// everywhere, instead of a scroll area here, a `show all` button opening a
+/// dialog there, and a hard cut somewhere else. `count` goes in the header so
+/// the size is known before it is opened, and the body is bounded and scrolls
+/// past `max_body` so that expanding something enormous still leaves the rest
+/// of the window reachable.
+///
+/// Returns whether it is open, for a caller that wants to skip expensive work
+/// while it is not.
+pub fn collapsible(
+    ui: &mut egui::Ui,
+    id: impl std::hash::Hash,
+    title: &str,
+    count: Option<usize>,
+    default_open: bool,
+    max_body: f32,
+    body: impl FnOnce(&mut egui::Ui),
+) -> bool {
+    let id = ui.make_persistent_id(id);
+    let mut open = ui.data_mut(|d| *d.get_persisted_mut_or(id, default_open));
+
+    let header = match count {
+        Some(n) => format!("{title}  ({n})"),
+        None => title.to_string(),
+    };
+    // The whole row is the target, not a chevron six pixels wide.
+    let response = ui
+        .scope(|ui| {
+            ui.horizontal(|ui| {
+                ui.label(
+                    RichText::new(if open { "\u{25BE}" } else { "\u{25B8}" })
+                        .color(th::GOLD)
+                        .monospace(),
+                );
+                ui.label(
+                    RichText::new(header)
+                        .font(th::display_font(13.0))
+                        .color(th::GOLD_LIT),
+                );
+            });
+        })
+        .response
+        .interact(egui::Sense::click());
+    if response.hovered() {
+        ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+    }
+    if response.clicked() {
+        open = !open;
+        ui.data_mut(|d| d.insert_persisted(id, open));
+    }
+
+    if open {
+        ui.add_space(4.0);
+        egui::ScrollArea::vertical()
+            .id_salt(id)
+            .max_height(max_body)
+            .auto_shrink([false, true])
+            .show(ui, body);
+    }
+    open
+}
+
 /// The width every line on a card indents by, so their text shares one left
 /// edge whether the line opens with a lamp, a dot or nothing at all.
 ///

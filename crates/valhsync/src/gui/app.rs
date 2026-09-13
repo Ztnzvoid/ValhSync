@@ -123,7 +123,7 @@ struct AddDialog {
     asking: bool,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct ProgressView {
     done: u64,
     total: u64,
@@ -335,7 +335,6 @@ pub(super) struct App {
     quit_after_update: bool,
     add_dialog: Option<AddDialog>,
     settings_open: bool,
-    mods_open: bool,
     /// What each sync changed, kept so a player can read it afterwards.
     news: crate::news::News,
     news_open: bool,
@@ -406,7 +405,6 @@ impl App {
             quit_after_update: false,
             add_dialog: None,
             settings_open: false,
-            mods_open: false,
             news,
             news_open: false,
             wanted_height: 0.0,
@@ -1009,18 +1007,21 @@ impl eframe::App for App {
                     });
                     return ui.cursor().top();
                 }
-                self.update_bar(ui);
-                self.action_bar(ui);
-                ui.add_space(12.0);
-                if self.book.servers.is_empty() {
-                    self.empty_state(ui);
-                } else {
-                    self.server_card(ui);
-                    if !self.mods.is_empty() {
-                        ui.add_space(12.0);
-                        self.mods_card(ui);
+                valhsync_ui::widgets::column(ui, |ui| {
+                    self.update_bar(ui);
+                    self.action_bar(ui);
+                    self.progress_strip(ui);
+                    ui.add_space(12.0);
+                    if self.book.servers.is_empty() {
+                        self.empty_state(ui);
+                    } else {
+                        self.server_card(ui);
+                        if !self.mods.is_empty() {
+                            ui.add_space(12.0);
+                            self.mods_card(ui);
+                        }
                     }
-                }
+                });
                 // The cursor sits just under the last thing drawn.
                 ui.cursor().top()
             })
@@ -1029,7 +1030,7 @@ impl eframe::App for App {
         // and one margin. A dialog floats above all that and needs its own
         // room, or its buttons end up past the bottom edge.
         self.wanted_height = panel + 20.0 + self.notice_height;
-        if self.add_dialog.is_some() || self.settings_open || self.mods_open || self.news_open {
+        if self.add_dialog.is_some() || self.settings_open || self.news_open {
             self.wanted_height = self.wanted_height.max(600.0);
         }
 
@@ -1041,7 +1042,6 @@ impl eframe::App for App {
             egui::vec2(940.0, 900.0),
         );
         chrome::draw_border(ctx);
-        self.mods_dialog(ctx);
         self.news_dialog(ctx);
         self.add_dialog(ctx);
         self.settings_dialog(ctx);
@@ -1458,22 +1458,27 @@ impl App {
     fn mods_card(&mut self, ui: &mut egui::Ui) {
         th::card(ui, |ui| {
             ui.set_width(ui.available_width());
-            valhsync_ui::widgets::section(
+
+            // Folded away by default past a handful. Twenty-four rows is not
+            // information on the screen somebody presses one button on, and
+            // the count in the header says how many there are without
+            // spending the room to prove it.
+            let lang = self.lang;
+            let mods = std::mem::take(&mut self.mods);
+            valhsync_ui::widgets::collapsible(
                 ui,
-                &format!("{} ({})", self.t(Key::ServerMods), self.mods.len()),
+                "server-mods",
+                self.t(Key::ServerMods),
+                Some(mods.len()),
+                mods.len() <= MODS_SHOWN,
+                320.0,
+                |ui| {
+                    for row in &mods {
+                        mod_row(ui, row, lang);
+                    }
+                },
             );
-            for row in self.mods.iter().take(MODS_SHOWN) {
-                mod_row(ui, row, self.lang);
-            }
-            if self.mods.len() > MODS_SHOWN {
-                ui.add_space(4.0);
-                if ui
-                    .button(format!("{} ({})", self.t(Key::ShowAll), self.mods.len()))
-                    .clicked()
-                {
-                    self.mods_open = true;
-                }
-            }
+            self.mods = mods;
         });
     }
 
@@ -1583,6 +1588,19 @@ impl App {
         ui.add_space(10.0);
     }
 
+    /// Cut a path to something that fits, keeping the end.
+    ///
+    /// The end is the part that identifies the file; the start is whatever a
+    /// server's folders happen to be called.
+    fn elide(text: &str, keep: usize) -> String {
+        let count = text.chars().count();
+        if count <= keep {
+            return text.to_string();
+        }
+        let tail: String = text.chars().skip(count - keep + 1).collect();
+        format!("\u{2026}{tail}")
+    }
+
     /// One line per kind: added, updated, removed. Named mods, not counts --
     /// "3 mods updated" tells nobody whether the one they care about moved.
     fn change_lines(&self, ui: &mut egui::Ui, changes: &[valhsync_core::ModChange]) {
@@ -1688,34 +1706,80 @@ impl App {
         self.news_open = open;
     }
 
-    /// The whole pack, when the player asks for it.
-    fn mods_dialog(&mut self, ctx: &egui::Context) {
-        if !self.mods_open {
+    #[allow(clippy::too_many_lines)] // one screen region, read top to bottom
+    /// What is happening right now, directly under the button that started
+    /// it.
+    ///
+    /// It used to live inside the server card, below the note and the mod
+    /// list -- which meant that on the one occasion it matters, a sync of a
+    /// hundred files with a long note above it, the bar was below the fold
+    /// and the player watched a window that appeared to be doing nothing.
+    /// Nothing may grow above it.
+    fn progress_strip(&mut self, ui: &mut egui::Ui) {
+        let Some(p) = self.progress.clone() else {
             return;
+        };
+        let label = match p.phase {
+            Phase::Contacting => self.t(Key::Contacting).to_string(),
+            Phase::Downloading { index, count } if count > 0 => {
+                format!("{} {index}/{count}", self.t(Key::Downloading))
+            }
+            Phase::Downloading { .. } => self.t(Key::Downloading).to_string(),
+            Phase::Applying => self.t(Key::Applying).to_string(),
+        };
+        ui.add_space(10.0);
+        ui.horizontal(|ui| {
+            ui.label(
+                RichText::new(label)
+                    .text_style(th::label_style())
+                    .color(th::BONE),
+            );
+            // The file being fetched, cut to what fits. A path is as long as
+            // somebody's folder names and would otherwise set the width of
+            // the whole window.
+            if !p.detail.is_empty() {
+                ui.label(
+                    RichText::new(Self::elide(&p.detail, 48))
+                        .monospace()
+                        .small()
+                        .color(th::BONE_DIM),
+                );
+            }
+        });
+        ui.add_space(4.0);
+        valhsync_ui::widgets::progress(ui, p.fraction(), 10.0);
+        if p.total > 0 {
+            #[allow(
+                clippy::cast_precision_loss,
+                clippy::cast_possible_truncation,
+                clippy::cast_sign_loss
+            )]
+            let speed = human_bytes(p.speed as u64);
+            let mut line = format!(
+                "{} / {} \u{b7} {speed}/s",
+                human_bytes(p.done),
+                human_bytes(p.total)
+            );
+            if let Some(left) = p.seconds_left() {
+                let shown = if left >= 60 {
+                    format!("{}m {}s", left / 60, left % 60)
+                } else {
+                    format!("{left}s")
+                };
+                line = format!("{line} \u{b7} {shown} {}", self.t(Key::Remaining));
+            }
+            ui.add_space(3.0);
+            ui.label(RichText::new(line).small().color(th::RUNE));
         }
-        let mut open = true;
-        let room = ctx.screen_rect().height() * 0.8;
-        egui::Window::new(self.t(Key::ServerMods))
-            .collapsible(false)
-            .resizable(false)
-            .open(&mut open)
-            .anchor(egui::Align2::CENTER_CENTER, egui::vec2(0.0, 0.0))
-            .default_width(520.0)
-            .max_height(room)
-            .show(ctx, |ui| {
-                egui::ScrollArea::vertical()
-                    .max_height(valhsync_ui::widgets::dialog_room(ui, 230.0))
-                    .show(ui, |ui| {
-                        for row in &self.mods {
-                            mod_row(ui, row, self.lang);
-                        }
-                    });
-            });
-        self.mods_open = open;
+        ui.add_space(4.0);
     }
 
-    #[allow(clippy::too_many_lines)] // one screen region, read top to bottom
     fn status_block(&mut self, ui: &mut egui::Ui) {
+        // The progress has its own strip under the action bar now, where
+        // nothing the admin wrote can push it off the bottom.
+        if self.progress.is_some() {
+            return;
+        }
         if let Some(p) = &self.progress {
             let label = match p.phase {
                 Phase::Contacting => self.t(Key::Contacting).to_string(),
