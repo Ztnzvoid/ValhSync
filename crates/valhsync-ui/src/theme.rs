@@ -315,6 +315,16 @@ fn seconds(ctx: &egui::Context) -> f32 {
     ctx.input(|i| i.time % 3600.0) as f32
 }
 
+/// The height of one line of body text as these windows actually set it.
+///
+/// egui's `TextStyle::Body` metric is not this: the windows render prose in
+/// their own face at their own size, so sizing a box by that style's height
+/// gives a box with half the rows it was asked for.
+#[must_use]
+pub fn body_line_height() -> f32 {
+    22.0
+}
+
 /// How bright the mark is this frame, as a multiplier around 1.
 ///
 /// Two slow waves that do not share a period, so the mark never settles into

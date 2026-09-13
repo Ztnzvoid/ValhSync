@@ -283,7 +283,11 @@ pub struct Fold<'a> {
     pub teaser: Option<&'a str>,
     pub default_open: bool,
     /// How tall the body may get before it scrolls instead of growing.
-    pub max_body: f32,
+    ///
+    /// `None` means "whatever the window has left", which is what a list
+    /// wants: a fixed ceiling showed two and a half rows in a window tall
+    /// enough for thirty, with the rest of it empty underneath.
+    pub max_body: Option<f32>,
 }
 
 pub fn collapsible(
@@ -337,9 +341,13 @@ pub fn collapsible(
 
     if open {
         ui.add_space(4.0);
+        // A floor so it is usable in a short window, a ceiling so one long
+        // list cannot claim a whole screen, and the window's own room in
+        // between.
+        let room = max_body.unwrap_or_else(|| (ui.available_height() - 28.0).clamp(160.0, 1400.0));
         egui::ScrollArea::vertical()
             .id_salt(id)
-            .max_height(max_body)
+            .max_height(room)
             .auto_shrink([false, true])
             .show(ui, body);
     }

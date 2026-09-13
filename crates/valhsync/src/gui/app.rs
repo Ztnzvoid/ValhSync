@@ -24,6 +24,9 @@ const NOTICE_TTL: Duration = Duration::from_secs(7);
 /// How often the launcher asks the server again, on its own.
 const AUTO_REFRESH: Duration = Duration::from_secs(25);
 /// Rows of the mod list shown before "show all" takes over.
+/// How many lines of the admin's note the card shows before it scrolls.
+const NOTE_BOX_LINES: f32 = 8.0;
+
 const MODS_SHOWN: usize = 6;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1491,7 +1494,7 @@ impl App {
                 .map(|m| m.name.as_str())
                 .collect::<Vec<_>>()
                 .join(", ");
-            let teaser = Self::elide(&teaser, 52);
+            let teaser = Self::elide_tail(&teaser, 52);
             valhsync_ui::widgets::collapsible(
                 ui,
                 &"server-mods",
@@ -1500,7 +1503,7 @@ impl App {
                     count: Some(mods.len()),
                     teaser: (!teaser.is_empty()).then_some(teaser.as_str()),
                     default_open: mods.len() <= MODS_SHOWN,
-                    max_body: 320.0,
+                    max_body: None,
                 },
                 |ui| {
                     for row in &mods {
@@ -1615,7 +1618,7 @@ impl App {
             .prepared
             .as_ref()
             .and_then(|p| p.manifest.notes.as_deref())
-            .and_then(Self::first_line);
+            .map(Self::opening);
 
         let mut clicked = false;
         ui.horizontal(|ui| {
@@ -1626,45 +1629,92 @@ impl App {
                         .color(if waiting { th::GOLD_LIT } else { th::BONE_DIM }),
                 )
                 .clicked();
-            if let Some(teaser) = teaser {
-                // The words are part of the target too: somebody reaching for
-                // a sentence expects the sentence to be what they pressed.
-                let line = ui
-                    .label(RichText::new(teaser).italics().color(th::BONE_DIM))
-                    .interact(egui::Sense::click());
-                if line.hovered() {
-                    ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
-                }
-                clicked |= line.clicked();
-            }
         });
+        // The opening of the note in a box of its own: eight lines, then it
+        // scrolls. One line was a label and read as one; eight is enough to
+        // be a piece of writing, which is what makes somebody open the rest
+        // of it. Bounded so a note nobody trimmed cannot take the window.
+        if let Some(teaser) = teaser {
+            #[allow(clippy::cast_precision_loss)]
+            let lines = teaser.lines().count() as f32;
+            ui.add_space(6.0);
+            let frame = egui::Frame::new()
+                .fill(th::NIGHT)
+                .stroke(egui::Stroke::new(1.0, th::EDGE_SOFT))
+                .inner_margin(egui::Margin::symmetric(10, 8))
+                .show(ui, |ui| {
+                    // Both, not one. A maximum alone let the box shrink to
+                    // whatever height the surrounding layout happened to
+                    // offer, which was three lines in a window with room for
+                    // thirty; a minimum alone would let a two-line note leave
+                    // an empty box under it.
+                    let rows = NOTE_BOX_LINES * th::body_line_height();
+                    ui.set_width(ui.available_width());
+                    ui.set_min_height(rows.min(lines * th::body_line_height()));
+                    egui::ScrollArea::vertical()
+                        .id_salt("note-teaser")
+                        // Eight lines of the face this actually renders in,
+                        // not of egui's Body metric -- the two are not the
+                        // same size, and measuring the wrong one gave four.
+                        .max_height(rows)
+                        .auto_shrink([false, true])
+                        .show(ui, |ui| {
+                            ui.label(RichText::new(teaser).color(th::BONE_DIM));
+                        });
+                });
+            // The words are part of the target too: somebody reaching for a
+            // sentence expects the sentence to be what they pressed.
+            let box_click = frame.response.interact(egui::Sense::click());
+            if box_click.hovered() {
+                ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+            }
+            clicked |= box_click.clicked();
+        }
         if clicked {
             self.news_open = true;
         }
         ui.add_space(10.0);
     }
 
-    /// The opening of a note, as one line worth reading.
+    /// The opening of a note: what fits in the box on the card.
     ///
-    /// Blank lines at the top are skipped, and a note that carries on gets an
-    /// ellipsis so it reads as the start of something rather than as all of
-    /// it.
-    fn first_line(notes: &str) -> Option<String> {
-        let mut lines = notes.lines().map(str::trim).filter(|l| !l.is_empty());
-        let first = lines.next()?;
-        let more = lines.next().is_some();
-        let shown = Self::elide(first, 64);
-        Some(if more && shown == first {
-            format!("{shown} \u{2026}")
-        } else {
-            shown
-        })
+    /// Leading blank lines are dropped, and a note that carries on past this
+    /// says so, so the box reads as the start of something rather than as all
+    /// of it.
+    fn opening(notes: &str) -> String {
+        const LINES: usize = 14;
+        let body: Vec<&str> = notes.lines().skip_while(|l| l.trim().is_empty()).collect();
+        let mut out = body
+            .iter()
+            .take(LINES)
+            .copied()
+            .collect::<Vec<_>>()
+            .join("\n")
+            .trim_end()
+            .to_string();
+        if body.len() > LINES {
+            out.push_str("\n\u{2026}");
+        }
+        out
     }
 
     /// Cut a path to something that fits, keeping the end.
     ///
     /// The end is the part that identifies the file; the start is whatever a
     /// server's folders happen to be called.
+    /// Cut a list to what fits, keeping the beginning.
+    ///
+    /// The opposite of [`Self::elide`], and for the opposite reason: the
+    /// first names in a list are the ones somebody recognises, while the
+    /// first components of a path are the ones nobody cares about.
+    fn elide_tail(text: &str, keep: usize) -> String {
+        if text.chars().count() <= keep {
+            return text.to_string();
+        }
+        let head: String = text.chars().take(keep.saturating_sub(1)).collect();
+        format!("{head}\u{2026}")
+    }
+
     fn elide(text: &str, keep: usize) -> String {
         let count = text.chars().count();
         if count <= keep {
