@@ -30,7 +30,14 @@ pub fn header(ui: &mut egui::Ui, title: &str, tag: Option<&str>) {
         let (rect, _) = ui.allocate_exact_size(galley.size(), egui::Sense::hover());
         th::glow(ui.painter(), rect, th::GOLD.gamma_multiply(0.18));
         ui.painter().galley(rect.min, galley, th::GOLD);
-        if let Some(tag) = tag {
+        // Only when there is room for it. The tag is decoration; the language
+        // menu and Settings sit at the other end of this row and egui will
+        // happily draw one on top of the other rather than admit they do not
+        // both fit. What a narrow window loses is the version number, which
+        // is also in the About panel.
+        if let Some(tag) = tag
+            && ui.available_width() > 220.0
+        {
             ui.add_space(10.0);
             let galley =
                 ui.painter()
@@ -265,15 +272,33 @@ pub fn column<R>(ui: &mut egui::Ui, add: impl FnOnce(&mut egui::Ui) -> R) -> R {
 ///
 /// Returns whether it is open, for a caller that wants to skip expensive work
 /// while it is not.
+/// How one folding section is described.
+#[derive(Debug, Clone, Copy)]
+pub struct Fold<'a> {
+    pub title: &'a str,
+    /// How many are inside, so the size is known before it is opened.
+    pub count: Option<usize>,
+    /// A few words of what is inside, shown while it is closed: a header that
+    /// only says how many there are gives nobody a reason to open it.
+    pub teaser: Option<&'a str>,
+    pub default_open: bool,
+    /// How tall the body may get before it scrolls instead of growing.
+    pub max_body: f32,
+}
+
 pub fn collapsible(
     ui: &mut egui::Ui,
-    id: impl std::hash::Hash,
-    title: &str,
-    count: Option<usize>,
-    default_open: bool,
-    max_body: f32,
+    id: &impl std::hash::Hash,
+    fold: &Fold<'_>,
     body: impl FnOnce(&mut egui::Ui),
 ) -> bool {
+    let &Fold {
+        title,
+        count,
+        teaser,
+        default_open,
+        max_body,
+    } = fold;
     let id = ui.make_persistent_id(id);
     let mut open = ui.data_mut(|d| *d.get_persisted_mut_or(id, default_open));
 
@@ -295,6 +320,9 @@ pub fn collapsible(
                         .font(th::display_font(13.0))
                         .color(th::GOLD_LIT),
                 );
+                if !open && let Some(teaser) = teaser {
+                    ui.label(RichText::new(teaser).italics().small().color(th::BONE_DIM));
+                }
             });
         })
         .response

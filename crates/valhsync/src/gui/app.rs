@@ -1035,11 +1035,15 @@ impl eframe::App for App {
         }
 
         self.update_title(ctx);
+        // The ceiling is what ValhSync will grow itself to, not what a person
+        // is allowed to make it. Nine hundred and forty was both, so dragging
+        // the window wider was undone a frame later; the content now sits in
+        // a column of its own, so a wide window is simply a wide window.
         chrome::fit_to_content(
             ctx,
             self.wanted_height,
             egui::vec2(720.0, 360.0),
-            egui::vec2(940.0, 900.0),
+            egui::vec2(1000.0, 900.0),
         );
         chrome::draw_border(ctx);
         self.news_dialog(ctx);
@@ -1067,11 +1071,11 @@ impl App {
             .show(ctx, |ui| {
                 chrome::draggable(ui, ui.max_rect());
                 ui.horizontal(|ui| {
-                    valhsync_ui::widgets::header(
-                        ui,
-                        "V A L H S Y N C",
-                        Some(concat!("v", env!("CARGO_PKG_VERSION"), " · alpha")),
-                    );
+                    // The right-hand group claims its room first, and the
+                    // name is drawn in what is left. Drawn the other way
+                    // round, the header cannot know the menu is coming and
+                    // egui draws one over the other rather than admit they do
+                    // not both fit.
                     ui.with_layout(Layout::right_to_left(Align::Min), |ui| {
                         chrome::window_controls(ui);
                         ui.add_space(8.0);
@@ -1098,6 +1102,14 @@ impl App {
                             self.settings.language = Some(self.lang.code().to_string());
                             self.save_settings();
                         }
+                        // What is left over, in reading order.
+                        ui.with_layout(Layout::left_to_right(Align::Center), |ui| {
+                            valhsync_ui::widgets::header(
+                                ui,
+                                "V A L H S Y N C",
+                                Some(concat!("v", env!("CARGO_PKG_VERSION"), " \u{b7} alpha")),
+                            );
+                        });
                     });
                 });
             });
@@ -1148,9 +1160,15 @@ impl App {
                     .find(|(id, _)| Some(id) == self.selected.as_ref())
                     .map_or("—", |(_, name)| name.as_str())
                     .to_string();
+                // Narrower when the window is, so the drop-down gives ground
+                // before the buttons at the other end of the row do. Two
+                // groups pulling against each other in one row end up drawn
+                // on top of one another, and the one that should yield is the
+                // one whose width is arbitrary.
+                let picker = (ui.available_width() * 0.32).clamp(130.0, 240.0);
                 egui::ComboBox::from_id_salt("server")
                     .selected_text(RichText::new(current).strong())
-                    .width(240.0)
+                    .width(picker)
                     .show_ui(ui, |ui| {
                         for (id, name) in &servers {
                             ui.selectable_value(&mut self.selected, Some(id.clone()), name);
@@ -1465,13 +1483,25 @@ impl App {
             // spending the room to prove it.
             let lang = self.lang;
             let mods = std::mem::take(&mut self.mods);
+            // The first few names while it is folded. "Server mods (22)" is a
+            // number; "Seasonality, EpicLoot, ..." is a reason to look.
+            let teaser = mods
+                .iter()
+                .take(3)
+                .map(|m| m.name.as_str())
+                .collect::<Vec<_>>()
+                .join(", ");
+            let teaser = Self::elide(&teaser, 52);
             valhsync_ui::widgets::collapsible(
                 ui,
-                "server-mods",
-                self.t(Key::ServerMods),
-                Some(mods.len()),
-                mods.len() <= MODS_SHOWN,
-                320.0,
+                &"server-mods",
+                &valhsync_ui::widgets::Fold {
+                    title: self.t(Key::ServerMods),
+                    count: Some(mods.len()),
+                    teaser: (!teaser.is_empty()).then_some(teaser.as_str()),
+                    default_open: mods.len() <= MODS_SHOWN,
+                    max_body: 320.0,
+                },
                 |ui| {
                     for row in &mods {
                         mod_row(ui, row, lang);
@@ -1577,15 +1607,58 @@ impl App {
                 self.t(Key::NewsNone)
             )
         };
-        let button = ui.button(
-            RichText::new(label)
-                .font(th::display_font(14.0))
-                .color(if waiting { th::GOLD_LIT } else { th::BONE_DIM }),
-        );
-        if button.clicked() {
+        // The admin's first line, beside the button. A button labelled
+        // "What's new" says a thing exists; the opening words of what they
+        // actually wrote are what makes somebody open it -- and a note nobody
+        // opens may as well not have been written.
+        let teaser = self
+            .prepared
+            .as_ref()
+            .and_then(|p| p.manifest.notes.as_deref())
+            .and_then(Self::first_line);
+
+        let mut clicked = false;
+        ui.horizontal(|ui| {
+            clicked |= ui
+                .button(
+                    RichText::new(label)
+                        .font(th::display_font(14.0))
+                        .color(if waiting { th::GOLD_LIT } else { th::BONE_DIM }),
+                )
+                .clicked();
+            if let Some(teaser) = teaser {
+                // The words are part of the target too: somebody reaching for
+                // a sentence expects the sentence to be what they pressed.
+                let line = ui
+                    .label(RichText::new(teaser).italics().color(th::BONE_DIM))
+                    .interact(egui::Sense::click());
+                if line.hovered() {
+                    ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+                }
+                clicked |= line.clicked();
+            }
+        });
+        if clicked {
             self.news_open = true;
         }
         ui.add_space(10.0);
+    }
+
+    /// The opening of a note, as one line worth reading.
+    ///
+    /// Blank lines at the top are skipped, and a note that carries on gets an
+    /// ellipsis so it reads as the start of something rather than as all of
+    /// it.
+    fn first_line(notes: &str) -> Option<String> {
+        let mut lines = notes.lines().map(str::trim).filter(|l| !l.is_empty());
+        let first = lines.next()?;
+        let more = lines.next().is_some();
+        let shown = Self::elide(first, 64);
+        Some(if more && shown == first {
+            format!("{shown} \u{2026}")
+        } else {
+            shown
+        })
     }
 
     /// Cut a path to something that fits, keeping the end.

@@ -75,12 +75,28 @@ pub fn fit_to_content(ctx: &egui::Context, wanted_height: f32, min: egui::Vec2, 
     // never registered. A drag says so for itself now, in `handle_edge_resize`
     // -- this comparison is only a backstop for a size the system changed
     // without us, such as a snap to half the screen.
+    if asked == Some(MANUAL) {
+        // The size is theirs, the minimum is not. Below it the right-aligned
+        // halves of every row land on top of the left-aligned halves -- the
+        // name under the summary, the title under the language menu -- and
+        // egui does not wrap them, it overlaps them. A window nobody can read
+        // is not a preference.
+        let floor = have.max(min);
+        if (floor - have).abs().max_elem() > 1.0 {
+            ctx.send_viewport_cmd(ViewportCommand::InnerSize(floor));
+        }
+        return;
+    }
     if let Some(asked) = asked
         && (asked - have).abs().max_elem() > 24.0
     {
+        // And stop here. Writing MANUAL and then carrying on measured the
+        // content anyway, sent a size, and overwrote MANUAL with it on the
+        // way out -- so the escape hatch was written every time a window was
+        // dragged and read never. The window snapped back to its measured
+        // size within the frame, which is exactly what somebody dragging an
+        // edge sees as the window fighting them.
         ctx.memory_mut(|m| m.data.insert_temp(id, MANUAL));
-    }
-    if asked == Some(MANUAL) {
         return;
     }
 
