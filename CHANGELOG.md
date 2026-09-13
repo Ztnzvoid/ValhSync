@@ -15,9 +15,11 @@ its own.
 
 ## 0.0.3 — 2026-09-13
 
-- **What changed, before agreeing to it.** A sync that touches mods now says
-  which ones, by name: added, updated, removed. Computed from the plan, so
-  nobody has to write it.
+- **What changed, and no agreeing to it.** A sync that touches mods says which
+  ones, by name: added, updated, removed, computed from the plan so nobody has
+  to write it. The player is not asked to accept it -- adding a server is where
+  they said who they trust, and asking again at the first sync was a second
+  signature on the same line.
 - **A word from the admin.** An optional note travels signed in the manifest,
   written from the Mods tab. For what a diff cannot say: that a mod resets its
   own config, that a chest mod wants an empty base first.
@@ -56,6 +58,33 @@ its own.
   log did not grow by a byte. The prompt is gone; the lines the server does
   print to its console are pulled out of the log, where fifteen of them sit
   among tens of thousands, and shown where they can be read.
+- **Players**, on their own tab and at the console's prompt: admins, bans and
+  the permitted list, written to the three files Iron Gate documents, with the
+  names the server's own log recorded beside each id. `kick` and `save` are
+  recognised and answered rather than failing quietly -- they exist, but only
+  from an admin pressing F5 in the game.
+- **World backups**, taken from the tab where mods are changed. Both halves of
+  a world travel together, beside `worlds_local` and never inside it, and a
+  copy taken while the server is running says so rather than pretending.
+- **Bring the server back when it goes down on its own.** Off by default, and
+  bounded at three restarts in twenty minutes: the failure this exists for is
+  also the failure that loops.
+- **Turn a mod off, or take it out**, from its row. Disabling moves it out of
+  BepInEx entirely; removing moves it to a folder ValhSync owns rather than
+  deleting it.
+- **Announce a new pack in a Discord**, optionally. The address is treated as
+  the credential it is: masked in the window, never in a log or an error.
+- One press is one action. PLAY and UPDATE were disabled while a check ran --
+  which is the second somebody who has just come back to the window reaches for
+  them -- so the press went nowhere. It is held and carried out instead.
+- The window obeys the person dragging it. The code handing the size over
+  existed and never ran: it wrote "manual" into memory and overwrote it on the
+  way out of the same frame.
+- Content sits in a centred column, folding sections take the room the window
+  has, and the progress bar has its own strip under the button that starts it,
+  drawn in the theme rather than in egui's grey.
+- The background mark is gone; the left edge burns instead, and the embers come
+  off it.
 - **Drop a mod on the window.** The Mods tab takes a `.zip` from Thunderstore,
   Nexus, a release page or anywhere else, a mod folder, or a bare `.dll`. It
   works out whether the files sit at the archive's root, under `plugins/` or

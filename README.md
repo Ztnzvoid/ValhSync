@@ -204,9 +204,10 @@ this repository instead.
 ## Quick start: player
 
 Double-click `valhsync.exe`, paste the invite code (or have
-`valhsync-invite.txt` next to the executable), press **PLAY**. The first time,
-the launcher shows what it is about to install, replace or quarantine and asks
-for confirmation. After that, PLAY syncs silently and starts the game.
+`valhsync-invite.txt` next to the executable), press **PLAY**. That is the
+whole of it: no screen asks them to agree to anything, because adding the
+server is where they said who they trust. What the admin wrote sits behind a
+**What's new** button, readable before the sync and still readable after it.
 
 From a terminal the same executable is a CLI:
 
