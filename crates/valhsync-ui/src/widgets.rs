@@ -249,8 +249,12 @@ pub fn column<R>(ui: &mut egui::Ui, add: impl FnOnce(&mut egui::Ui) -> R) -> R {
     let mut out = None;
     ui.horizontal_top(|ui| {
         ui.add_space(pad);
+        // The real height, not zero. A zero here does not mean "as tall as it
+        // needs"; it means everything inside asks how much room is left and
+        // is told none -- so a list that sizes itself to the window sized
+        // itself to nothing and fell back on its floor.
         ui.allocate_ui_with_layout(
-            egui::vec2(width, 0.0),
+            egui::vec2(width, ui.available_height()),
             egui::Layout::top_down(egui::Align::Min),
             |ui| {
                 ui.set_width(width);
@@ -349,7 +353,22 @@ pub fn collapsible(
             .id_salt(id)
             .max_height(room)
             .auto_shrink([false, true])
-            .show(ui, body);
+            .show(ui, |ui| {
+                // Room for the scrollbar. Without it the bar is drawn over
+                // the right-hand end of every row, which is where the status
+                // of each one is written.
+                egui::Frame::new()
+                    .inner_margin(egui::Margin {
+                        left: 0,
+                        right: 12,
+                        top: 0,
+                        bottom: 0,
+                    })
+                    .show(ui, |ui| {
+                        ui.set_width(ui.available_width());
+                        body(ui);
+                    });
+            });
     }
     open
 }
