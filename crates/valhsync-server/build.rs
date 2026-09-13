@@ -6,7 +6,12 @@
 //! `-musl`, nor `-msvc` from `-gnu` on Windows), and `TARGET` is handed to
 //! build scripts alone.
 
+/// Only Windows has anywhere to put these, and a constant nothing
+/// reads is an error under `-D warnings` -- which is how a build
+/// that was fine here failed on Linux the first time CI ever ran.
+#[cfg(windows)]
 const DESCRIPTION: &str = "ValhSync publisher for Valheim mod packs";
+#[cfg(windows)]
 const ORIGINAL_FILENAME: &str = "valhsync-server.exe";
 
 fn main() {
