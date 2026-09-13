@@ -846,10 +846,16 @@ impl App {
                 s.fingerprint()
             )
         });
-        th::callout(ui, th::GOLD, |ui| {
+        // Northern mist, not gold. Everything gold in this window is the
+        // player's own business -- the button they press, the server they
+        // chose, the mark on the wall. A new launcher is the one thing that
+        // arrives from outside and replaces the program they are looking at,
+        // and it should not be wearing the same colour as the button they
+        // press every day.
+        th::callout(ui, th::RUNE, |ui| {
             ui.horizontal(|ui| {
                 ui.colored_label(
-                    th::GOLD_LIT,
+                    th::RUNE_LIT,
                     format!("{} — {}", self.t(Key::UpdateReady), offer.version),
                 );
                 ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
@@ -859,7 +865,7 @@ impl App {
                             egui::Button::new(
                                 RichText::new(self.t(Key::UpdateInstall)).color(th::NIGHT),
                             )
-                            .fill(th::GOLD),
+                            .fill(th::RUNE_LIT),
                         )
                         .clicked()
                     {

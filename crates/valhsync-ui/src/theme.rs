@@ -16,6 +16,9 @@ pub const BONE_DIM: Color32 = Color32::from_rgb(0xAD, 0xA0, 0x89);
 pub const GOLD: Color32 = Color32::from_rgb(0xC7, 0xA4, 0x55);
 pub const GOLD_LIT: Color32 = Color32::from_rgb(0xE8, 0xCD, 0x8B);
 pub const RUNE: Color32 = Color32::from_rgb(0x7E, 0x9A, 0xA7);
+/// The lit end of the mist, for text and a plate that has to carry it. The
+/// same relation to `RUNE` that `GOLD_LIT` has to `GOLD`.
+pub const RUNE_LIT: Color32 = Color32::from_rgb(0xA8, 0xC6, 0xD4);
 pub const BLOOD: Color32 = Color32::from_rgb(0x9A, 0x34, 0x21);
 pub const BLOOD_LIT: Color32 = Color32::from_rgb(0xD2, 0x72, 0x4F);
 pub const MOSS: Color32 = Color32::from_rgb(0x7E, 0x91, 0x55);
