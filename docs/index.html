@@ -518,7 +518,22 @@ nav.toc a.here .n { color: var(--gold); }
   <p>Run <code>valhsync-server</code> with no arguments and it opens a window. Four tabs.</p>
   <div class="halves">
     <div class="half">
-      <h3>Server</h3>
+      <figure class="shot">
+    <img src="server-window.png" alt="The ValhSync server window on its Server tab: the game
+      server online with Stop and Restart, publishing, the public address, and the console
+      below.">
+    <figcaption>The admin's window. The dedicated server is started, stopped and restarted from
+      here, and the pack goes online behind it.</figcaption>
+  </figure>
+
+  <figure class="shot">
+    <img src="server-mods.png" alt="The Mods tab: a drop zone for installing a mod, then one row
+      per mod with sent-to-players or server-only, and buttons to disable or remove it.">
+    <figcaption>Mods are installed by dropping them on the window. Each one either travels to
+      players or stays on the server, and can be turned off or taken out from its own row.</figcaption>
+  </figure>
+
+  <h3>Server</h3>
       <ul>
         <li>Start, restart and stop the dedicated server. Stopping sends Ctrl+C to its console,
         so Valheim writes the world before it exits; the process is never killed.</li>
