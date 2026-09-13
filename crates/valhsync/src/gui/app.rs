@@ -338,9 +338,8 @@ pub(super) struct App {
     quit_after_update: bool,
     add_dialog: Option<AddDialog>,
     settings_open: bool,
-    /// What each sync changed, kept so a player can read it afterwards.
-    news: crate::news::News,
-    news_open: bool,
+    /// The full note is open in a dialog.
+    note_open: bool,
     /// Height the window should have for what it currently shows.
     wanted_height: f32,
     /// Height the notice bar took last frame, zero when it is hidden.
@@ -385,7 +384,6 @@ impl App {
             ),
         };
         let lang = Lang::detect(settings.language.as_deref());
-        let news = crate::news::News::load(&paths).unwrap_or_default();
         let mut app = Self {
             lang,
             game_root_input: settings
@@ -408,8 +406,7 @@ impl App {
             quit_after_update: false,
             add_dialog: None,
             settings_open: false,
-            news,
-            news_open: false,
+            note_open: false,
             wanted_height: 0.0,
             notice_height: 0.0,
             title: String::new(),
@@ -685,7 +682,6 @@ impl App {
                     // nothing to read either. The check runs on its own every
                     // few seconds, so what they wrote arrives without anybody
                     // pressing anything.
-                    self.record_note_seen();
                     // A sync restores `winhttp.dll`, so the switch has to be
                     // read again after one rather than left showing what the
                     // player chose before it.
@@ -710,7 +706,6 @@ impl App {
                     self.status = Status::Error(failure);
                 }
                 Msg::Applied(Ok((applied, launch_error))) => {
-                    self.record_news();
                     let c = applied.counts;
                     let summary = format!(
                         "{}: {} {}, {} {}, {} {}",
@@ -1033,7 +1028,7 @@ impl eframe::App for App {
         // and one margin. A dialog floats above all that and needs its own
         // room, or its buttons end up past the bottom edge.
         self.wanted_height = panel + 20.0 + self.notice_height;
-        if self.add_dialog.is_some() || self.settings_open || self.news_open {
+        if self.add_dialog.is_some() || self.settings_open || self.note_open {
             self.wanted_height = self.wanted_height.max(600.0);
         }
 
@@ -1049,7 +1044,7 @@ impl eframe::App for App {
             egui::vec2(1000.0, 900.0),
         );
         chrome::draw_border(ctx);
-        self.news_dialog(ctx);
+        self.note_dialog(ctx);
         self.add_dialog(ctx);
         self.settings_dialog(ctx);
     }
@@ -1515,67 +1510,6 @@ impl App {
         });
     }
 
-    /// Write down what the sync that just succeeded changed.
-    ///
-    /// Taken from the plan that was applied rather than from a fresh one: by
-    /// the next check the same comparison yields nothing, because everything
-    /// in it is now on disk.
-    /// Keep a note the server is publishing, the moment it is seen.
-    ///
-    /// [`Self::record_news`] runs after a sync, which covers every note that
-    /// arrives with mods behind it. A note on its own has no sync to hang
-    /// off: there is nothing to install, so the player would have had to
-    /// guess that something had been said. This is the other half.
-    fn record_note_seen(&mut self) {
-        let Some(p) = &self.prepared else {
-            return;
-        };
-        let Some(notes) = p.manifest.notes.clone() else {
-            return;
-        };
-        if self.news.latest_notes(&p.server.id) == Some(notes.as_str()) {
-            return;
-        }
-        let entry = crate::news::Entry {
-            server_id: p.server.id.clone(),
-            server_name: p.server.name.clone(),
-            pack_id: p.manifest.pack_id.clone(),
-            at: valhsync_core::clock::now_rfc3339(),
-            notes: Some(notes),
-            // Deliberately empty. What the plan would say here is what is
-            // about to be installed, not what this entry is about, and a
-            // history that claims mods moved when none did is worse than one
-            // that says only what it knows.
-            changes: Vec::new(),
-        };
-        if self.news.record(entry)
-            && let Err(e) = self.news.save(&self.paths)
-        {
-            self.notify(e.to_string(), th::GOLD);
-        }
-    }
-
-    fn record_news(&mut self) {
-        let Some(p) = &self.prepared else {
-            return;
-        };
-        let entry = crate::news::Entry {
-            server_id: p.server.id.clone(),
-            server_name: p.server.name.clone(),
-            pack_id: p.manifest.pack_id.clone(),
-            at: valhsync_core::clock::now_rfc3339(),
-            notes: p.manifest.notes.clone(),
-            changes: valhsync_core::changes::mods_touched(&p.plan),
-        };
-        if self.news.record(entry)
-            && let Err(e) = self.news.save(&self.paths)
-        {
-            // Losing the history is not worth interrupting anyone over, but
-            // it should not be lost in silence either.
-            self.notify(e.to_string(), th::GOLD);
-        }
-    }
-
     /// One line: what is waiting, and a way to read about it.
     ///
     /// It used to be the note and the whole mod list, on the card, before the
@@ -1589,10 +1523,6 @@ impl App {
     /// there afterwards, which is more than the old block managed -- that one
     /// vanished the moment the files landed.
     fn whats_new_block(&mut self, ui: &mut egui::Ui) {
-        let has_history = self
-            .selected
-            .as_deref()
-            .is_some_and(|id| self.news.for_server(id).next().is_some());
         let waiting = self
             .prepared
             .as_ref()
@@ -1601,7 +1531,7 @@ impl App {
         // Shown even with nothing behind it. A control that only appears once
         // something happens cannot be told apart from one that does not work,
         // and "nothing new yet" is an answer -- silence is not.
-        let label = if has_history || waiting {
+        let label = if waiting {
             self.t(Key::WhatsNew).to_string()
         } else {
             format!(
@@ -1671,7 +1601,7 @@ impl App {
             clicked |= box_click.clicked();
         }
         if clicked {
-            self.news_open = true;
+            self.note_open = true;
         }
         ui.add_space(10.0);
     }
@@ -1724,6 +1654,53 @@ impl App {
         format!("\u{2026}{tail}")
     }
 
+    /// The whole of what the admin wrote, when somebody asks for it.
+    ///
+    /// What is on the card is the opening; this is the rest. There is no
+    /// history behind it: the launcher keeps the note the server is
+    /// publishing and nothing older, because a list of every message a server
+    /// ever sent is an archive nobody opened twice.
+    fn note_dialog(&mut self, ctx: &egui::Context) {
+        if !self.note_open {
+            return;
+        }
+        let Some(prepared) = self.prepared.clone() else {
+            self.note_open = false;
+            return;
+        };
+        let notes = prepared.manifest.notes.clone();
+        let changes = valhsync_core::changes::mods_touched(&prepared.plan);
+        let mut open = true;
+        let room = ctx.screen_rect().height() * 0.8;
+        egui::Window::new(self.t(Key::WhatsNew))
+            .collapsible(false)
+            .resizable(false)
+            .open(&mut open)
+            .anchor(egui::Align2::CENTER_CENTER, egui::vec2(0.0, 0.0))
+            .default_width(560.0)
+            .max_height(room)
+            .show(ctx, |ui| {
+                if notes.is_none() && changes.is_empty() {
+                    ui.label(RichText::new(self.t(Key::NewsNone)).color(th::BONE_DIM));
+                    return;
+                }
+                egui::ScrollArea::vertical()
+                    .max_height(valhsync_ui::widgets::dialog_room(ui, 230.0))
+                    .show(ui, |ui| {
+                        if let Some(notes) = &notes {
+                            ui.label(RichText::new(notes).color(th::BONE));
+                        }
+                        if !changes.is_empty() {
+                            ui.add_space(10.0);
+                            th::hairline(ui);
+                            ui.add_space(10.0);
+                            self.change_lines(ui, &changes);
+                        }
+                    });
+            });
+        self.note_open = open;
+    }
+
     /// One line per kind: added, updated, removed. Named mods, not counts --
     /// "3 mods updated" tells nobody whether the one they care about moved.
     fn change_lines(&self, ui: &mut egui::Ui, changes: &[valhsync_core::ModChange]) {
@@ -1763,70 +1740,6 @@ impl App {
             }
             ui.add_space(4.0);
         }
-    }
-
-    /// Everything this server has changed on this machine, newest first.
-    fn news_dialog(&mut self, ctx: &egui::Context) {
-        if !self.news_open {
-            return;
-        }
-        let mut open = true;
-        let entries: Vec<crate::news::Entry> = self
-            .selected
-            .as_deref()
-            .map(|id| self.news.for_server(id).cloned().collect())
-            .unwrap_or_default();
-        let room = ctx.screen_rect().height() * 0.8;
-        egui::Window::new(self.t(Key::WhatsNew))
-            .collapsible(false)
-            .resizable(false)
-            .open(&mut open)
-            .anchor(egui::Align2::CENTER_CENTER, egui::vec2(0.0, 0.0))
-            .default_width(520.0)
-            // Belt as well as braces: the inner scroll area bounds the list,
-            // this bounds the dialog. Either alone left one way for a long
-            // note to push the window past the edges of the screen.
-            .max_height(room)
-            .show(ctx, |ui| {
-                if entries.is_empty() {
-                    ui.label(RichText::new(self.t(Key::NewsNone)).color(th::BONE_DIM));
-                    return;
-                }
-                egui::ScrollArea::vertical()
-                    .max_height(valhsync_ui::widgets::dialog_room(ui, 230.0))
-                    .show(ui, |ui| {
-                        for (i, entry) in entries.iter().enumerate() {
-                            if i > 0 {
-                                ui.add_space(10.0);
-                                th::hairline(ui);
-                                ui.add_space(10.0);
-                            }
-                            ui.label(
-                                RichText::new(entry.at.get(..10).unwrap_or(&entry.at))
-                                    .small()
-                                    .color(th::BONE_DIM),
-                            );
-                            if let Some(notes) = &entry.notes {
-                                ui.add_space(2.0);
-                                // Each note in its own bounded frame. One
-                                // long enough to fill the dialog would
-                                // otherwise bury every entry under it, and
-                                // the history exists to be scrolled back
-                                // through.
-                                egui::ScrollArea::vertical()
-                                    .id_salt(("news-note", i))
-                                    .max_height(190.0)
-                                    .auto_shrink([false, true])
-                                    .show(ui, |ui| {
-                                        ui.label(RichText::new(notes).color(th::BONE));
-                                    });
-                            }
-                            ui.add_space(2.0);
-                            self.change_lines(ui, &entry.changes);
-                        }
-                    });
-            });
-        self.news_open = open;
     }
 
     #[allow(clippy::too_many_lines)] // one screen region, read top to bottom

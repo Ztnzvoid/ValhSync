@@ -21,8 +21,8 @@ its own.
 - **A word from the admin.** An optional note travels signed in the manifest,
   written from the Mods tab. For what a diff cannot say: that a mod resets its
   own config, that a chest mod wants an empty base first.
-- **Kept afterwards.** Fifty entries of history per player, one per sync that
-  changed something, behind a "What's new" button.
+- **Kept afterwards.** The note stays readable after the sync, behind a
+  "What's new" button, instead of vanishing the moment the files land.
 - The publisher no longer skips a rebuild when only the note changed, and a
   running one now notices its configuration changing at all: it watches the
   file and re-reads it, instead of publishing the manifest it built at startup.

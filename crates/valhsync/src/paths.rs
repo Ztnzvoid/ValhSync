@@ -76,10 +76,6 @@ impl AppPaths {
     pub fn installed_file(&self) -> PathBuf {
         self.config_dir.join("installed.json")
     }
-
-    pub fn news_file(&self) -> PathBuf {
-        self.config_dir.join("news.json")
-    }
 }
 
 /// Write JSON through a temp file and a rename, so a crash never leaves a

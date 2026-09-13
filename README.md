@@ -143,7 +143,7 @@ everything below available from it.
   says so rather than failing quietly.
 - **Patch notes** — published signed with the pack. What was added, updated and
   removed writes itself; you add why it matters. Players read it behind a
-  button and keep it afterwards, with a history. Optionally posted to a Discord
+  button and keep it afterwards. Optionally posted to a Discord
   webhook as well, once per pack that is genuinely new.
 - **Settings** — where the dedicated server lives, the name and address players
   see, publishing (a static folder you upload, or the live server), and the
