@@ -674,9 +674,12 @@ nav.toc a.here .n { color: var(--gold); }
   public — and integrity does not depend on the transport. An admin who wants TLS puts a reverse
   proxy in front; the launcher accepts <code>https://</code> and verifies certificates against
   bundled roots.</p>
-  <p>Builds are not signed with a code-signing certificate, so Windows SmartScreen warns on first
-  run and Defender's machine-learning classifier occasionally reports a fresh build. Release
-  hashes are published to be checked.</p>
+  <p>Builds are not signed with a code-signing certificate yet, so Windows SmartScreen warns on
+  first run and Defender's machine-learning classifier occasionally reports a fresh build.
+  Release hashes are published to be checked in the meantime. A certificate has been applied
+  for, the release workflow already submits the Windows binaries for signature, and the
+  <a href="https://github.com/Ztnzvoid/ValhSync/blob/main/docs/code-signing-policy.md">code
+  signing policy</a> says who can cause a signature to happen and what one would mean.</p>
 </section>
 
 <section id="s7">

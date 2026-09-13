@@ -43,6 +43,48 @@ jobs:
           set -euo pipefail
           export RUSTFLAGS="--remap-path-prefix=${CARGO_HOME:-$HOME/.cargo}=/cargo --remap-path-prefix=$PWD=/valhsync"
           cargo build --workspace --release --locked --target ${{ matrix.target }}
+      # Authenticode signing, on Windows, when this repository has been given a
+      # SignPath project to sign with. The two executables go up on their own,
+      # come back signed, and are put back where the packaging step looks for
+      # them. Everything is gated on the variable being set, so a fork -- or
+      # this repository before the certificate exists -- still produces a
+      # release, unsigned, rather than a failed workflow.
+      - name: Stage the binaries for signing
+        if: runner.os == 'Windows' && vars.SIGNPATH_PROJECT_SLUG != ''
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p signing/unsigned
+          cp "target/${{ matrix.target }}/release/valhsync.exe" signing/unsigned/
+          cp "target/${{ matrix.target }}/release/valhsync-server.exe" signing/unsigned/
+      - uses: actions/upload-artifact@v4
+        id: unsigned
+        if: runner.os == 'Windows' && vars.SIGNPATH_PROJECT_SLUG != ''
+        with:
+          name: unsigned-${{ matrix.target }}
+          path: signing/unsigned/*
+          if-no-files-found: error
+      - name: Sign with SignPath
+        if: runner.os == 'Windows' && vars.SIGNPATH_PROJECT_SLUG != ''
+        uses: SignPath/github-action-submit-signing-request@v3
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG }}
+          signing-policy-slug: ${{ vars.SIGNPATH_SIGNING_POLICY_SLUG }}
+          artifact-configuration-slug: ${{ vars.SIGNPATH_ARTIFACT_CONFIGURATION_SLUG }}
+          github-artifact-id: ${{ steps.unsigned.outputs.artifact-id }}
+          wait-for-completion: true
+          output-artifact-directory: signing/signed
+      - name: Put the signed binaries back
+        if: runner.os == 'Windows' && vars.SIGNPATH_PROJECT_SLUG != ''
+        shell: bash
+        run: |
+          set -euo pipefail
+          for exe in valhsync.exe valhsync-server.exe; do
+            test -f "signing/signed/$exe"
+            cp "signing/signed/$exe" "target/${{ matrix.target }}/release/$exe"
+          done
       - name: Package
         shell: bash
         run: |
@@ -67,6 +109,7 @@ jobs:
           licences "dist/$full"
           cp README.md SECURITY.md "dist/$full/"
           cp -r docs/admin-guide.md docs/player-guide.md docs/deploy "dist/$full/docs/"
+          cp docs/code-signing-policy.md "dist/$full/docs/"
           cp docs/index.html docs/server-guide.html docs/player-guide.html "dist/$full/docs/"
 
           player="valhsync-launcher-${version}-${{ matrix.target }}"

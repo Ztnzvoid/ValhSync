@@ -173,6 +173,12 @@ remaps its source paths, so the binaries do not carry the name of whoever
 built them. Tagging `v*` makes CI produce the same four files, plus the Linux
 tarballs and a combined `SHA256SUMS`.
 
+The Windows binaries are not signed yet, which is why SmartScreen warns on a
+first run — check a download against `SHA256SUMS` until that changes. A
+certificate has been applied for and the release workflow already submits the
+binaries for signature; the [code signing policy](docs/code-signing-policy.md)
+says who can cause one to happen, and what it would and would not mean.
+
 ## Redistributing mods
 
 Serving DLLs from your own server is common between friends, but some mod
