@@ -22,6 +22,21 @@ no more zips of DLLs sent by hand after every change.
 > that matters, and open an issue when something breaks: that is what this
 > stage is for.
 
+<p align="center">
+  <img src="docs/launcher.png" width="720"
+       alt="The ValhSync launcher: one server, what it is about to install, the admin's note,
+            and the mods the server runs.">
+  <br><em>What a player sees. One window, one button, and whatever their admin wrote.</em>
+</p>
+
+<p align="center">
+  <img src="docs/server-mods.png" width="720"
+       alt="The Mods tab of the server window: a drop zone, then one row per mod with
+            sent-to-players or server-only, and buttons to disable or remove it.">
+  <br><em>The admin's window. A mod is installed by dropping it here; each one travels to
+  players or stays on the server, and can be turned off or taken out from its own row.</em>
+</p>
+
 ```
 [Warning:AzuCraftyBoxes] Peer (Steam_7656119xxxxxxxxxx) never sent version
                          or couldn't due to previous disconnect, disconnecting
@@ -273,7 +288,7 @@ Narrower than the code's reach, and worth saying so.
 | | |
 |---|---|
 | **Windows, x86_64** | Verified end to end: a PC running the Valheim dedicated server with the publisher beside it, and several players who synced from it on their own machines and joined. |
-| **Linux, x86_64** | Builds, and the whole suite passes in CI on every commit — including end-to-end tests that stand a real publisher on a socket and drive the launcher against it. No window has ever been opened on Linux, and no game started. |
+| **Linux, x86_64** | Builds and passes the suite in CI — as of this repository's first run, and not before it. The claim that it had been doing so all along was false: there was no CI until the project was published, and the first run found two things that had never compiled on Linux at all. No window has ever been opened on Linux either, and no game started. |
 | Proton, Steam Deck, macOS | Untested. |
 | A dedicated server in Docker | Untested, and partly out of reach by design: the publisher finds the game server among processes, so it cannot see one in another container. Publishing from a mounted volume should work; starting, stopping and the console will not. |
 | Hosted servers | The layout has a test; no real provider has been on the other end. |
