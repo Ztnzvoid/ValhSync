@@ -6,6 +6,8 @@
 the game starts. No more "Incompatible version", no more zips of DLLs sent by
 hand after every mod update.
 
+**Documentation: [https://ztnzvoid.github.io/ValhSync](https://ztnzvoid.github.io/ValhSync/)**
+
 > **Early version.** 0.0.3 is the third release there has ever been. One
 > server has actually run it — Windows, a dedicated server beside it, a handful
 > of players — and the whole chain works there. Linux, hosted providers, Proton
@@ -56,7 +58,7 @@ The launcher writes only inside the game folder (BepInEx paths, `winhttp.dll`,
 executes a downloaded file; it asks Steam to start Valheim.
 
 Full documentation, in one page:
-**[docs/index.html](docs/index.html)** — what it does, how it works, what is
+**[The documentation](https://ztnzvoid.github.io/ValhSync/)** — what it does, how it works, what is
 guaranteed, what every dependency is licensed under, and what has actually
 been run.
 
@@ -183,7 +185,7 @@ game root. **No local dedicated server** (G-Portal, Nitrado...)? Leave
 publisher can run anywhere, only `game_address` has to point at the game host.
 
 Setting up a server on Windows or Linux, start to finish:
-**[docs/server-guide.html](docs/server-guide.html)**. Reference for every
+**[the server guide](https://ztnzvoid.github.io/ValhSync/server-guide.html)**. Reference for every
 option: [docs/admin-guide.md](docs/admin-guide.md). Running it unattended:
 [docs/deploy](docs/deploy).
 
@@ -224,7 +226,7 @@ build). The launcher detects the case and tells you; it does not edit Steam's
 settings. Consoles cannot load mods at all: a modded server excludes PS5 and
 Switch 2 players.
 
-More: [docs/player-guide.html](docs/player-guide.html).
+More: [the player guide](https://ztnzvoid.github.io/ValhSync/player-guide.html).
 
 ## Security model, honestly
 
