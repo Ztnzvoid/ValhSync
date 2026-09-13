@@ -30,7 +30,7 @@ jobs:
           components: clippy
       - uses: Swatinem/rust-cache@v2
       - run: sudo apt-get update && sudo apt-get install -y libxkbcommon-dev libwayland-dev libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libgl1-mesa-dev
-      - run: ./scripts/ci-run.sh cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
+      - run: bash scripts/ci-run.sh cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
 
   test:
     name: test (${{ matrix.os }})
@@ -45,7 +45,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y libxkbcommon-dev libwayland-dev libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libgl1-mesa-dev
-      - run: ./scripts/ci-run.sh cargo test --workspace --all-features --locked
+      - run: bash scripts/ci-run.sh cargo test --workspace --all-features --locked
         shell: bash
 
   docs:
