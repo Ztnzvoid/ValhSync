@@ -291,13 +291,21 @@ fn motes(ctx: &egui::Context, painter: &egui::Painter, rect: Rect) {
 /// How much of the mark shows through, and how heavily it is cut. Five
 /// numbers in one place, because "a little luminous" is a judgement and it
 /// will want adjusting.
-const MARK_HALO: u8 = 9;
-const MARK_BLOOM: u8 = 5;
-const MARK_CORE: u8 = 13;
+/// No halo. A gold disc at low alpha, spread across half the window and
+/// blended with the warm browns of the ground beneath it, does not read as
+/// light behind a mark -- it reads as an olive stain, and it was what made
+/// the background look like it belonged to another program.
+const MARK_HALO: u8 = 0;
+const MARK_BLOOM: u8 = 11;
+const MARK_CORE: u8 = 26;
 /// Stroke widths. The bloom is the soft spread around each stroke; the core
 /// is the cut itself, and carries the weight.
-const MARK_BLOOM_WIDTH: f32 = 22.0;
-const MARK_CORE_WIDTH: f32 = 7.0;
+///
+/// Carved into a wall, not drawn with a pen. Seven pixels on a nine-hundred
+/// pixel window was a scratch, and a thin stroke that also wanders leaves its
+/// own middle empty -- which is why the mark looked like an outline of itself.
+const MARK_BLOOM_WIDTH: f32 = 44.0;
+const MARK_CORE_WIDTH: f32 = 19.0;
 
 /// Mannaz across the whole window, at the edge of visible.
 ///
@@ -378,7 +386,7 @@ fn watermark(ctx: &egui::Context, rect: Rect) {
         centre,
         radius,
         MARK_CORE_WIDTH,
-        Color32::from_rgba_unmultiplied(0xE8, 0xCD, 0x8B, breathed(MARK_CORE, glow)),
+        Color32::from_rgba_unmultiplied(0xC7, 0xA4, 0x55, breathed(MARK_CORE, glow)),
     );
 }
 
@@ -447,19 +455,24 @@ fn brushed(
         let wander = hash_noise(i, seed as usize, seed);
         let load = hash_noise(i + 977, seed as usize, seed ^ 0x5bf0_3635);
         let lift = hash_noise(i + 313, seed as usize, seed ^ 0x2545_f491);
-        let off = (wander - 0.5) * width * 0.40;
+        // A twelfth of the width, not two fifths. The wander is meant to keep
+        // the edge from looking machined; past a certain point the two halves
+        // of one stroke stop overlapping and the mark is hollow down its
+        // middle.
+        let off = (wander - 0.5) * width * 0.12;
 
-        // The bristles leave the surface: a gap, not a thin patch.
-        if lift > 0.88 {
+        // The bristles leave the surface: a gap, not a thin patch. Rare --
+        // this is a cut in stone that has weathered, not a dry brush.
+        if lift > 0.965 {
             prev = point;
             prev_off = off;
             continue;
         }
-        let alpha = (f32::from(colour.a()) * (0.40 + wander * 0.95)).min(255.0) as u8;
+        let alpha = (f32::from(colour.a()) * (0.78 + wander * 0.44)).min(255.0) as u8;
         painter.line_segment(
             [prev + normal * prev_off, point + normal * off],
             Stroke::new(
-                width * (0.5 + load * 0.85),
+                width * (0.88 + load * 0.3),
                 Color32::from_rgba_unmultiplied(colour.r(), colour.g(), colour.b(), alpha),
             ),
         );
