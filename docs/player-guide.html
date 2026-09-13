@@ -492,6 +492,14 @@ nav.toc a.here .n { color: var(--gold); }
 <section id="s3">
   <h2><span class="n">§3</span>Playing</h2>
   <p>Press <strong>PLAY</strong>. That is the whole of it.</p>
+
+  <figure class="shot">
+    <img src="launcher.png" alt="The ValhSync launcher: the server at the top, what it is about
+      to install, a What's new button, and the PLAY button.">
+    <figcaption>The whole launcher. The server you chose, what it is about to install, whatever
+      the admin wrote behind <em>What's new</em>, and one button.</figcaption>
+  </figure>
+
   <p>One press does it. If the admin changed something the launcher downloads only what
   changed and then starts Valheim through Steam; if nothing changed it just starts the game and
   connects you. There is no screen asking you to agree to anything: you said who you trust when
@@ -532,7 +540,9 @@ nav.toc a.here .n { color: var(--gold); }
     <li><strong>Repair</strong> — re-checks every file against the server and re-fetches anything
     that no longer matches.</li>
     <li><strong>Settings</strong> — set the game folder by hand if Steam detection fails (the
-    folder holding <code>valheim.exe</code>), or forget a server.</li>
+    folder holding <code>valheim.exe</code>), forget a server, or start over: <em>Reset
+    everything</em> forgets every server and every ValhSync setting, and touches neither the
+    game nor the mods already installed.</li>
     <li><strong>The language menu</strong>, top right: English, Français, Deutsch, Español,
     Italiano, Polski, Português, Русский. Your choice is remembered. Everything but English and
     French was translated without a native speaker to check it — if something reads wrong in
@@ -559,7 +569,7 @@ nav.toc a.here .n { color: var(--gold); }
 
 <section id="s7">
   <h2><span class="n">§7</span>A newer ValhSync</h2>
-  <p>A server can offer a newer launcher. If yours does, a gold bar appears above the server card
+  <p>A server can offer a newer launcher. If yours does, a band in the theme's northern blue appears above the server card
   with the version, the server's name and its key fingerprint. One click downloads it, checks it
   against the digest the server signed, replaces your launcher and restarts it.</p>
   <p>Worth knowing what you are agreeing to. The file comes from <em>that server's admin</em>,
@@ -590,7 +600,7 @@ Native Linux build:  ./start_game_bepinex.sh %command%</code></pre>
 <section id="s9">
   <h2><span class="n">§9</span>Command line</h2>
   <p>The same executable works in a terminal:</p>
-<pre><code>valhsync join &lt;code&gt;      add a server
+<pre><code>valhsync join &lt;ip:port&gt;   add a server (an invite code works too)
 valhsync status           show what a sync would do
 valhsync sync             sync without starting the game
 valhsync play             sync and start the game

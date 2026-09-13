@@ -159,7 +159,7 @@ pub struct PackSection {
     /// next launch.
     pub export_dir: Option<PathBuf>,
     /// What the admin wants to say about this pack. Published inside the
-    /// signed manifest, so players read it before they agree to a sync.
+    /// signed manifest, so players can read it before a sync and after it.
     ///
     /// It describes the pack rather than the server, which is why it lives
     /// here: renaming the server or moving the port leaves it alone.
@@ -574,7 +574,7 @@ fn toml_text(s: &str) -> String {
     // note that came back with different bytes would make the window think
     // someone else had edited the file. The other control characters go for
     // the reason the manifest refuses them: escape sequences in a message
-    // players are shown before they agree to anything.
+    // players are shown in the launcher.
     let s: String = s
         .replace("\r\n", "\n")
         .chars()

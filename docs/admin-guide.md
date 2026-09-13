@@ -117,7 +117,31 @@ managed_roots = ["BepInEx/plugins", "BepInEx/patchers"]
 default = "enforce"                      # always match the server
 seed = ["BepInEx/config/**"]             # installed once, then the player's
 enforce = ["BepInEx/config/BepInEx.cfg"] # except these
+
+[game_server]
+start_script = 'C:\valheim\start-server.bat'  # your copy, not Steam's
+stop_with_game = true                    # publishing follows the game server
+restart_on_crash = false                 # bring it back if it exits by itself
+
+[limits]
+max_file_mb = 512                        # refuse a single file larger than this
+max_pack_mb = 4096                       # ... or a whole pack larger than this
+max_files = 10000
 ```
+
+Three more keys sit outside those sections:
+
+- `language` at the top of the file — `en`, `fr`, `de`, `es`, `it`, `pl`, `pt`,
+  `ru`. Unset follows the system. The window's menu writes it here, so the
+  choice survives a restart.
+- `[server] discord_webhook` — a Discord webhook URL. Absent by default, and
+  absent means the feature is off: nothing is ever sent anywhere unless you
+  paste one in. When it is set, each published pack is announced in that
+  channel with what changed and whatever you wrote in the patch note. The URL
+  carries a token, so it is never printed back, not into the log and not into
+  an error message.
+- `[pack] export_dir` — where `export` writes the folder to upload. Unset means
+  `pack-site` beside the configuration.
 
 - `managed_roots` are the folders ValhSync owns on the player's side. A DLL
   found there that the manifest does not know (a leftover of another mod
@@ -191,31 +215,75 @@ outbound tunnel (Cloudflare Tunnel, ngrok) in front of it.
 
 Run it as a service: see [deploy/](deploy/).
 
-## 5. The Server tab
+## 5. The window
 
-Double-clicked, `valhsync-server` opens a window with two tabs.
+Double-clicked, `valhsync-server` opens a window with five tabs. Everything
+below is also a command; the window is not a second way of configuring the
+same thing, it is the same configuration file.
 
 **Server** is what is happening now: online or offline, how many players, the
-crossplay join code, how long ago the world was written to disk, and the
-server's log as it is written. The log is found on its own — the `-logFile`
-the start script asks for, else `BepInEx/LogOutput.log`, else Unity's
-`output_log.txt`.
+crossplay join code, how long ago the world was written to disk, the public
+address, and the server's log as it is written. The log is found on its own —
+the `-logFile` the start script asks for, else `BepInEx/LogOutput.log`, else
+Unity's `output_log.txt`. Below it sits a console that carries the lines the
+server prints to its own, which are otherwise a handful among tens of
+thousands, and a prompt — see **Players** below for what the prompt takes.
 
 *Start* runs the start script in its own console window. *Stop and save* sends
 that console a Ctrl+C, which is exactly what an admin types into it: Valheim
 writes the world to disk and then exits. ValhSync never terminates the
 process, because a killed server loses everything since the last autosave.
+*Restart* waits for the old process to actually be gone before starting the
+new one.
 
-There is no way to force a save without stopping. The window can type into
-the server's console (the line at the bottom, Windows only), but Valheim's
-dedicated server has no save command to send it. What you can set is how often
-it saves itself —
-`-saveinterval`, 1800 seconds by default — which the start-script wizard puts
-on the form.
+There is no way to force a save without stopping, and ValhSync does not pretend
+otherwise. The dedicated server does not read its own console, whatever its
+start-up banner says, and Valheim has no RCON: saving on demand and kicking
+somebody who is connected right now are an admin pressing F5 in the game. What
+you can set is how often it saves itself — `-saveinterval`, 1800 seconds by
+default — which the start-script wizard puts on the form.
 
-**Settings** holds everything that is written to a file: the server folder,
-the identity, which mods are server-only, how the pack is published, the
-invite code, and the wizard below.
+**Mods** is one row per mod found in the server's `BepInEx/plugins`. Each row
+says whether that mod is *sent to players* or *server only* — admin tools and
+Discord bridges have no reason to travel — and carries two more buttons:
+
+- *Disable* moves the mod out of `BepInEx` entirely. Renaming it in place
+  would not do: BepInEx loads every `.dll` under `plugins` recursively, and
+  anything left inside travels to players in the pack.
+- *Remove* does not delete. The mod goes to a folder ValhSync owns, and the
+  window says which, so a mistake at eleven at night can be walked back.
+
+A mod is installed by dropping it on the window — see §7.
+
+**Players** holds the admin list, the ban list and the permitted list, written
+to the three files Iron Gate documents (`adminlist.txt`, `bannedlist.txt`,
+`permittedlist.txt`), which is the only channel a dedicated server has from
+outside the game. Each id is shown beside the name the server's log recorded
+for it, because seventeen digits are no way to decide who to ban. The same
+thing is on the console prompt: `admin`, `ban`, `permit` and their `un-`
+forms, plus `admins`, `banned`, `permitted` to see a list. Valheim rereads
+those files by itself; a ban takes effect on the banned player's next attempt.
+
+**Patch notes** is the note players read. Most of it writes itself: the mods
+added, updated and removed are computed from the pack and named for you, so
+you never retype a version number. What you add is the half a diff cannot
+produce — that a mod resets its own config, that a chest mod wants an empty
+base first, that this update only matters to the people who were crashing on
+the boat. Saving publishes it; players see it behind *What's new* at their
+next sync, and it stays readable afterwards. Nothing waits on them agreeing
+to it.
+
+**Settings** holds everything else that is written to the file: the server
+folder, the identity, which mods are server-only, how the pack is published,
+the address and key fingerprint to hand out, the invite code, and the wizard
+below. There is no Save button — it writes itself — and the language menu is
+at the top right of the window.
+
+**Backing up the world** is on the Server tab, next to the world's own line.
+Both halves of a world travel together (`.db` and `.fwl`), the copy lands
+beside `worlds_local` and never inside it — Valheim offers everything in there
+as a joinable world — and a copy taken while the server is up may be torn, so
+the window says so before the click rather than after.
 
 ### The start-script wizard
 
@@ -267,8 +335,23 @@ from a random link.
 - **Updating a mod**: replace the files in the server's `BepInEx/plugins` (or in
   `client-extras/`). `serve` republishes within seconds. Players get the change
   at their next PLAY, downloading only what changed.
-- **Removing a mod**: delete its folder. Players' launchers remove the files
-  they had installed (they go to the player's backup, not the trash).
+- **Turning a mod off, or taking it out**: the two buttons on its row in the
+  Mods tab. Disabling moves it out of `BepInEx` entirely, because BepInEx loads
+  every `.dll` under `plugins` recursively and anything left inside would
+  travel to players anyway. Removing moves it to a folder ValhSync owns rather
+  than deleting it. Either way the pack is rebuilt: players' launchers take the
+  files they had installed out of the game, into their own backup and not the
+  trash.
+- **Removing a mod by hand**: delete its folder in `BepInEx/plugins`. Same
+  result, no undo.
+- **Writing the patch note**: the Patch notes tab. The mod-by-mod list writes
+  itself; you add the part a diff cannot produce. Saving publishes it.
+- **Backing up the world**: the Server tab, beside the world's own line. Both
+  halves together, beside `worlds_local` and never inside it. Do it before a
+  change, which is exactly when a world gets corrupted.
+- **Announcing a release**: set `[server] discord_webhook` and each published
+  pack is posted to that channel with what changed and what you wrote. Nothing
+  is sent anywhere while that key is absent.
 - **Checking who is in sync**: not in v1. The server log shows requests; the
   launcher shows the pack id on the player's side.
 - **Rotating the key** (`valhsync-server rotate-key --yes`): only if the key
@@ -328,3 +411,8 @@ as before.
   options; the launcher prints them.
 - Some mod authors forbid redistribution of their files. Check before you
   publish a mod from your server.
+- They join by pasting your server's address — the same `ip:port` they already
+  type into Valheim — and comparing the key fingerprint you announce. An invite
+  code does the same job without the comparison, if you prefer to send one.
+- A newer launcher is offered through the same signed channel when
+  `valhsync.exe` sits beside the publisher, so they only install by hand once.

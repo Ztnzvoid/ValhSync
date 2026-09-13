@@ -528,7 +528,12 @@ nav.toc a.here .n { color: var(--gold); }
   <h3>Server</h3>
       <ul>
         <li>Start, restart and stop the dedicated server. Stopping sends Ctrl+C to its console,
-        so Valheim writes the world before it exits; the process is never killed.</li>
+        so Valheim writes the world before it exits; the process is never killed. A server that
+        exits without being asked to can be brought back on its own — off by default, and
+        bounded, because the failure this exists for is also the failure that loops.</li>
+        <li>Back up the world before a change: both halves together, beside
+        <code>worlds_local</code> and never inside it, with a warning that a copy taken while
+        the server runs may be torn.</li>
         <li>Players online, join code, Valheim version, public address, process id.</li>
         <li>Its log, followed live, and below it a resizable console holding the lines the
         server prints to its own — a handful among tens of thousands.</li>
@@ -568,8 +573,13 @@ nav.toc a.here .n { color: var(--gold); }
   <p>Its own tab, published signed with the pack. The list of mods added, updated and removed
   writes itself from the plan, so no version number is ever retyped; what you add is the half a
   diff cannot produce — that a mod resets its own config, that this update only matters to the
-  people who were crashing on the boat. Players read it before they agree to install, and keep
-  it afterwards.</p>
+  people who were crashing on the boat. Players read it before the sync if they want to, and it
+  is still there afterwards — nothing waits on them agreeing to anything.</p>
+  <h3>Announcements</h3>
+  <p>A Discord webhook, and every published pack is posted to that channel with what changed and
+  whatever the admin wrote. It is absent by default, and absent means off: ValhSync contacts no
+  third party unless somebody pasted an address in.</p>
+
   <h3>Settings</h3>
   <p>Where the dedicated server lives, the name and address players see, publishing — a static
   folder to upload, or the live server — and the address and key fingerprint to hand out, with

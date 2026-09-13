@@ -520,6 +520,15 @@ sudo chown -R valhsync: /opt/valhsync</code></pre>
       code.</p>
     </div>
   </div>
+
+  <figure class="shot">
+    <img src="server-window.png" alt="The ValhSync server window on its Server tab: the
+      dedicated server online, with start, restart and stop, the public address, and the log
+      below.">
+    <figcaption>The window on first run. Four tabs across the top; the dedicated server is
+      started, stopped and restarted from this one, and the pack goes online behind it.</figcaption>
+  </figure>
+
   <h3>Where things live</h3>
   <table>
     <thead><tr><th></th><th>Windows</th><th>Linux</th></tr></thead>
@@ -551,6 +560,13 @@ sudo chown -R valhsync: /opt/valhsync</code></pre>
     so ValhSync cannot find them there. Put them in the <code>client-extras/</code> folder, laid
     out like a game root (<code>BepInEx/plugins/...</code>).</li>
   </ul>
+  <figure class="shot">
+    <img src="server-mods.png" alt="The Mods tab: a drop zone for installing a mod, then one row
+      per mod marked sent to players or server only, with buttons to disable or remove it.">
+    <figcaption>One row per mod. The button on the left of each row is what decides whether it
+      travels to players; the two on the right turn it off or take it out.</figcaption>
+  </figure>
+
   <p>Check what a publish would contain before it goes out:</p>
 <pre><code>valhsync-server scan</code></pre>
 </section>
@@ -686,14 +702,28 @@ journalctl -u valhsync-server -f</code></pre>
     start-up banner says, and Valheim has no RCON; kicking somebody who is connected right now,
     and saving on demand, are an admin pressing F5 in the game. Typing those here says so
     rather than failing quietly.</li>
+    <li><strong>Announce a release in Discord</strong>, if you want one announced. Paste a
+    webhook URL into the configuration and each published pack is posted to that channel with
+    what changed and whatever you wrote in the note. Absent by default, and absent means
+    nothing is sent anywhere: ValhSync contacts no third party unless you put an address
+    there.</li>
     <li><strong>Patch notes</strong>, on their own tab — a real one, and most of it writes
     itself. The list of mods added, updated and removed is computed from the pack and named for
     you, so you never retype a version number. What you add is the half a diff cannot produce:
     that a mod resets its own config, that a chest mod wants an empty base first, that this
     update only matters to the people who were crashing on the boat. Players read the whole
-    thing <em>before</em> they agree to install it, and it is kept afterwards so they can go
-    back to it.</li>
+    thing <em>before</em> the sync if they want to, behind a What's new button, and it is still
+    there afterwards. Nothing waits on them agreeing to it: pressing Play installs.</li>
   </ul>
+
+  <figure class="shot">
+    <img src="server-players.png" alt="The Players tab: the admin list and the banned list, each
+      id shown with the name the server's log recorded for it, and a field to add another.">
+    <figcaption>Admins, bans and the permitted list, written to the three files Valheim reads.
+      The names come from the server's own log, because seventeen digits are no way to decide
+      who to ban.</figcaption>
+  </figure>
+
   <p>From the command line, on either platform: <code>start-game</code>, <code>stop-game</code>,
   <code>scan</code>, <code>invite</code>, <code>rotate-key</code>.</p>
 </section>

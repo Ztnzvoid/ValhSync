@@ -66,8 +66,8 @@ pub struct Manifest {
     /// this field, and on servers whose log has not said yet.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub network_version: Option<u32>,
-    /// What the admin wants to say about this pack, shown to players before
-    /// they agree to install it.
+    /// What the admin wants to say about this pack, readable by players
+    /// before a sync and still there after it.
     ///
     /// The list of mods that changed is computed from the plan and needs
     /// nobody to write it. This is for the part no diff can produce: that a

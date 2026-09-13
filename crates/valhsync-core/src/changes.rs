@@ -3,8 +3,8 @@
 //! A plan is a list of files, which is the right shape to apply and the wrong
 //! shape to read: forty entries under `BepInEx/plugins/Seasonality/` are one
 //! thing happening, not forty. Grouping them back into mods is what lets the
-//! launcher say "Seasonality added, PlantEverything updated" before asking
-//! somebody to agree to it.
+//! launcher say "Seasonality added, PlantEverything updated" rather than
+//! listing forty files nobody reads.
 
 use std::collections::BTreeMap;
 
