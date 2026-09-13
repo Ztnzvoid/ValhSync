@@ -237,9 +237,9 @@ pub fn backdrop(ctx: &egui::Context, painter: &egui::Painter, rect: Rect) {
         Color32::from_rgba_unmultiplied(0x22, 0x1C, 0x14, 120),
     );
     dust(ctx, painter, rect);
+    burning_edge(ctx, painter, rect);
     motes(ctx, painter, rect);
     vignette(painter, rect);
-    watermark(ctx, rect);
     // Twenty-five frames a second is enough for something that drifts, and
     // it is a quarter of the work of asking for every frame. A launcher
     // sitting open on somebody's desk should not warm their laptop to make a
@@ -247,77 +247,107 @@ pub fn backdrop(ctx: &egui::Context, painter: &egui::Painter, rect: Rect) {
     ctx.request_repaint_after(std::time::Duration::from_millis(40));
 }
 
-/// Embers, in the colour of the mark, drifting up through the window.
+/// The left edge, alight.
 ///
-/// Deterministic: each mote's lane, speed and phase come out of the same hash
-/// the grain uses, so there is no state to keep and every machine sees the
-/// same drift. Few, small, and dim enough that on a bright monitor they are
-/// atmosphere rather than confetti -- if you can count them, there are too
-/// many.
-fn motes(ctx: &egui::Context, painter: &egui::Painter, rect: Rect) {
-    const COUNT: usize = 34;
-    /// Seconds for one to cross the window, at the slowest.
-    const CLIMB: f32 = 26.0;
+/// Bands rather than a gradient fill, because a painter that draws one
+/// rectangle per step costs nothing at this width and egui has no gradient
+/// brush. Hot at the edge, gone within a hundred pixels: what should read is
+/// the light coming off it, not a stripe.
+///
+/// It breathes. Fire that holds one brightness is a lamp, and the whole point
+/// of this is that the edge is burning rather than lit.
+fn burning_edge(ctx: &egui::Context, painter: &egui::Painter, rect: Rect) {
+    const REACH: f32 = 96.0;
+    const STEPS: usize = 24;
 
     let t = seconds(ctx);
-    for i in 0..COUNT {
-        let lane = hash_noise(i, 0, 0x5EED);
-        let speed = 0.6 + hash_noise(i, 1, 0x5EED) * 0.8;
-        let sway = hash_noise(i, 2, 0x5EED);
-        let size = 0.7 + hash_noise(i, 3, 0x5EED) * 1.3;
+    // Two waves again, out of step, so it never settles into a pulse.
+    let flare = 1.0 + 0.20 * (t * 1.7).sin() + 0.12 * (t * 0.9 + 2.1).sin();
 
-        // Its own place in the climb, so they do not rise in a rank.
-        let phase = (t * speed / CLIMB + hash_noise(i, 4, 0x5EED)).fract();
-        let y = rect.max.y - phase * rect.height();
-        let drift = (t * 0.35 + sway * std::f32::consts::TAU).sin() * 14.0;
-        let x = rect.min.x + lane * rect.width() + drift;
-
-        // In at the bottom, out at the top: an ember that vanishes mid-air is
-        // less believable than one that fades as it goes cold.
-        let fade = (phase * 3.0).min(1.0) * ((1.0 - phase) * 2.4).min(1.0);
+    #[allow(clippy::cast_precision_loss)]
+    let steps = STEPS as f32;
+    for i in 0..STEPS {
+        #[allow(clippy::cast_precision_loss)]
+        let depth = i as f32 / steps;
+        // Squared: most of the light sits in the first few pixels, the way it
+        // does coming off an edge that is actually alight.
+        let fall = (1.0 - depth) * (1.0 - depth);
+        let near = rect.min.x + depth * REACH;
+        let far = rect.min.x + (depth + 1.0 / steps) * REACH;
         #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
-        let alpha = (fade * 26.0) as u8;
+        let alpha = (fall * 26.0 * flare).clamp(0.0, 255.0) as u8;
         if alpha == 0 {
             continue;
         }
-        painter.circle_filled(
-            egui::pos2(x, y),
-            size,
-            Color32::from_rgba_unmultiplied(0xE8, 0xCD, 0x8B, alpha),
+        // Ember colour: the gold of the theme pulled towards the red it would
+        // have at the hot edge.
+        let ember = if depth < 0.25 {
+            (0xE8, 0xA8, 0x55)
+        } else {
+            (0xC7, 0x7A, 0x3A)
+        };
+        painter.rect_filled(
+            egui::Rect::from_min_max(egui::pos2(near, rect.min.y), egui::pos2(far, rect.max.y)),
+            0.0,
+            Color32::from_rgba_unmultiplied(ember.0, ember.1, ember.2, alpha),
         );
     }
 }
 
-/// How much of the mark shows through, and how heavily it is cut. Five
-/// numbers in one place, because "a little luminous" is a judgement and it
-/// will want adjusting.
-/// No halo. A gold disc at low alpha, spread across half the window and
-/// blended with the warm browns of the ground beneath it, does not read as
-/// light behind a mark -- it reads as an olive stain, and it was what made
-/// the background look like it belonged to another program.
-const MARK_HALO: u8 = 0;
-const MARK_BLOOM: u8 = 11;
-const MARK_CORE: u8 = 26;
-/// Stroke widths. The bloom is the soft spread around each stroke; the core
-/// is the cut itself, and carries the weight.
+/// Embers coming off the burning edge.
 ///
-/// Carved into a wall, not drawn with a pen. Seven pixels on a nine-hundred
-/// pixel window was a scratch, and a thin stroke that also wanders leaves its
-/// own middle empty -- which is why the mark looked like an outline of itself.
-const MARK_BLOOM_WIDTH: f32 = 44.0;
-const MARK_CORE_WIDTH: f32 = 19.0;
+/// They belong to the fire on the left, so that is where they start: the
+/// lanes crowd the first eighty pixels and thin out from there, and each one
+/// drifts right as it rises the way something light does leaving a heat
+/// source. Scattered evenly across the window they were confetti; coming off
+/// an edge they are what that edge is doing.
+///
+/// Deterministic: each ember's lane, speed and phase come out of the same
+/// hash the grain uses, so there is no state to keep and every machine sees
+/// the same drift.
+fn motes(ctx: &egui::Context, painter: &egui::Painter, rect: Rect) {
+    const COUNT: usize = 40;
+    /// Seconds to cross the window, at the slowest.
+    const CLIMB: f32 = 22.0;
+    /// How far from the edge they are born.
+    const NURSERY: f32 = 80.0;
 
-/// Mannaz across the whole window, at the edge of visible.
-///
-/// Painted on the layer above the panel rather than beneath it: the plates
-/// are opaque, and a mark showing only in the gaps between them would read as
-/// four unrelated scratches instead of one shape. Above them, at this alpha,
-/// it is felt rather than seen -- if it reads as a picture it is too strong.
-/// The clock the animations run on.
-///
-/// Wrapped an hour at a time. egui counts seconds since the window opened as
-/// an `f64`, and a launcher somebody leaves open for days would otherwise
-/// lose precision in the fraction that drives the drift.
+    let t = seconds(ctx);
+    for i in 0..COUNT {
+        // Cubed, so most of them hug the edge and a few stray out.
+        let out = hash_noise(i, 0, 0x5EED);
+        let lane = out * out * out;
+        let speed = 0.6 + hash_noise(i, 1, 0x5EED) * 0.9;
+        let sway = hash_noise(i, 2, 0x5EED);
+        let size = 0.7 + hash_noise(i, 3, 0x5EED) * 1.5;
+
+        // Its own place in the climb, so they do not rise in a rank.
+        let phase = (t * speed / CLIMB + hash_noise(i, 4, 0x5EED)).fract();
+        let y = rect.max.y - phase * rect.height();
+        // Rising and leaning away from the heat, with a wobble on top.
+        let drift = phase * 46.0 + (t * 0.5 + sway * std::f32::consts::TAU).sin() * 9.0;
+        let x = rect.min.x + lane * NURSERY + drift;
+
+        // In at the bottom, out at the top: an ember that vanishes mid-air is
+        // less believable than one that fades as it goes cold.
+        let fade = (phase * 4.0).min(1.0) * ((1.0 - phase) * 2.0).min(1.0);
+        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+        let alpha = (fade * 34.0) as u8;
+        if alpha == 0 {
+            continue;
+        }
+        // Cooling as it climbs: gold at the edge, deep ember by the top.
+        let hot = 1.0 - phase;
+        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+        let green = (122.0 + hot * 80.0) as u8;
+        painter.circle_filled(
+            egui::pos2(x, y),
+            size,
+            Color32::from_rgba_unmultiplied(0xE8, green, 0x55, alpha),
+        );
+    }
+}
+
 #[allow(clippy::cast_possible_truncation)]
 fn seconds(ctx: &egui::Context) -> f32 {
     ctx.input(|i| i.time % 3600.0) as f32
@@ -331,154 +361,6 @@ fn seconds(ctx: &egui::Context) -> f32 {
 #[must_use]
 pub fn body_line_height() -> f32 {
     22.0
-}
-
-/// How bright the mark is this frame, as a multiplier around 1.
-///
-/// Two slow waves that do not share a period, so the mark never settles into
-/// a pulse you can count along with -- a light that breathes rather than one
-/// that blinks. Kept close to 1: the point is that somebody notices the mark
-/// is alive without ever catching it moving.
-fn shimmer(ctx: &egui::Context) -> f32 {
-    let t = seconds(ctx);
-    let slow = (t * 0.23).sin();
-    let slower = (t * 0.11 + 1.7).sin();
-    1.0 + 0.22 * slow + 0.12 * slower
-}
-
-/// One alpha, dimmed or lifted by the shimmer, and never past what a `u8`
-/// holds.
-#[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
-fn breathed(alpha: u8, by: f32) -> u8 {
-    (f32::from(alpha) * by).clamp(0.0, 255.0) as u8
-}
-
-fn watermark(ctx: &egui::Context, rect: Rect) {
-    let glow = shimmer(ctx);
-    let painter = egui::Painter::new(
-        ctx.clone(),
-        egui::LayerId::new(egui::Order::Middle, egui::Id::new("mannaz-watermark")),
-        rect,
-    );
-    let centre = rect.center();
-    let radius = rect.width().min(rect.height()) * 0.34;
-    // The halo a lamp has, so the mark sits inside the torchlight rather
-    // than on top of it.
-    radial_pool(
-        &painter,
-        centre,
-        radius * 2.0,
-        Color32::from_rgba_unmultiplied(0xC7, 0xA4, 0x55, breathed(MARK_HALO, glow)),
-    );
-    // A wide dim pass for the bloom along each stroke, a narrow bright one
-    // for the carved edge: the same two-step the lamps are built from.
-    rune(
-        &painter,
-        centre,
-        radius,
-        Stroke::new(
-            MARK_BLOOM_WIDTH,
-            Color32::from_rgba_unmultiplied(0xC7, 0xA4, 0x55, breathed(MARK_BLOOM, glow)),
-        ),
-    );
-    painted_rune(
-        &painter,
-        centre,
-        radius,
-        MARK_CORE_WIDTH,
-        Color32::from_rgba_unmultiplied(0xC7, 0xA4, 0x55, breathed(MARK_CORE, glow)),
-    );
-}
-
-/// Mannaz as paint rather than as line work: the cut wanders, the pigment
-/// runs thick and thin, and the brush leaves the surface here and there. The
-/// bloom underneath stays smooth, so what reads as uneven is the paint and
-/// not the light behind it.
-fn painted_rune(
-    painter: &egui::Painter,
-    centre: egui::Pos2,
-    radius: f32,
-    width: f32,
-    colour: Color32,
-) {
-    for (i, (a, b)) in mannaz_strokes([centre.x, centre.y], radius)
-        .into_iter()
-        .enumerate()
-    {
-        #[allow(clippy::cast_possible_truncation)]
-        let seed = 0x51_u32.wrapping_mul(i as u32 + 1);
-        brushed(
-            painter,
-            egui::pos2(a[0], a[1]),
-            egui::pos2(b[0], b[1]),
-            width,
-            colour,
-            seed,
-        );
-    }
-}
-
-/// One stroke, drawn as a chain of short segments that wander off the line,
-/// vary in weight and opacity, and now and then skip.
-///
-/// The jitter comes from the same value noise the ground uses, so it is the
-/// same on every machine and identical from frame to frame: a mark that
-/// re-rolled itself each repaint would crawl.
-#[allow(
-    clippy::cast_precision_loss,
-    clippy::cast_possible_truncation,
-    clippy::cast_sign_loss
-)]
-fn brushed(
-    painter: &egui::Painter,
-    a: egui::Pos2,
-    b: egui::Pos2,
-    width: f32,
-    colour: Color32,
-    seed: u32,
-) {
-    let span = b - a;
-    let len = span.length();
-    if len <= f32::EPSILON {
-        return;
-    }
-    let dir = span / len;
-    let normal = egui::vec2(-dir.y, dir.x);
-    // Short enough that the wander reads as a wobble rather than a zigzag.
-    let step = (width * 0.6).max(3.0);
-    let count = (len / step).ceil().max(1.0) as usize;
-
-    let (mut prev, mut prev_off) = (a, 0.0_f32);
-    for i in 1..=count {
-        let t = i as f32 / count as f32;
-        let point = a + span * t;
-        let wander = hash_noise(i, seed as usize, seed);
-        let load = hash_noise(i + 977, seed as usize, seed ^ 0x5bf0_3635);
-        let lift = hash_noise(i + 313, seed as usize, seed ^ 0x2545_f491);
-        // A twelfth of the width, not two fifths. The wander is meant to keep
-        // the edge from looking machined; past a certain point the two halves
-        // of one stroke stop overlapping and the mark is hollow down its
-        // middle.
-        let off = (wander - 0.5) * width * 0.12;
-
-        // The bristles leave the surface: a gap, not a thin patch. Rare --
-        // this is a cut in stone that has weathered, not a dry brush.
-        if lift > 0.965 {
-            prev = point;
-            prev_off = off;
-            continue;
-        }
-        let alpha = (f32::from(colour.a()) * (0.78 + wander * 0.44)).min(255.0) as u8;
-        painter.line_segment(
-            [prev + normal * prev_off, point + normal * off],
-            Stroke::new(
-                width * (0.88 + load * 0.3),
-                Color32::from_rgba_unmultiplied(colour.r(), colour.g(), colour.b(), alpha),
-            ),
-        );
-        prev = point;
-        prev_off = off;
-    }
 }
 
 /// A fine dust over the ground, so the surface is a material rather than a
