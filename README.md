@@ -1,12 +1,18 @@
 # ValhSync
 
-**The server is the source of truth for a Valheim mod pack.** The admin runs
-`valhsync-server` next to the dedicated server; players run `valhsync`, press
-**Play**, and their BepInEx folder is brought in line with the server's before
-the game starts. No more "Incompatible version", no more zips of DLLs sent by
-hand after every mod update.
+**Run a modded Valheim server, and hand your players a launcher that keeps up
+with it.**
 
-**Documentation: [https://ztnzvoid.github.io/ValhSync](https://ztnzvoid.github.io/ValhSync/)**
+`valhsync-server` is the admin's window. It starts and stops the dedicated
+server, installs a mod by having it dropped on it, turns one off or takes it
+out, keeps the admin and ban lists, writes the patch note, backs up the world,
+and publishes the whole pack signed.
+
+`valhsync` is what the players get. One button. Their BepInEx folder is brought
+in line with the server's and the game starts. No more "Incompatible version",
+no more zips of DLLs sent by hand after every change.
+
+**[Download the latest release](https://github.com/Ztnzvoid/ValhSync/releases/latest)** · **[Documentation](https://ztnzvoid.github.io/ValhSync/)**
 
 > **Early version.** 0.0.3 is the third release there has ever been. One
 > server has actually run it — Windows, a dedicated server beside it, a handful

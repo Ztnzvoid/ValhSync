@@ -37,6 +37,39 @@
   a:hover { color: var(--gold-lit); }
   a:focus-visible { outline: 2px solid var(--gold-lit); outline-offset: 2px; }
 
+  /* The download, given the weight it has earned: it is what most people came
+     for, and hunting for a Releases tab is not a rite of passage. */
+  .grab { margin: 1.6rem 0 0.4rem; display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.9rem; }
+  .get {
+    display: inline-block;
+    padding: 0.62rem 1.5rem;
+    background: var(--gold);
+    color: var(--night);
+    font: 0.95rem/1 var(--display);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    border-radius: 2px;
+    text-decoration: none;
+    box-shadow: 0 0 22px rgba(199,164,85,0.22);
+  }
+  .get:hover { background: var(--gold-lit); color: var(--night); }
+  .get-note { font-size: 0.86rem; color: var(--bone-dim); flex: 1 1 16rem; }
+  .grab-alt { margin: 0.2rem 0 0; font-size: 0.86rem; color: var(--bone-dim); }
+
+  /* A screenshot is a border and a caption, not a floating rectangle. */
+  .shot { margin: 2rem 0 0; }
+  .shot img {
+    display: block;
+    width: 100%;
+    border: 1px solid var(--edge);
+    border-radius: 2px;
+  }
+  .shot figcaption {
+    margin-top: 0.55rem;
+    font-size: 0.86rem;
+    color: var(--bone-dim);
+  }
+
   /* Early-version notice. Blood on leather, not a yellow browser warning:
      it belongs to the document, and is meant to be read rather than
      dismissed. */

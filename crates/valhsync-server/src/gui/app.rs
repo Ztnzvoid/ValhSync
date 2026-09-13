@@ -1144,7 +1144,7 @@ impl App {
                 ui.horizontal(|ui| {
                     w::header(
                         ui,
-                        "V A L H S Y N C   ·   S E R V E U R",
+                        self.t(Key::WindowMark),
                         Some(concat!("v", env!("CARGO_PKG_VERSION"), " · alpha")),
                     );
                     ui.with_layout(Layout::right_to_left(Align::Min), |ui| {

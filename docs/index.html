@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>ValhSync — the server decides the mods</title>
+<title>ValhSync — Valheim server manager and mod launcher</title>
 <meta name="description" content="ValhSync keeps a modded Valheim server and its players on the same mod pack: the server publishes a signed manifest, the launcher applies it before the game starts.">
 <style>
 /* ValhSync documents: one charter, three pages.
@@ -44,6 +44,39 @@
   a { color: var(--gold); text-underline-offset: 2px; text-decoration-color: var(--edge); }
   a:hover { color: var(--gold-lit); }
   a:focus-visible { outline: 2px solid var(--gold-lit); outline-offset: 2px; }
+
+  /* The download, given the weight it has earned: it is what most people came
+     for, and hunting for a Releases tab is not a rite of passage. */
+  .grab { margin: 1.6rem 0 0.4rem; display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.9rem; }
+  .get {
+    display: inline-block;
+    padding: 0.62rem 1.5rem;
+    background: var(--gold);
+    color: var(--night);
+    font: 0.95rem/1 var(--display);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    border-radius: 2px;
+    text-decoration: none;
+    box-shadow: 0 0 22px rgba(199,164,85,0.22);
+  }
+  .get:hover { background: var(--gold-lit); color: var(--night); }
+  .get-note { font-size: 0.86rem; color: var(--bone-dim); flex: 1 1 16rem; }
+  .grab-alt { margin: 0.2rem 0 0; font-size: 0.86rem; color: var(--bone-dim); }
+
+  /* A screenshot is a border and a caption, not a floating rectangle. */
+  .shot { margin: 2rem 0 0; }
+  .shot img {
+    display: block;
+    width: 100%;
+    border: 1px solid var(--edge);
+    border-radius: 2px;
+  }
+  .shot figcaption {
+    margin-top: 0.55rem;
+    font-size: 0.86rem;
+    color: var(--bone-dim);
+  }
 
   /* Early-version notice. Blood on leather, not a yellow browser warning:
      it belongs to the document, and is meant to be read rather than
@@ -389,13 +422,30 @@ nav.toc a.here .n { color: var(--gold); }
 
 <header class="hero">
   <h1>ValhSync</h1>
-  <p class="sub">Two launchers for a modded Valheim server. The admin's runs the dedicated
-  server and publishes a signed mod pack; the player's pins the server key, brings BepInEx in
-  line with it, and starts the game.</p>
+  <p class="sub">Run a modded Valheim server, and hand your players a launcher that keeps up
+  with it. Two windows: yours starts and stops the dedicated server, installs and retires mods,
+  keeps the admin and ban lists, writes the patch note and backs up the world. Theirs is one
+  button.</p>
 <div class="log"><span class="w">[Warning:AzuCraftyBoxes] Peer (Steam_7656119xxxxxxxxxx) never sent version
                         or couldn't due to previous disconnect, disconnecting</span></div>
-  <p class="verdict">The player did not have the right mods, was thrown out, and saw only
-  “Incompatible version”. ValhSync exists so that stops happening.</p>
+  <p class="verdict">That line is why this exists. The player did not have the right mods, was
+  thrown out, and saw only “Incompatible version” — and somebody had to work out which of
+  twenty mods it was.</p>
+
+  <p class="grab">
+    <a class="get" href="https://github.com/Ztnzvoid/ValhSync/releases/latest">Download ValhSync</a>
+    <span class="get-note">Windows and Linux &middot; the admin's archive holds both programs
+    and the guides; the player's holds the launcher and nothing else.</span>
+  </p>
+  <p class="grab-alt"><a href="https://github.com/Ztnzvoid/ValhSync">Source on GitHub</a>
+  &middot; <a href="https://github.com/Ztnzvoid/ValhSync/releases">All releases</a>
+  &middot; MIT or Apache-2.0</p>
+
+  <figure class="shot">
+    <img src="launcher.png" alt="The ValhSync launcher: one server, what it is about to install,
+      the admin's note, and the list of mods the server runs.">
+    <figcaption>What a player sees. One window, one button, and whatever their admin wrote.</figcaption>
+  </figure>
 </header>
 <div class="early">
   <p><strong>This is an early version.</strong> 0.0.3 is the third release there has ever
@@ -410,6 +460,11 @@ nav.toc a.here .n { color: var(--gold); }
 
 <section id="s1">
   <h2><span class="n">§1</span>What it is</h2>
+  <p>Two programs. The first is where a modded server is run from: start and stop, install a mod
+  by dropping it on the window, turn one off or take it out, admins and bans, the patch note,
+  a copy of the world before a change, and the pack published signed at the end of it. The
+  second is what the players get, and it is one button.</p>
+  <p>The reason both exist is the same one.</p>
   <p>Valheim has no native way to distribute mods. There is no Steam Workshop for it, even in
   1.0, and Iron Gate does not officially support modding: everything goes through BepInEx and
   third-party managers. On a modded server that breaks in several ways at once.</p>
