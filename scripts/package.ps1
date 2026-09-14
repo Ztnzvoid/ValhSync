@@ -143,15 +143,18 @@ New-Archive "valhsync-$version-$Target" {
     # The HTML pages too, and not only the markdown: each one is self-contained,
     # so an admin offline in a server room can open the guide by double-clicking
     # it. Without them, player-guide.md points at a file that is not here.
-    Copy-Item docs/admin-guide.md, docs/player-guide.md $docs
+    Copy-Item docs/admin-guide.md, docs/player-guide.md, docs/code-signing-policy.md $docs
     Copy-Item docs/index.html, docs/server-guide.html, docs/player-guide.html $docs
+    # The pictures the three pages point at. Without them an offline guide is
+    # a page of broken images, which is worse than a page with none.
+    Copy-Item docs/*.png $docs
     Copy-Item -Recurse docs/deploy $docs
 }
 
 New-Archive "valhsync-launcher-$version-$Target" {
     param($stage)
     Copy-Item "$bin/valhsync$exe" $stage
-    Copy-Item docs/player-guide.html $stage
+    Copy-Item docs/player-guide.html, docs/launcher.png $stage
     Copy-Item docs/player-guide.md (Join-Path $stage "README.md")
     foreach ($as in $licences.Keys) { Copy-Item $licences[$as] (Join-Path $stage $as) }
 }

@@ -111,12 +111,13 @@ jobs:
           cp -r docs/admin-guide.md docs/player-guide.md docs/deploy "dist/$full/docs/"
           cp docs/code-signing-policy.md "dist/$full/docs/"
           cp docs/index.html docs/server-guide.html docs/player-guide.html "dist/$full/docs/"
+          cp docs/*.png "dist/$full/docs/"
 
           player="valhsync-launcher-${version}-${{ matrix.target }}"
           mkdir -p "dist/$player"
           cp "$bin/valhsync$ext" "dist/$player/"
           licences "dist/$player"
-          cp docs/player-guide.html "dist/$player/"
+          cp docs/player-guide.html docs/launcher.png "dist/$player/"
           cp docs/player-guide.md "dist/$player/README.md"
 
           cd dist
