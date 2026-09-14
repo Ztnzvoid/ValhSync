@@ -1,6 +1,6 @@
 {
   "name": "ValhSync",
-  "version_number": "0.0.3",
+  "version_number": "0.0.4",
   "website_url": "https://github.com/Ztnzvoid/ValhSync",
   "description": "VERY EARLY, expect bugs. Launcher that matches your mods to a server's: paste the server address, press PLAY, only what changed is installed. Report issues on GitHub.",
   "dependencies": []

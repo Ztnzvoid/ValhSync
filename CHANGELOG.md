@@ -2,7 +2,7 @@
 
 Notable changes, newest first. Dates are ISO 8601.
 
-ValhSync is early: 0.0.3 is the third release, and one server has run it in
+ValhSync is early: 0.0.4 is the fourth release, and one server has run it in
 anger. Nothing here is settled yet, including the shape of the configuration
 file and the wire format.
 
@@ -12,6 +12,41 @@ they are the 0.0.1 and 0.0.2 below. Anybody holding one of those installs
 0.0.3 by hand once -- a launcher will not offer itself as an update to a
 version that sorts above it -- and every release after this one arrives on
 its own.
+
+## 0.0.4 — 2026-09-14
+
+Documentation, packaging and the groundwork for signed binaries. No change to
+the wire format, so a 0.0.3 launcher and a 0.0.4 publisher still understand
+each other.
+
+- **The address is the way in.** Joining by the server's own `ip:port` -- the
+  same one Valheim takes -- has always worked, but every page and the
+  add-server dialog led with the invite code, so the simple path read as the
+  fallback. Reversed everywhere, in all eight languages and in the CLI's help.
+  The invite code keeps the job it is actually best at: a zip that arrives with
+  the code beside the executable and nothing to type.
+- **Built with AI assistance, said in the window.** The README, the site, both
+  guides and each program's about line now say that ValhSync was written with
+  an AI assistant, directed and reviewed by a person.
+- **A code signing policy, and a release that can use one.** The release
+  workflow submits the Windows binaries to SignPath before packaging them and
+  builds the archives from what comes back signed; every step is gated on a
+  repository variable, so a fork still produces a release. `docs/code-signing-
+  policy.md` says what may be signed, who approves it, what data is collected
+  (none) and how to uninstall.
+- **Pictures where they belong.** Both guides carry screenshots, and the
+  archives carry the pictures those pages point at -- an offline guide was
+  three broken images.
+- **A Thunderstore package**, built by a script that refuses a manifest whose
+  version disagrees with the workspace, a description over the limit, or an
+  icon that is not 256x256.
+- Documentation caught up with the software in four places: players do not
+  agree to a sync any more, the window has five tabs rather than two, the
+  console prompt runs ValhSync's own player commands because Valheim does not
+  read its console, and the launcher's update band is the theme's blue. The
+  Discord announcement, restarting a crashed server, world backups, disabling
+  or removing a mod from its row, and the `[game_server]` and `[limits]`
+  configuration sections were undocumented until now.
 
 ## 0.0.3 — 2026-09-13
 
