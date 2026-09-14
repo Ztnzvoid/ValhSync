@@ -7,7 +7,10 @@ happen, and what the signature does and does not promise.
 [SignPath Foundation](https://signpath.org/) for a certificate. Until that is
 granted, **released binaries are unsigned** and Windows SmartScreen warns on
 first run — the [player guide](player-guide.html) says so and explains how to
-check a download by its SHA-256 instead. This document describes the process
+check a download by its SHA-256 instead. 0.0.4 was also put through VirusTotal
+and no engine flagged it ([report](https://www.virustotal.com/gui/file/0673c62743e4c568595c6f3bd2bd6cc7bafc4dff31686790d5ef570294d0a8c5)), which is evidence rather than proof:
+a scan says what seventy vendors thought on one day, a signature says who
+built the file. This document describes the process
 that is already wired into the release workflow and that takes effect the day
 a certificate exists.
 

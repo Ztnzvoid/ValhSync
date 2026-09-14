@@ -179,6 +179,12 @@ certificate has been applied for and the release workflow already submits the
 binaries for signature; the [code signing policy](docs/code-signing-policy.md)
 says who can cause one to happen, and what it would and would not mean.
 
+0.0.4 was put through VirusTotal:
+[**0 detections out of 70** for `valhsync.exe`](https://www.virustotal.com/gui/file/0673c62743e4c568595c6f3bd2bd6cc7bafc4dff31686790d5ef570294d0a8c5), and
+[0 out of 67 for the package it travels in](https://www.virustotal.com/gui/file/1b070938dc30dd3574277bf28ecb2e57897cdfb1088fb7ad5df5e889be6e6f6d). Any file can be checked the
+same way without downloading it twice — paste its SHA-256 into VirusTotal's
+search box.
+
 ## Redistributing mods
 
 Serving DLLs from your own server is common between friends, but some mod

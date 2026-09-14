@@ -68,6 +68,9 @@ certificate has been applied for. Until it exists, the real check is the
 SHA-256 published with every release on GitHub — compare it with
 `Get-FileHash valhsync.exe -Algorithm SHA256`.
 
+This exact package has been through VirusTotal, and nothing flagged it:
+[**0 / 70** for `valhsync.exe`](https://www.virustotal.com/gui/file/0673c62743e4c568595c6f3bd2bd6cc7bafc4dff31686790d5ef570294d0a8c5) · [0 / 67 for the package](https://www.virustotal.com/gui/file/1b070938dc30dd3574277bf28ecb2e57897cdfb1088fb7ad5df5e889be6e6f6d).
+
 ## Running a server?
 
 The admin's half — starting and stopping the dedicated server, installing mods
