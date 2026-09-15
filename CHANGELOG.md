@@ -2,7 +2,7 @@
 
 Notable changes, newest first. Dates are ISO 8601.
 
-ValhSync is early: 0.0.4 is the fourth release, and one server has run it in
+ValhSync is early: 0.0.5 is the fifth release, and one server has run it in
 anger. Nothing here is settled yet, including the shape of the configuration
 file and the wire format.
 
@@ -13,7 +13,12 @@ they are the 0.0.1 and 0.0.2 below. Anybody holding one of those installs
 version that sorts above it -- and every release after this one arrives on
 its own.
 
-## Unreleased
+## 0.0.5 — 2026-09-15
+
+The manifest gains a field, so both halves matter: a launcher older than this
+does not know the permission exists and keeps setting client-side mods aside,
+whatever the server says. Players update through the same signed channel as
+always, and then it takes effect.
 
 - **A player's own mods are their own, unless the admin says otherwise.** A
   client-side mod -- a map overlay, an interface tweak, anything that never

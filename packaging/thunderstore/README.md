@@ -9,7 +9,7 @@ downloaded. Nothing you put in that folder yourself is ever deleted.
 
 ## Read this first — this is a very early version
 
-**0.0.4 is the fourth release, and the first one on Thunderstore.** One
+**0.0.5 is the fifth release.** One
 server has actually run it: a Windows machine, a dedicated server beside it, a
 handful of players. Everything else — Linux, hosted providers, Proton, any
 setup that is not that one — is tested but has never met a real server.

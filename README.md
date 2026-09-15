@@ -5,8 +5,8 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/Ztnzvoid/ValhSync/releases/latest"><img alt="Download 0.0.4"
-     src="https://img.shields.io/badge/download-0.0.4-C7A455?style=for-the-badge&labelColor=0F0D0B"></a>
+  <a href="https://github.com/Ztnzvoid/ValhSync/releases/latest"><img alt="Download 0.0.5"
+     src="https://img.shields.io/badge/download-0.0.5-C7A455?style=for-the-badge&labelColor=0F0D0B"></a>
   <a href="https://ztnzvoid.github.io/ValhSync/"><img alt="Documentation"
      src="https://img.shields.io/badge/documentation-read-7E9AA7?style=for-the-badge&labelColor=0F0D0B"></a>
   <img alt="Windows and Linux"
@@ -49,7 +49,7 @@ deleted, and what you wrote is a click away.
 
 ---
 
-> **Early version.** 0.0.4 is the fourth release and the second one published.
+> **Early version.** 0.0.5 is the fifth release and the third one published.
 > One server has actually run it — Windows, a dedicated server beside it, a
 > handful of players — and the whole chain works there. Linux builds and passes
 > its tests, but no window has been opened on it. Back up the server's
@@ -179,7 +179,7 @@ certificate has been applied for and the release workflow already submits the
 binaries for signature; the [code signing policy](docs/code-signing-policy.md)
 says who can cause one to happen, and what it would and would not mean.
 
-0.0.4 was put through VirusTotal:
+The 0.0.4 build was put through VirusTotal:
 [**0 detections out of 70** for `valhsync.exe`](https://www.virustotal.com/gui/file/0673c62743e4c568595c6f3bd2bd6cc7bafc4dff31686790d5ef570294d0a8c5), and
 [0 out of 67 for the package it travels in](https://www.virustotal.com/gui/file/1b070938dc30dd3574277bf28ecb2e57897cdfb1088fb7ad5df5e889be6e6f6d). Any file can be checked the
 same way without downloading it twice — paste its SHA-256 into VirusTotal's
