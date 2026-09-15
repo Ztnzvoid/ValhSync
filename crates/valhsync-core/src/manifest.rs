@@ -75,6 +75,21 @@ pub struct Manifest {
     /// that the update is only for people who crashed on the boat.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub notes: Option<String>,
+    /// Whether a player may keep mods of their own that this pack does not
+    /// contain -- a map overlay, a UI tweak, anything that never talks to the
+    /// server.
+    ///
+    /// The admin decides it and it travels here, inside the signed manifest,
+    /// in one direction only: the launcher reads the flag and acts on its own
+    /// machine. Nothing about what a player has installed is ever sent back,
+    /// because the server has no business holding a list of what runs on
+    /// somebody else's computer, and because a permission that needed an
+    /// inventory to enforce would be worse than the problem it solves.
+    ///
+    /// Absent on manifests written before this field, where it reads as
+    /// `false` -- the behaviour those servers already had.
+    #[serde(default)]
+    pub allow_client_mods: bool,
     pub files: Vec<FileEntry>,
 }
 
@@ -202,6 +217,7 @@ impl Manifest {
             network_version: None,
             // Likewise: it comes from the admin's configuration.
             notes: None,
+            allow_client_mods: false,
             files,
         }
     }
@@ -210,6 +226,13 @@ impl Manifest {
     #[must_use]
     pub fn with_network_version(mut self, version: Option<u32>) -> Self {
         self.network_version = version;
+        self
+    }
+
+    /// Say whether players may keep client-side mods of their own.
+    #[must_use]
+    pub fn with_client_mods(mut self, allowed: bool) -> Self {
+        self.allow_client_mods = allowed;
         self
     }
 

@@ -550,6 +550,12 @@ nav.toc a.here .n { color: var(--gold); }
         Discord bridges have no reason to travel.</li>
         <li>Drop a zip from anywhere, a mod folder or a bare .dll on the window to install it;
         an update replaces the version that was there.</li>
+        <li><strong>Players may keep mods of their own</strong>, or not: one switch on that tab.
+        Left on, a mod the pack does not contain — a map overlay, an interface tweak — is the
+        player's business and stays where it is. Turned off, the launcher moves anything the
+        pack does not contain into a folder inside that player's game. Either way the server is
+        never told what anybody has installed: the answer travels inside the signed manifest and
+        the launcher acts on it alone.</li>
       </ul>
     </div>
   </div>
@@ -622,9 +628,10 @@ nav.toc a.here .n { color: var(--gold); }
     <li><strong>Patch notes before the install, not after.</strong> Mod by mod and by name —
     added, updated, removed, computed from the pack itself — above whatever the admin wrote
     about the release. Readable before the sync and still readable after it.</li>
-    <li><strong>Nothing is deleted.</strong> Files that get replaced go to a backup. Mods the
-    player installed themselves that are not in the pack are set aside in a folder inside the
-    game, never removed. The last sync can be rolled back exactly.</li>
+    <li><strong>Nothing is deleted.</strong> Files that get replaced go to a backup. The last
+    sync can be rolled back exactly. Mods the player installed themselves are left alone unless
+    the admin asked for an exact match, and then they are set aside in a folder inside the game
+    — moved, named, never removed, and the window says why before it happens.</li>
     <li><strong>A repair pass</strong> re-verifies and re-fetches anything that no longer matches.</li>
     <li><strong>Play without mods</strong> renames <code>winhttp.dll</code> rather than
     uninstalling anything, and the next sync puts it back.</li>

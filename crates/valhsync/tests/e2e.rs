@@ -130,6 +130,10 @@ fn world() -> World {
     cfg.pack
         .exclude
         .push("BepInEx/plugins/DiscordConnector/**".into());
+    // A strict server, because that is the path with something to test: the
+    // leftover below gets quarantined. The permissive default -- a player may
+    // keep mods of their own -- has its own test at the end of this file.
+    cfg.policy.allow_client_mods = false;
     cfg.validate().unwrap();
     let kp = Keypair::generate();
 
@@ -635,4 +639,33 @@ fn a_server_offering_nothing_is_not_an_error() {
             .expect("404 is an answer, not a failure"),
         None
     );
+}
+
+#[test]
+fn a_permissive_server_leaves_the_player_their_own_mods() {
+    let w = world();
+    let g = w.game_root.clone();
+    // The leftover `world()` puts in the game folder stands in for the map
+    // mod a player installed themselves: the pack has never heard of it.
+    let mine = "BepInEx/plugins/EquipmentAndQuickSlots/EAQS.dll";
+    assert!(exists(&g, mine));
+
+    let mut cfg = w.cfg.clone();
+    cfg.policy.allow_client_mods = true;
+    let ts = TestServer::start(&cfg, &w.kp, &w.data_dir);
+    let server = join(&w, &ts.url(), &w.kp);
+
+    let prepared = engine::prepare(&w.ctx, &server, &mut Silent).unwrap();
+    assert!(
+        prepared.manifest.allow_client_mods,
+        "the permission travels in the signed manifest"
+    );
+    assert_eq!(prepared.plan.counts().quarantine, 0, "{:?}", prepared.plan);
+
+    let applied = engine::apply(&w.ctx, &prepared, &mut Silent).unwrap();
+    assert_eq!(applied.counts.quarantine, 0);
+    assert!(applied.quarantine_dir.is_none());
+    assert_eq!(read(&g, mine), b"leftover", "left exactly where it was");
+    // And the pack still arrived in full.
+    assert_eq!(read(&g, "BepInEx/plugins/Azu/Azu.dll"), b"azu v1");
 }

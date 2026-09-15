@@ -567,6 +567,25 @@ sudo chown -R valhsync: /opt/valhsync</code></pre>
       travels to players; the two on the right turn it off or take it out.</figcaption>
   </figure>
 
+  <h3>And what your players may add</h3>
+  <p>One switch on the Mods tab: <strong>players may keep mods of their own</strong>. It is on
+  by default.</p>
+  <ul>
+    <li><strong>On</strong> — a mod your pack does not contain is left where it is. A map
+    overlay, an inventory tweak, a font: things that never talk to your server and are nobody's
+    business but the player's.</li>
+    <li><strong>Off</strong> — the launcher moves anything your pack does not contain into a
+    folder inside that player's game before it starts. Nothing is deleted and the player is
+    told where it went, but their own mods stop loading. Choose it when you want every client
+    identical, and say so to your players: it is their machine.</li>
+  </ul>
+  <div class="rule">
+    <strong>It is a permission, not an inventory.</strong> The answer travels inside the signed
+    manifest and the launcher acts on it alone. ValhSync never sends the server a list of what
+    a player has installed — there is no route for it, and a permission that needed one would
+    be worse than the problem it solves.
+  </div>
+
   <p>Check what a publish would contain before it goes out:</p>
 <pre><code>valhsync-server scan</code></pre>
 </section>

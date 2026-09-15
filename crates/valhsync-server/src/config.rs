@@ -172,6 +172,18 @@ pub struct PolicySection {
     pub default: String,
     pub seed: Vec<String>,
     pub enforce: Vec<String>,
+    /// May a player keep mods of their own that this pack does not contain?
+    ///
+    /// On by default, because a map overlay or a UI tweak is nobody's
+    /// business but the player's, and because the alternative surprised
+    /// people: their own mod was moved aside by a launcher they installed to
+    /// get the server's mods, and nothing had told them it would be.
+    ///
+    /// An admin who wants every client identical turns it off, and then a
+    /// file the pack does not contain goes to quarantine as before. Either
+    /// way the answer travels inside the signed manifest and is acted on by
+    /// the launcher: the server never learns what a player has installed.
+    pub allow_client_mods: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -260,6 +272,7 @@ impl Default for PolicySection {
             default: rules.default.as_str().into(),
             seed: rules.seed,
             enforce: rules.enforce,
+            allow_client_mods: true,
         }
     }
 }
@@ -695,6 +708,14 @@ seed = [
 enforce = [
 {enforce}
 ]
+# May a player keep mods of their own that this pack does not contain -- a map
+# overlay, a UI tweak? On by default: what runs on somebody else's computer,
+# and never talks to this server, is their business. Turn it off to have the
+# launcher move anything the pack does not contain into a quarantine folder
+# inside the player's game, as older versions always did. Either way this
+# server is never told what a player has installed: the answer travels inside
+# the signed manifest and the launcher acts on it alone.
+allow_client_mods = {allow_client_mods}
 
 [limits]
 max_file_mb = {max_file_mb}
@@ -769,6 +790,7 @@ restart_on_crash = {restart_on_crash}
         policy_default = toml_str(&cfg.policy.default),
         seed = toml_list(&cfg.policy.seed, "  "),
         enforce = toml_list(&cfg.policy.enforce, "  "),
+        allow_client_mods = cfg.policy.allow_client_mods,
         max_file_mb = cfg.limits.max_file_mb,
         max_pack_mb = cfg.limits.max_pack_mb,
         max_files = cfg.limits.max_files,

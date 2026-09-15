@@ -2269,8 +2269,43 @@ impl App {
             ui.add_space(10.0);
             th::hairline(ui);
             ui.add_space(8.0);
+            self.client_mods_switch(ui);
+            ui.add_space(10.0);
+            th::hairline(ui);
+            ui.add_space(8.0);
             self.mod_list(ui);
         });
+    }
+
+    /// Whether a player may keep mods of their own that this pack does not
+    /// contain.
+    ///
+    /// On this tab because it is the one question about mods that is not
+    /// about the server's own: a map overlay or a UI tweak on somebody's
+    /// machine never talks to this server, and the older behaviour -- moving
+    /// it aside without warning -- surprised the people it happened to.
+    ///
+    /// It is a permission, not an inventory. Nothing here asks a player what
+    /// they have installed, and nothing here could: the answer travels inside
+    /// the signed manifest and the launcher acts on it alone.
+    fn client_mods_switch(&mut self, ui: &mut egui::Ui) {
+        let mut allowed = self.cfg.policy.allow_client_mods;
+        if ui
+            .checkbox(&mut allowed, self.t(Key::AllowClientMods))
+            .changed()
+        {
+            // Lives in `cfg`, which `edited()` clones, so autosave writes it
+            // and the publisher republishes on its own.
+            self.cfg.policy.allow_client_mods = allowed;
+        }
+        w::hint(
+            ui,
+            self.t(if allowed {
+                Key::AllowClientModsOn
+            } else {
+                Key::AllowClientModsOff
+            }),
+        );
     }
 
     /// The mods that are installed but turned off.

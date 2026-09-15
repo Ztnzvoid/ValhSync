@@ -115,7 +115,8 @@ pub fn build(cfg: &Config, keypair: &Keypair, data_dir: &Path) -> Result<BuildOu
         cfg.pack.managed_roots.clone(),
         scan.entries(),
     )
-    .with_network_version(server_network_version(cfg));
+    .with_network_version(server_network_version(cfg))
+    .with_client_mods(cfg.policy.allow_client_mods);
     manifest.notes = pack_notes(cfg)?;
     manifest
         .validate(&AllowedRoots::bepinex(), &cfg.limits())
@@ -128,6 +129,11 @@ pub fn build(cfg: &Config, keypair: &Keypair, data_dir: &Path) -> Result<BuildOu
             && p.game_address == manifest.game_address
             && p.managed_roots == manifest.managed_roots
             && p.network_version == manifest.network_version
+            // Same reason as the note below: this one is not part of the pack
+            // id either, so without it an admin could turn the permission off
+            // and every launcher would keep reading the manifest that said
+            // yes.
+            && p.allow_client_mods == manifest.allow_client_mods
             // Rewriting the note is the whole point of editing it: without
             // this the old bytes would be reused and players would keep
             // reading the previous message.

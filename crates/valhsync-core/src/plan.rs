@@ -102,8 +102,11 @@ impl SyncPlan {
 
 /// Compare `manifest` against `game_root` and `previous`, and decide.
 ///
-/// Unmanaged files inside `manifest.managed_roots` are quarantined with one
-/// deliberate nuance: mods write their own data (translations, caches) next to
+/// Unmanaged files inside `manifest.managed_roots` are quarantined -- unless
+/// the manifest says [`allow_client_mods`](Manifest::allow_client_mods), which
+/// is the admin saying that a mod the pack does not contain is the player's
+/// business and gets left where it is. When they are quarantined, it is with
+/// one deliberate nuance: mods write their own data (translations, caches) next to
 /// their DLL at runtime. So inside a folder that the manifest manages, only
 /// foreign `.dll` files are quarantined; other files are left alone. A folder
 /// the manifest knows nothing about is quarantined whole, and so is any loose
@@ -178,8 +181,12 @@ pub fn compute_with(
         }
     }
 
-    // 3. Unmanaged files in managed roots.
-    quarantine_unmanaged(manifest, game_root, &wanted, &installed, &mut items)?;
+    // 3. Unmanaged files in managed roots -- unless this server lets players
+    //    keep mods of their own, in which case there is nothing to move: a
+    //    file the pack does not contain is simply the player's.
+    if !manifest.allow_client_mods {
+        quarantine_unmanaged(manifest, game_root, &wanted, &installed, &mut items)?;
+    }
 
     items.sort_by(|a, b| a.action.cmp(&b.action).then_with(|| a.path.cmp(&b.path)));
     let download_bytes = items
@@ -411,6 +418,44 @@ mod tests {
         assert_eq!(
             (c.replace, c.remove, c.quarantine, c.seed_kept),
             (1, 1, 4, 1)
+        );
+    }
+
+    #[test]
+    fn a_server_that_allows_client_mods_quarantines_nothing() {
+        let game = tempfile::tempdir().unwrap();
+        let g = game.path();
+        write(g, "winhttp.dll", b"doorstop");
+        write(g, "BepInEx/core/BepInEx.dll", b"core");
+        write(g, "BepInEx/plugins/Azu/Azu.dll", b"azu v2");
+        write(g, "BepInEx/plugins/Azu/Azu.cfg", b"azu cfg");
+        // The player's own: a map mod the pack has never heard of, a foreign
+        // dll inside a folder the pack does manage, and a loose one.
+        write(g, "BepInEx/plugins/BetterMap/BetterMap.dll", b"mine");
+        write(g, "BepInEx/plugins/Azu/Sneaky.dll", b"mine too");
+        write(g, "BepInEx/plugins/Loose.dll", b"also mine");
+
+        let strict = manifest();
+        let strict_plan = compute(&strict, g, None).unwrap();
+        assert_eq!(strict_plan.counts().quarantine, 3);
+
+        let permissive = manifest().with_client_mods(true);
+        let plan = compute(&permissive, g, None).unwrap();
+        assert_eq!(plan.counts().quarantine, 0);
+        assert_eq!(
+            action_of(&plan, "BepInEx/plugins/BetterMap/BetterMap.dll"),
+            None
+        );
+        assert_eq!(action_of(&plan, "BepInEx/plugins/Azu/Sneaky.dll"), None);
+        assert_eq!(action_of(&plan, "BepInEx/plugins/Loose.dll"), None);
+        // What the pack does ship is still the pack's to decide.
+        assert_eq!(
+            action_of(&plan, "BepInEx/plugins/Azu/Azu.dll"),
+            Some(Action::Keep)
+        );
+        assert_eq!(
+            action_of(&plan, "BepInEx/config/Azu.cfg"),
+            Some(Action::Add)
         );
     }
 

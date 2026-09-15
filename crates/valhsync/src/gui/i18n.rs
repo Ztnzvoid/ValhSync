@@ -119,6 +119,7 @@ pub enum Key {
     ThisServer,
     AboutValhSync,
     BuiltWithAi,
+    QuarantineWhy,
     OpenFolder,
     ResetAll,
     ResetAllHint,
@@ -193,6 +194,16 @@ pub fn text(lang: Lang, key: Key) -> &'static str {
 #[allow(clippy::too_many_lines)] // one row per string, and there are many
 fn strings(key: Key) -> [&'static str; LANGS] {
     match key {
+        Key::QuarantineWhy => [
+            "This server wants every client to match it exactly, so mods of your own that it does not ship are moved into a folder inside the game. They are not deleted, and the button below opens that folder.",
+            "Ce serveur veut que chaque client lui corresponde exactement : vos propres mods qu'il ne distribue pas sont déplacés dans un dossier à l'intérieur du jeu. Rien n'est supprimé, et le bouton ci-dessous ouvre ce dossier.",
+            "Dieser Server will, dass jeder Client exakt passt: eigene Mods, die er nicht ausliefert, werden in einen Ordner im Spiel verschoben. Nichts wird gelöscht, und die Schaltfläche unten öffnet diesen Ordner.",
+            "Este servidor quiere que cada cliente coincida exactamente: tus propios mods que no distribuye se mueven a una carpeta dentro del juego. No se borra nada, y el botón de abajo abre esa carpeta.",
+            "Questo server vuole che ogni client corrisponda esattamente: i tuoi mod che non distribuisce vengono spostati in una cartella dentro il gioco. Nulla viene eliminato, e il pulsante qui sotto apre quella cartella.",
+            "Ten serwer wymaga, by każdy klient był identyczny: twoje własne mody, których nie rozsyła, trafiają do folderu wewnątrz gry. Nic nie jest usuwane, a przycisk poniżej otwiera ten folder.",
+            "Este servidor quer que cada cliente corresponda exatamente: os seus próprios mods que ele não distribui são movidos para uma pasta dentro do jogo. Nada é apagado, e o botão abaixo abre essa pasta.",
+            "Этот сервер требует полного совпадения: ваши моды, которых он не раздаёт, переносятся в папку внутри игры. Ничего не удаляется, а кнопка ниже открывает эту папку.",
+        ],
         Key::BuiltWithAi => [
             "Built with the help of an AI assistant (Claude), directed and reviewed by a human.",
             "Réalisé avec l'aide d'un assistant IA (Claude), dirigé et relu par un humain.",

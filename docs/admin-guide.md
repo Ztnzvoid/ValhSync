@@ -117,6 +117,7 @@ managed_roots = ["BepInEx/plugins", "BepInEx/patchers"]
 default = "enforce"                      # always match the server
 seed = ["BepInEx/config/**"]             # installed once, then the player's
 enforce = ["BepInEx/config/BepInEx.cfg"] # except these
+allow_client_mods = true                 # players may keep mods of their own
 
 [game_server]
 start_script = 'C:\valheim\start-server.bat'  # your copy, not Steam's
@@ -152,6 +153,14 @@ Three more keys sit outside those sections:
 - `seed` vs `enforce`: a seeded file is installed only when absent. Use it for
   configs that hold keybinds and UI preferences. Enforce the ones that must
   match the server (anything with gameplay values that the server checks).
+- `allow_client_mods` decides what happens to a mod a player installed that
+  your pack does not contain. `true` (the default) leaves it alone: a map
+  overlay or an interface tweak never talks to your server. `false` has the
+  launcher move anything your pack does not contain into
+  `BepInEx/_valhsync_quarantine/` inside that player's game before it starts —
+  moved, never deleted, and the launcher says why first. It is a permission,
+  not an inventory: it travels inside the signed manifest, and no list of what
+  a player runs is ever sent back here.
 
 Every change to the config needs a restart of `serve`. Changes to the mod
 folders do not: `serve` watches them and republishes after two quiet seconds.
@@ -252,6 +261,10 @@ Discord bridges have no reason to travel — and carries two more buttons:
   anything left inside travels to players in the pack.
 - *Remove* does not delete. The mod goes to a folder ValhSync owns, and the
   window says which, so a mistake at eleven at night can be walked back.
+
+Above the list, one switch: **players may keep mods of their own**. On, and a
+mod your pack does not contain is left alone on their machine. Off, and the
+launcher sets it aside before the game starts. See §3.
 
 A mod is installed by dropping it on the window — see §7.
 

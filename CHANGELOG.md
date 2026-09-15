@@ -13,6 +13,25 @@ they are the 0.0.1 and 0.0.2 below. Anybody holding one of those installs
 version that sorts above it -- and every release after this one arrives on
 its own.
 
+## Unreleased
+
+- **A player's own mods are their own, unless the admin says otherwise.** A
+  client-side mod -- a map overlay, an interface tweak, anything that never
+  talks to the server -- used to be moved aside at the next sync, because the
+  launcher quarantined everything the pack did not contain. There is now one
+  switch on the Mods tab, on by default: *players may keep mods of their own*.
+  Turned off, the old behaviour is back for admins who want every client
+  identical, and the launcher now says why before it moves anything.
+
+  It is a permission, not an inventory. The answer travels inside the signed
+  manifest and the launcher acts on it alone; nothing about what a player has
+  installed is ever sent to the server, and there is no route for it to be.
+
+  Existing configurations gain the permissive default when they are next
+  written, so an admin who wants the strict behaviour ticks the box off. A
+  manifest from a server too old to have the field reads as strict, which is
+  what those servers already did.
+
 ## 0.0.4 — 2026-09-14
 
 Documentation, packaging and the groundwork for signed binaries. No change to

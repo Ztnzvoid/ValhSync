@@ -411,11 +411,12 @@ nav.toc a.here .n { color: var(--gold); }
     <li><a href="#s3"><span class="n">§3</span>Playing</a></li>
     <li><a href="#s4"><span class="n">§4</span>What's new</a></li>
     <li><a href="#s5"><span class="n">§5</span>The other buttons</a></li>
-    <li><a href="#s6"><span class="n">§6</span>If your antivirus removes it</a></li>
-    <li><a href="#s7"><span class="n">§7</span>A newer ValhSync</a></li>
-    <li><a href="#s8"><span class="n">§8</span>Linux and Steam Deck</a></li>
-    <li><a href="#s9"><span class="n">§9</span>Command line</a></li>
-    <li><a href="#s10"><span class="n">§10</span>When it goes wrong</a></li>
+    <li><a href="#s6"><span class="n">§6</span>Your own mods</a></li>
+    <li><a href="#s7"><span class="n">§7</span>If your antivirus removes it</a></li>
+    <li><a href="#s8"><span class="n">§8</span>A newer ValhSync</a></li>
+    <li><a href="#s9"><span class="n">§9</span>Linux and Steam Deck</a></li>
+    <li><a href="#s10"><span class="n">§10</span>Command line</a></li>
+    <li><a href="#s11"><span class="n">§11</span>When it goes wrong</a></li>
   </ol>
   <a class="back" href="index.html">← ValhSync</a>
 </nav>
@@ -536,7 +537,7 @@ nav.toc a.here .n { color: var(--gold); }
     elsewhere while your admin sorts it out.</li>
     <li><strong>Open the set-aside folder</strong> — where mod files ValhSync did not recognise
     were moved (<code>BepInEx/_valhsync_quarantine/</code> inside the game folder). Moved, never
-    deleted. Yours to put back.</li>
+    deleted. Yours to put back. See below for when that happens at all.</li>
     <li><strong>Play without mods</strong> — disables BepInEx by renaming one file and starts the
     vanilla game. Nothing is uninstalled; the next PLAY puts it back.</li>
     <li><strong>Repair</strong> — re-checks every file against the server and re-fetches anything
@@ -553,7 +554,29 @@ nav.toc a.here .n { color: var(--gold); }
 </section>
 
 <section id="s6">
-  <h2><span class="n">§6</span>If your antivirus removes it</h2>
+  <h2><span class="n">§6</span>Your own mods</h2>
+  <p>Say you play with a map overlay, or a mod that only changes what your interface looks
+  like. Your server has never heard of it. What happens to it is <strong>your admin's
+  choice</strong>, and it is one switch on their side:</p>
+  <ul>
+    <li><strong>Most servers let you keep it.</strong> A mod the pack does not contain is left
+    exactly where it is, and ValhSync never touches it.</li>
+    <li><strong>Some want every client identical.</strong> Then anything the pack does not
+    contain is moved into <code>BepInEx/_valhsync_quarantine/</code> inside your game before it
+    starts. It is moved, not deleted, the launcher says so before it does it, and
+    <em>Open the set-aside folder</em> takes you straight there.</li>
+  </ul>
+  <p>If your mod matters to you and the second case is what you are in, ask your admin: they can
+  either allow client-side mods, or add yours to the pack for everybody.</p>
+  <div class="rule">
+    <strong>Nothing about your mods is ever sent anywhere.</strong> The permission travels one
+    way — the server says yes or no inside the signed manifest, and your launcher acts on it on
+    your machine. No server, and no one running ValhSync, is told what you have installed.
+  </div>
+</section>
+
+<section id="s7">
+  <h2><span class="n">§7</span>If your antivirus removes it</h2>
   <p>ValhSync is not signed with a paid code-signing certificate, and every build is a file
   Windows Defender has never seen anywhere else. That, plus what the launcher legitimately does —
   download files from a server, write them into the game folder, replace its own executable when
@@ -573,8 +596,8 @@ nav.toc a.here .n { color: var(--gold); }
   </div>
 </section>
 
-<section id="s7">
-  <h2><span class="n">§7</span>A newer ValhSync</h2>
+<section id="s8">
+  <h2><span class="n">§8</span>A newer ValhSync</h2>
   <p>A server can offer a newer launcher. If yours does, a band in the theme's northern blue appears above the server card
   with the version, the server's name and its key fingerprint. One click downloads it, checks it
   against the digest the server signed, replaces your launcher and restarts it.</p>
@@ -587,8 +610,8 @@ nav.toc a.here .n { color: var(--gold); }
   releases can always be downloaded from the project itself.</p>
 </section>
 
-<section id="s8">
-  <h2><span class="n">§8</span>Linux and Steam Deck</h2>
+<section id="s9">
+  <h2><span class="n">§9</span>Linux and Steam Deck</h2>
   <div class="rule">
     <strong>Not yet reported working.</strong> The syncing itself is exercised on Linux on every
     commit — a real server on a socket, the real launcher against it — so that part is not a
@@ -603,8 +626,8 @@ Native Linux build:  ./start_game_bepinex.sh %command%</code></pre>
   <p>The launcher shows the right line for your install.</p>
 </section>
 
-<section id="s9">
-  <h2><span class="n">§9</span>Command line</h2>
+<section id="s10">
+  <h2><span class="n">§10</span>Command line</h2>
   <p>The same executable works in a terminal:</p>
 <pre><code>valhsync join &lt;ip:port&gt;   add a server (an invite code works too)
 valhsync status           show what a sync would do
@@ -615,8 +638,8 @@ valhsync vanilla on|off   toggle BepInEx
 valhsync doctor           show what ValhSync found on this machine</code></pre>
 </section>
 
-<section id="s10">
-  <h2><span class="n">§10</span>When it goes wrong</h2>
+<section id="s11">
+  <h2><span class="n">§11</span>When it goes wrong</h2>
   <table>
     <thead><tr><th>What you see</th><th>What to do</th></tr></thead>
     <tbody>

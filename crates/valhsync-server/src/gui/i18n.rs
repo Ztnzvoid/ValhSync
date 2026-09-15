@@ -312,6 +312,9 @@ pub enum Key {
     DropNeedsRoot,
     TabNotes,
     BuiltWithAi,
+    AllowClientMods,
+    AllowClientModsOn,
+    AllowClientModsOff,
 }
 
 #[must_use]
@@ -323,6 +326,36 @@ pub fn text(lang: Lang, key: Key) -> &'static str {
 #[allow(clippy::too_many_lines)] // one row per string, and there are many
 fn strings(key: Key) -> [&'static str; LANGS] {
     match key {
+        Key::AllowClientMods => [
+            "Players may keep mods of their own",
+            "Les joueurs peuvent garder leurs propres mods",
+            "Spieler dürfen eigene Mods behalten",
+            "Los jugadores pueden conservar sus propios mods",
+            "I giocatori possono tenere i propri mod",
+            "Gracze mogą zachować własne mody",
+            "Os jogadores podem manter os próprios mods",
+            "Игроки могут оставлять свои моды",
+        ],
+        Key::AllowClientModsOn => [
+            "A mod this pack does not contain is left where it is: a map overlay or an interface tweak is the player's business. This server is never told what they have installed.",
+            "Un mod absent de ce pack est laissé en place : une carte ou une retouche d'interface ne regarde que le joueur. Ce serveur n'apprend jamais ce qu'il a installé.",
+            "Eine Mod, die dieses Paket nicht enthält, bleibt liegen: eine Karte oder eine Oberflächenänderung ist Sache des Spielers. Dieser Server erfährt nie, was installiert ist.",
+            "Un mod que este paquete no incluye se queda donde está: un mapa o un retoque de interfaz es asunto del jugador. Este servidor nunca sabe qué tiene instalado.",
+            "Un mod che questo pacchetto non contiene resta dov'è: una mappa o una modifica all'interfaccia riguarda solo il giocatore. Questo server non sa mai cosa ha installato.",
+            "Mod, którego nie ma w tej paczce, zostaje na miejscu: mapa czy poprawka interfejsu to sprawa gracza. Ten serwer nigdy nie wie, co gracz ma zainstalowane.",
+            "Um mod que este pacote não contém fica onde está: um mapa ou um ajuste de interface é assunto do jogador. Este servidor nunca sabe o que ele instalou.",
+            "Мод, которого нет в этой сборке, остаётся на месте: карта или правка интерфейса — дело игрока. Сервер никогда не узнаёт, что у него установлено.",
+        ],
+        Key::AllowClientModsOff => [
+            "Anything this pack does not contain is moved to a folder inside the player's game before it starts. Nothing is deleted, and they are told where it went.",
+            "Tout ce qui n'est pas dans ce pack est déplacé dans un dossier à l'intérieur du jeu du joueur avant le lancement. Rien n'est supprimé, et on lui dit où c'est parti.",
+            "Alles, was dieses Paket nicht enthält, wird vor dem Start in einen Ordner im Spiel des Spielers verschoben. Nichts wird gelöscht, und der Ort wird genannt.",
+            "Todo lo que no esté en este paquete se mueve a una carpeta dentro del juego del jugador antes de iniciarlo. No se borra nada y se le dice adónde fue.",
+            "Tutto ciò che non è in questo pacchetto viene spostato in una cartella dentro il gioco del giocatore prima dell'avvio. Nulla viene eliminato e gli viene detto dove.",
+            "Wszystko, czego nie ma w tej paczce, trafia przed startem do folderu wewnątrz gry gracza. Nic nie jest usuwane, a gracz dowiaduje się gdzie.",
+            "Tudo o que não está neste pacote é movido para uma pasta dentro do jogo do jogador antes de iniciar. Nada é apagado, e ele fica sabendo para onde foi.",
+            "Всё, чего нет в сборке, перед запуском переносится в папку внутри игры игрока. Ничего не удаляется, и игроку сообщают куда.",
+        ],
         Key::BuiltWithAi => [
             "ValhSync was built with the help of an AI assistant (Claude), directed and reviewed by a human.",
             "ValhSync a été réalisé avec l'aide d'un assistant IA (Claude), dirigé et relu par un humain.",

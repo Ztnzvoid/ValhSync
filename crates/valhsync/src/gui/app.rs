@@ -1404,6 +1404,17 @@ impl App {
                 ui.add_space(8.0);
             }
             self.status_block(ui);
+            // Why, before it happens rather than after. A player whose own
+            // mod is about to be moved deserves the reason on the same screen
+            // as the button that moves it.
+            if self
+                .prepared
+                .as_ref()
+                .is_some_and(|p| p.plan.counts().quarantine > 0)
+            {
+                ui.add_space(8.0);
+                valhsync_ui::widgets::notice(ui, th::RUNE, self.t(Key::QuarantineWhy));
+            }
             let set_aside = self
                 .prepared
                 .as_ref()
