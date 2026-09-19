@@ -5,8 +5,8 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/Ztnzvoid/ValhSync/releases/latest"><img alt="Download 0.0.5"
-     src="https://img.shields.io/badge/download-0.0.5-C7A455?style=for-the-badge&labelColor=0F0D0B"></a>
+  <a href="https://github.com/Ztnzvoid/ValhSync/releases/latest"><img alt="Download 0.0.6"
+     src="https://img.shields.io/badge/download-0.0.6-C7A455?style=for-the-badge&labelColor=0F0D0B"></a>
   <a href="https://ztnzvoid.github.io/ValhSync/"><img alt="Documentation"
      src="https://img.shields.io/badge/documentation-read-7E9AA7?style=for-the-badge&labelColor=0F0D0B"></a>
   <img alt="Windows and Linux"
@@ -49,7 +49,7 @@ deleted, and what you wrote is a click away.
 
 ---
 
-> **Early version.** 0.0.5 is the fifth release and the third one published.
+> **Early version.** 0.0.6 is the sixth release and the fourth one published.
 > One server has actually run it — Windows, a dedicated server beside it, a
 > handful of players — and the whole chain works there. Linux builds and passes
 > its tests, but no window has been opened on it. Back up the server's

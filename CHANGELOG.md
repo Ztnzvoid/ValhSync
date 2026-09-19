@@ -2,7 +2,7 @@
 
 Notable changes, newest first. Dates are ISO 8601.
 
-ValhSync is early: 0.0.5 is the fifth release, and one server has run it in
+ValhSync is early: 0.0.6 is the sixth release, and one server has run it in
 anger. Nothing here is settled yet, including the shape of the configuration
 file and the wire format.
 
@@ -13,7 +13,7 @@ they are the 0.0.1 and 0.0.2 below. Anybody holding one of those installs
 version that sorts above it -- and every release after this one arrives on
 its own.
 
-## Unreleased
+## 0.0.6 — 2026-09-19
 
 - **Who is connected, on the Players tab.** Every id the server's log has
   named, with a lamp: green for connected and since when, dim for gone and when
@@ -28,6 +28,10 @@ its own.
   in the window said which it was doing. The Mods tab now lists every `.cfg` in
   the server's config folder with two buttons, *Server's version* or *Player's
   own*, and writes the policy for you.
+- `rustls` 0.23.45, for RUSTSEC-2026-0285. It reaches ValhSync through
+  `reqwest`; nothing here rests on TLS -- a manifest is trusted for its Ed25519
+  signature and a file for its BLAKE3 digest, over plain HTTP by default -- but
+  a lockfile that fails `cargo deny` is one somebody has to think about.
 
 ## 0.0.5 — 2026-09-15
 
