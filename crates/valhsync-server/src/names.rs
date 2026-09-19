@@ -166,7 +166,7 @@ struct Entry<'a> {
 /// one the permission lists take and changes between sessions, so it is read
 /// past rather than kept.
 fn history_entry(line: &str) -> Option<Entry<'_>> {
-    let (at, body) = split_prefix(line.trim_end())?;
+    let (at, body) = split_prefix(line.trim_end(), MARKER)?;
     // The index itself says nothing, but insisting on it keeps the shape
     // honest: this is the server's line, not a sentence that contains it.
     let (index, rest) = body.strip_prefix(MARKER)?.split_once(':')?;
@@ -187,6 +187,9 @@ fn history_entry(line: &str) -> Option<Entry<'_>> {
 /// Split a log line into its timestamp and what the server actually said,
 /// and refuse anything where the two are separated by something else.
 ///
+/// Shared with [`crate::presence`], which reads two other lines of the
+/// server's and needs exactly this defence for exactly this reason.
+///
 /// This is the whole defence against forgery. Chat reaches the log
 /// (`Got text msg from user: ... `), so without it any player could type a
 /// history entry of their own and put a name of their choosing beside
@@ -195,12 +198,12 @@ fn history_entry(line: &str) -> Option<Entry<'_>> {
 /// this is a modded server, then Valheim's timestamp, which whatever the
 /// machine's locale is made of digits and punctuation. Words in front of the
 /// marker mean somebody is quoting it.
-fn split_prefix(line: &str) -> Option<(Option<&str>, &str)> {
+pub(crate) fn split_prefix<'a>(line: &'a str, marker: &str) -> Option<(Option<&'a str>, &'a str)> {
     let line = match line.strip_prefix('[') {
         Some(tagged) => tagged.split_once("] ")?.1,
         None => line,
     };
-    let at = line.find(MARKER)?;
+    let at = line.find(marker)?;
     let (prefix, body) = line.split_at(at);
     if prefix.is_empty() {
         return Some((None, body));
@@ -243,7 +246,7 @@ fn is_name(name: &str) -> bool {
 ///
 /// [`BufRead::read_line`] would grow the buffer to whatever the file holds,
 /// which on a log that a crash left without newlines is the whole file.
-fn next_line<R: BufRead>(reader: &mut R, buf: &mut Vec<u8>) -> std::io::Result<bool> {
+pub(crate) fn next_line<R: BufRead>(reader: &mut R, buf: &mut Vec<u8>) -> std::io::Result<bool> {
     buf.clear();
     let mut anything = false;
     loop {

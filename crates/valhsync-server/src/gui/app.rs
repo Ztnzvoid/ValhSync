@@ -18,7 +18,7 @@ use valhsync_ui::widgets as w;
 use super::i18n::{Key, Lang, text};
 use super::worker::{self, Msg, Reporter};
 use crate::config::{self, Config};
-use crate::{detect, gameserver, install, logs, names, players, wizard, worldbackup};
+use crate::{detect, gameserver, install, logs, names, players, presence, wizard, worldbackup};
 
 const POLL_GAME_SERVER: Duration = Duration::from_secs(2);
 /// How long the configuration has to stop changing before it is written.
@@ -93,6 +93,17 @@ enum PublishMode {
     Export,
     /// Live HTTP server on this machine.
     Live,
+}
+
+/// One `.cfg` file in the pack, and who wins when a player already has it.
+#[derive(Debug, Clone)]
+struct ConfigEntry {
+    /// Path inside the game root, as the manifest spells it.
+    path: String,
+    /// Shown on the row: the file name on its own.
+    name: String,
+    /// The admin's copy replaces the player's, every sync.
+    enforced: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -185,6 +196,11 @@ pub(super) struct App {
     /// Every player this server has ever logged, id to name. Read from the
     /// log beside the lists, so a row can say who an id belongs to.
     known_names: std::collections::HashMap<String, String>,
+    /// Who the log says is connected, refreshed on the same tick as the
+    /// lists. Empty when the game server is down, because a log that stops
+    /// mid-session would otherwise leave lamps on for people who left with
+    /// it.
+    presence: std::collections::HashMap<String, presence::Presence>,
     /// The mod whose Remove has been clicked once. A second click on the same
     /// row carries it out; a click anywhere else forgets it.
     remove_armed: Option<String>,
@@ -355,6 +371,7 @@ impl App {
             player_id: String::new(),
             remove_armed: None,
             known_names: std::collections::HashMap::new(),
+            presence: std::collections::HashMap::new(),
             crashes: Vec::new(),
             lists_checked: Instant::now()
                 .checked_sub(Duration::from_secs(60))
@@ -609,6 +626,52 @@ impl App {
         {
             self.recipe_file = name.to_string();
         }
+    }
+
+    /// The `.cfg` files a player could already have, with the policy that
+    /// decides whether an edit of the admin's ever reaches them.
+    ///
+    /// Only the ones directly in `BepInEx/config`, because those are the ones
+    /// the default policy seeds: anything deeper (a mod's YAML tables, a
+    /// texture pack) already follows the server and has no decision to make.
+    fn collect_configs(&self) -> Vec<ConfigEntry> {
+        let mut out: Vec<ConfigEntry> = Vec::new();
+        for dir in [
+            self.cfg.pack.server_root.as_ref(),
+            self.cfg.pack.client_extras.as_ref(),
+        ]
+        .into_iter()
+        .flatten()
+        {
+            let Ok(entries) = std::fs::read_dir(dir.join("BepInEx").join("config")) else {
+                continue;
+            };
+            for e in entries.flatten() {
+                let file = e.path();
+                if !file.is_file()
+                    || !file
+                        .extension()
+                        .is_some_and(|x| x.eq_ignore_ascii_case("cfg"))
+                {
+                    continue;
+                }
+                let Some(name) = e.file_name().to_str().map(str::to_string) else {
+                    continue;
+                };
+                let path = format!("BepInEx/config/{name}");
+                if out.iter().any(|c| c.path == path) {
+                    continue;
+                }
+                let enforced = self.cfg.policy.enforce.iter().any(|p| p == &path);
+                out.push(ConfigEntry {
+                    path,
+                    name,
+                    enforced,
+                });
+            }
+        }
+        out.sort_by_key(|c| c.name.to_lowercase());
+        out
     }
 
     fn collect_mods(&self) -> Vec<ModEntry> {
@@ -1097,7 +1160,7 @@ impl eframe::App for App {
                             // thing done on the tab where changes are made.
                             self.card_world(ui);
                         }
-                        Tab::Mods => self.card_mods(ui),
+                        Tab::Mods => self.tab_mods(ui),
                         Tab::Players => self.card_players(ui),
                         Tab::Notes => self.card_notes(ui),
                         Tab::Settings => {
@@ -1120,6 +1183,29 @@ impl eframe::App for App {
     fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
         if let Some(stop) = self.stop_serving.take() {
             let _ = stop.send(());
+        }
+    }
+}
+
+/// One line of the roster: an id, the name the log gave it, and what it is
+/// doing now.
+struct Row {
+    id: String,
+    name: Option<String>,
+    here: Option<presence::Presence>,
+}
+
+impl Row {
+    fn online(&self) -> bool {
+        self.here.as_ref().is_some_and(|p| p.online)
+    }
+
+    /// Sorted by the name when there is one, and by the id otherwise, so the
+    /// nameless sit together at the end rather than between two names.
+    fn sort_name(&self) -> String {
+        match &self.name {
+            Some(name) => name.to_lowercase(),
+            None => format!("\u{ffff}{}", self.id),
         }
     }
 }
@@ -1533,30 +1619,98 @@ impl App {
         });
     }
 
-    /// Everyone the server has ever logged, so an id can be picked instead of
-    /// typed.
+    /// Everyone the server has logged, who is on it right now, and when the
+    /// rest were last here.
     ///
-    /// Typing seventeen digits by hand is how the wrong person gets banned.
+    /// Two things at once because they are one question. An admin looking for
+    /// somebody to ban wants the id without typing seventeen digits -- that
+    /// is how the wrong person gets banned -- and the first thing they want
+    /// to know about a name is whether its owner is connected.
+    ///
+    /// The lamp comes from the server's own log (see [`crate::presence`]),
+    /// not from asking anybody: the window watches the same file it shows on
+    /// the Server tab.
     fn card_seen(&mut self, ui: &mut egui::Ui) {
-        if self.known_names.is_empty() {
+        if self.known_names.is_empty() && self.presence.is_empty() {
             return;
         }
+        // The union of the two: a player who joined for the first time since
+        // the last world load is connected without being in the history yet,
+        // and leaving them out would be the window disagreeing with itself.
+        let mut rows: Vec<Row> = self
+            .known_names
+            .keys()
+            .chain(self.presence.keys())
+            .collect::<std::collections::BTreeSet<_>>()
+            .into_iter()
+            .map(|id| Row {
+                id: id.clone(),
+                name: self.known_names.get(id).cloned(),
+                here: self.presence.get(id).cloned(),
+            })
+            .collect();
+        // Connected first, then by name: the top of the list is the part an
+        // admin acts on.
+        rows.sort_by(|a, b| {
+            b.online()
+                .cmp(&a.online())
+                .then_with(|| a.sort_name().cmp(&b.sort_name()))
+        });
+        let online = rows.iter().filter(|r| r.online()).count();
+
         let mut pick = None;
         th::card(ui, |ui| {
             ui.set_width(ui.available_width());
             w::section(ui, self.t(Key::SeenPlayers));
+            ui.label(
+                RichText::new(if self.game_running {
+                    format!("{online} {}", self.t(Key::ConnectedNow))
+                } else {
+                    self.t(Key::ServerDownNobodyOn).to_string()
+                })
+                .text_style(th::label_style())
+                .color(if online > 0 { th::MOSS } else { th::BONE_DIM }),
+            );
             w::hint(ui, self.t(Key::NameFromLog));
             ui.add_space(6.0);
-            let mut rows: Vec<(&String, &String)> = self.known_names.iter().collect();
-            rows.sort_by_key(|(_, name)| name.to_lowercase());
-            for (id, name) in rows {
+            for row in &rows {
                 ui.horizontal(|ui| {
-                    w::dot(ui, th::RUNE);
-                    ui.label(RichText::new(name).color(th::BONE));
-                    ui.label(RichText::new(id).monospace().small().color(th::BONE_DIM));
+                    w::dot(ui, if row.online() { th::MOSS } else { th::EDGE });
+                    match &row.name {
+                        Some(name) => {
+                            ui.label(RichText::new(name).color(th::BONE));
+                            ui.label(
+                                RichText::new(&row.id)
+                                    .monospace()
+                                    .small()
+                                    .color(th::BONE_DIM),
+                            );
+                        }
+                        // No name yet: the history is reprinted when the world
+                        // loads, so somebody who has only ever connected since
+                        // then is an id until the next restart.
+                        None => {
+                            ui.label(RichText::new(&row.id).monospace().color(th::BONE));
+                        }
+                    }
+                    if let Some(when) = &row.here {
+                        let label = match (when.online, when.clock()) {
+                            (true, Some(at)) => format!("{} {at}", self.t(Key::ConnectedSince)),
+                            (true, None) => self.t(Key::Connected).to_string(),
+                            (false, Some(at)) => format!("{} {at}", self.t(Key::LastSeen)),
+                            (false, None) => String::new(),
+                        };
+                        if !label.is_empty() {
+                            ui.label(RichText::new(label).small().color(if when.online {
+                                th::MOSS
+                            } else {
+                                th::BONE_DIM
+                            }));
+                        }
+                    }
                     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                         if ui.small_button(self.t(Key::Copy)).clicked() {
-                            pick = Some(id.clone());
+                            pick = Some(row.id.clone());
                         }
                     });
                 });
@@ -1676,6 +1830,15 @@ impl App {
                 .into_iter()
                 .map(|seen| (seen.id, seen.name))
                 .collect();
+            // Who is on the server, from the same file on the same tick. A
+            // stopped server has nobody on it whatever its last lines say:
+            // Valheim does not write a farewell for each player when it goes
+            // down, so the log alone would keep them lit.
+            self.presence = if self.game_running {
+                presence::from_file(path).unwrap_or_default()
+            } else {
+                std::collections::HashMap::new()
+            };
         }
         for (slot, roll) in players::Roll::ALL.iter().enumerate() {
             match players::read(&dir, *roll) {
@@ -2306,6 +2469,73 @@ impl App {
                 Key::AllowClientModsOff
             }),
         );
+    }
+
+    /// The Mods tab: what is installed, then what wins in a config file.
+    fn tab_mods(&mut self, ui: &mut egui::Ui) {
+        self.card_mods(ui);
+        ui.add_space(12.0);
+        self.card_configs(ui);
+    }
+
+    /// Which `.cfg` files follow the server, and which stay the player's.
+    ///
+    /// This is the one place in ValhSync where "the server publishes it" is
+    /// not the whole story, and the surprise is worth a card of its own: a
+    /// `.cfg` is seeded by default, meaning it is installed once and then left
+    /// alone, so an admin who flips a value in one is not understood by
+    /// anybody who already has the file. That default is right for keybinds
+    /// and window sizes and wrong for gameplay numbers, and only the admin
+    /// knows which is which.
+    fn card_configs(&mut self, ui: &mut egui::Ui) {
+        if self.cfg.pack.server_root.is_none() {
+            return;
+        }
+        let configs = self.collect_configs();
+        let mut flipped: Option<(String, bool)> = None;
+        th::card(ui, |ui| {
+            ui.set_width(ui.available_width());
+            w::section(ui, self.t(Key::SectionConfigs));
+            w::hint(ui, self.t(Key::ConfigsHint));
+            if configs.is_empty() {
+                ui.add_space(4.0);
+                w::hint(ui, self.t(Key::NoConfigsFound));
+                return;
+            }
+            ui.add_space(8.0);
+            for c in &configs {
+                ui.horizontal(|ui| {
+                    w::dot(ui, if c.enforced { th::GOLD } else { th::EDGE });
+                    ui.label(RichText::new(&c.name).color(th::BONE));
+                    ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                        if ui
+                            .selectable_label(!c.enforced, self.t(Key::ConfigPlayersOwn))
+                            .clicked()
+                        {
+                            flipped = Some((c.path.clone(), false));
+                        }
+                        if ui
+                            .selectable_label(c.enforced, self.t(Key::ConfigServerWins))
+                            .clicked()
+                        {
+                            flipped = Some((c.path.clone(), true));
+                        }
+                    });
+                });
+            }
+        });
+        if let Some((path, enforce)) = flipped {
+            // `enforce` beats `seed` in the scanner, so forcing a file is
+            // adding its exact path here and letting it go is taking it back
+            // out: the glob underneath decides again.
+            self.cfg.policy.enforce.retain(|p| p != &path);
+            if enforce {
+                self.cfg.policy.enforce.push(path);
+                self.cfg.policy.enforce.sort();
+            }
+            // Nothing else to do: `edited()` clones `cfg`, so autosave sees
+            // the change on its own and the publisher rebuilds after it.
+        }
     }
 
     /// The mods that are installed but turned off.

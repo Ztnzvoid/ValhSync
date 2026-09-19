@@ -712,6 +712,15 @@ journalctl -u valhsync-server -f</code></pre>
     <li><strong>The log</strong>, followed live, filling the tab; and below it a resizable
     <strong>console</strong> carrying the lines the server prints to its own console, which are
     otherwise a handful among tens of thousands.</li>
+    <li><strong>Who is on the server</strong>, on the Players tab: every id the log has named,
+    with the name beside it and a lamp saying connected or not — since when, or last seen when.
+    It is read from the server's own log, the same file the Server tab shows, so it costs
+    nothing and asks nobody. A stopped server shows nobody connected rather than whoever the
+    log last mentioned.</li>
+    <li><strong>Which config files follow you</strong>, under the mod list. A <code>.cfg</code>
+    is seeded by default — installed once on a player's machine, then left alone — so a value
+    you change later never reaches anybody who already has the file. That is right for keybinds
+    and wrong for gameplay numbers, and the card lets you say which is which, file by file.</li>
     <li><strong>Players</strong>, on their own tab, and a prompt on the console for the same
     thing: <code>admin</code>, <code>ban</code>, <code>permit</code> and their un- forms, plus
     <code>admins</code>, <code>banned</code>, <code>permitted</code> to see a list. These write

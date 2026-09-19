@@ -12,6 +12,7 @@ pub mod names;
 pub mod net;
 pub mod pack;
 pub mod players;
+pub mod presence;
 pub mod serve;
 pub mod store;
 pub mod update;

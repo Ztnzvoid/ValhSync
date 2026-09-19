@@ -13,6 +13,22 @@ they are the 0.0.1 and 0.0.2 below. Anybody holding one of those installs
 version that sorts above it -- and every release after this one arrives on
 its own.
 
+## Unreleased
+
+- **Who is connected, on the Players tab.** Every id the server's log has
+  named, with a lamp: green for connected and since when, dim for gone and when
+  they were last seen. Read from the two lines Valheim writes about a
+  connection, through the same anti-forgery check the names go through, so a
+  player typing one into the chat box changes nothing. A stopped server shows
+  nobody connected rather than whoever the log last mentioned.
+- **Config files: say which ones follow the server.** A `.cfg` is seeded by
+  default -- installed once on a player's machine, then left alone -- so an
+  admin who changed a value in one was not reaching anybody who already had the
+  file. That is right for keybinds and wrong for gameplay numbers, and nothing
+  in the window said which it was doing. The Mods tab now lists every `.cfg` in
+  the server's config folder with two buttons, *Server's version* or *Player's
+  own*, and writes the policy for you.
+
 ## 0.0.5 — 2026-09-15
 
 The manifest gains a field, so both halves matter: a launcher older than this

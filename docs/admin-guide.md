@@ -153,6 +153,10 @@ Three more keys sit outside those sections:
 - `seed` vs `enforce`: a seeded file is installed only when absent. Use it for
   configs that hold keybinds and UI preferences. Enforce the ones that must
   match the server (anything with gameplay values that the server checks).
+  The Mods tab lists every `.cfg` in the server's `BepInEx/config` with two
+  buttons — *Server's version* or *Player's own* — which is the same decision
+  written for you: choosing the first adds that exact path to `enforce`, and
+  the second takes it back out.
 - `allow_client_mods` decides what happens to a mod a player installed that
   your pack does not contain. `true` (the default) leaves it alone: a map
   overlay or an interface tweak never talks to your server. `false` has the
@@ -268,7 +272,13 @@ launcher sets it aside before the game starts. See §3.
 
 A mod is installed by dropping it on the window — see §7.
 
-**Players** holds the admin list, the ban list and the permitted list, written
+**Players** shows everyone the log has named, with a lamp for who is connected
+right now and, for the rest, when they were last seen. Both come from the
+server's own log — the connection lines Valheim writes — so nothing is asked of
+anybody and a player who is not in a list still appears. A stopped server shows
+nobody connected.
+
+It also holds the admin list, the ban list and the permitted list, written
 to the three files Iron Gate documents (`adminlist.txt`, `bannedlist.txt`,
 `permittedlist.txt`), which is the only channel a dedicated server has from
 outside the game. Each id is shown beside the name the server's log recorded
