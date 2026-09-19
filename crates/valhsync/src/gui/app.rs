@@ -1374,16 +1374,6 @@ impl App {
                         .strong()
                         .color(th::GOLD_LIT),
                 );
-                if let Some((colour, line)) = self.ready_summary() {
-                    ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                        ui.label(
-                            RichText::new(line)
-                                .text_style(th::label_style())
-                                .color(th::BONE),
-                        );
-                        valhsync_ui::widgets::dot(ui, colour);
-                    });
-                }
             });
             // Indented to the gutter, so the address shares a left edge with
             // the name above it and the lamp below, instead of starting at
@@ -1392,6 +1382,28 @@ impl App {
                 ui.add_space(valhsync_ui::widgets::GUTTER);
                 ui.label(RichText::new(&server.url).small().color(th::BONE_DIM));
             });
+            // On its own row, under the name rather than beside it. Sharing
+            // that row meant a long server name and a long summary -- six
+            // counts and a size -- drawn over each other, each unreadable,
+            // whatever the window's width: egui right-aligns into whatever is
+            // left and does not stop at what is already there. Wrapped, so a
+            // narrow window folds the line instead of cutting it.
+            if let Some((colour, line)) = self.ready_summary() {
+                ui.add_space(2.0);
+                // The dot keeps the gutter and the words get a column of
+                // their own, so a second line starts under the first one
+                // rather than under the lamp.
+                ui.horizontal_top(|ui| {
+                    valhsync_ui::widgets::gutter_dot(ui, colour);
+                    ui.vertical(|ui| {
+                        ui.label(
+                            RichText::new(line)
+                                .text_style(th::label_style())
+                                .color(th::BONE),
+                        );
+                    });
+                });
+            }
             self.game_server_row(ui);
             ui.add_space(10.0);
             self.whats_new_block(ui);
@@ -1422,13 +1434,18 @@ impl App {
                 .filter(|q| q.is_dir());
             if let Some(folder) = set_aside {
                 ui.add_space(8.0);
-                ui.horizontal(|ui| {
-                    valhsync_ui::widgets::dot(ui, th::RUNE);
-                    ui.label(
-                        RichText::new(self.t(Key::SetAsideHint))
-                            .small()
-                            .color(th::BONE_DIM),
-                    );
+                // Wrapped: this is two sentences, and a plain horizontal row
+                // runs them off the right edge with the end of the second one
+                // -- "nothing is deleted" -- as the part nobody gets to read.
+                ui.horizontal_top(|ui| {
+                    valhsync_ui::widgets::gutter_dot(ui, th::RUNE);
+                    ui.vertical(|ui| {
+                        ui.label(
+                            RichText::new(self.t(Key::SetAsideHint))
+                                .small()
+                                .color(th::BONE_DIM),
+                        );
+                    });
                 });
                 if ui
                     .small_button(self.t(Key::SetAside))
@@ -1595,9 +1612,14 @@ impl App {
                     // offer, which was three lines in a window with room for
                     // thirty; a minimum alone would let a two-line note leave
                     // an empty box under it.
-                    let rows = NOTE_BOX_LINES * th::body_line_height();
+                    // Measured, not assumed. The height of a line here is
+                    // whatever the body face actually renders at; a constant
+                    // near it leaves the box ending part-way through the
+                    // ninth line, which reads as a sentence someone cut.
+                    let row = ui.text_style_height(&egui::TextStyle::Body);
+                    let rows = NOTE_BOX_LINES * row;
                     ui.set_width(ui.available_width());
-                    ui.set_min_height(rows.min(lines * th::body_line_height()));
+                    ui.set_min_height(rows.min(lines * row));
                     egui::ScrollArea::vertical()
                         .id_salt("note-teaser")
                         // Eight lines of the face this actually renders in,
@@ -1828,48 +1850,11 @@ impl App {
     }
 
     fn status_block(&mut self, ui: &mut egui::Ui) {
-        // The progress has its own strip under the action bar now, where
-        // nothing the admin wrote can push it off the bottom.
+        // While something is running this says nothing: the progress has a
+        // strip of its own under the action bar, where nothing the admin
+        // wrote can push it off the bottom of the window. What used to be
+        // drawn here is gone rather than left unreachable behind the return.
         if self.progress.is_some() {
-            return;
-        }
-        if let Some(p) = &self.progress {
-            let label = match p.phase {
-                Phase::Contacting => self.t(Key::Contacting).to_string(),
-                Phase::Downloading { index, count } if count > 0 => {
-                    format!("{} {index}/{count}: {}", self.t(Key::Downloading), p.detail)
-                }
-                Phase::Downloading { .. } => format!("{}: {}", self.t(Key::Downloading), p.detail),
-                Phase::Applying => self.t(Key::Applying).to_string(),
-            };
-            ui.label(RichText::new(label).color(th::BONE_DIM));
-            ui.add(
-                egui::ProgressBar::new(p.fraction())
-                    .animate(true)
-                    .show_percentage(),
-            );
-            if p.total > 0 {
-                #[allow(
-                    clippy::cast_precision_loss,
-                    clippy::cast_possible_truncation,
-                    clippy::cast_sign_loss
-                )]
-                let speed = human_bytes(p.speed as u64);
-                let mut line = format!(
-                    "{} / {} · {speed}/s",
-                    human_bytes(p.done),
-                    human_bytes(p.total)
-                );
-                if let Some(left) = p.seconds_left() {
-                    let shown = if left >= 60 {
-                        format!("{}m {}s", left / 60, left % 60)
-                    } else {
-                        format!("{left}s")
-                    };
-                    line = format!("{line} · {shown} {}", self.t(Key::Remaining));
-                }
-                ui.label(RichText::new(line).small().color(th::RUNE));
-            }
             return;
         }
         match &self.status {

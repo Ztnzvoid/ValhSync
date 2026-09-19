@@ -13,6 +13,20 @@ they are the 0.0.1 and 0.0.2 below. Anybody holding one of those installs
 version that sorts above it -- and every release after this one arrives on
 its own.
 
+## Unreleased
+
+- **Text that stays readable at any width.** Three things in the launcher's
+  card were drawn over or cut off: the server's name and the summary of the
+  sync shared a row, so a long name and six counts were painted on top of each
+  other; the sentence about mods set aside ran off the right edge, taking
+  "nothing is deleted" with it; and the note box ended part-way through a line,
+  which reads as a sentence someone cut. The summary has its own row now, both
+  sentences wrap under themselves, and the box is as tall as a whole number of
+  the lines it actually renders. Checked at 700, 760, 900 and 1280 pixels wide,
+  and against the minimum the window clamps to.
+- Dead code out of `status_block`: the progress moved to its own strip and left
+  a branch behind a `return` that could never run again.
+
 ## 0.0.6 — 2026-09-19
 
 - **Who is connected, on the Players tab.** Every id the server's log has
