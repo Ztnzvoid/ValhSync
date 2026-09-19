@@ -13,7 +13,7 @@ they are the 0.0.1 and 0.0.2 below. Anybody holding one of those installs
 version that sorts above it -- and every release after this one arrives on
 its own.
 
-## Unreleased
+## 0.0.6 — 2026-09-19
 
 - **Text that stays readable at any width.** Three things in the launcher's
   card were drawn over or cut off: the server's name and the summary of the
@@ -26,9 +26,6 @@ its own.
   and against the minimum the window clamps to.
 - Dead code out of `status_block`: the progress moved to its own strip and left
   a branch behind a `return` that could never run again.
-
-## 0.0.6 — 2026-09-19
-
 - **Who is connected, on the Players tab.** Every id the server's log has
   named, with a lamp: green for connected and since when, dim for gone and when
   they were last seen. Read from the two lines Valheim writes about a
